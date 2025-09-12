@@ -129,12 +129,12 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook }: BookLibraryProps
                 <Input
                   id="file"
                   type="file"
-                  accept=".txt,.epub,.pdf"
+                  accept=".txt,.epub,.pdf,.mobi,.azw,.azw3,.fb2,.djvu,.rtf,.doc,.docx"
                   onChange={handleFileUpload}
                   className="cursor-pointer"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Supports TXT, EPUB, and PDF files
+                  Supports TXT, EPUB, PDF, MOBI, AZW, FB2, DJVU, RTF, DOC, DOCX files
                 </p>
               </div>
             </div>

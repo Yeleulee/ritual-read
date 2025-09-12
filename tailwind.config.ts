@@ -68,6 +68,14 @@ export default {
           ring: "hsl(var(--sidebar-ring))",
         },
       },
+      perspective: {
+        '1000': '1000px',
+      },
+      rotate: {
+        'y-180': 'rotateY(180deg)',
+        'y-neg-180': 'rotateY(-180deg)',
+        'y-0': 'rotateY(0deg)',
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
@@ -126,6 +134,11 @@ export default {
             boxShadow: "0 0 0 8px hsl(var(--streak) / 0)",
           },
         },
+        "page-flip": {
+          "0%": { transform: "rotateY(0deg)" },
+          "50%": { transform: "rotateY(-90deg)" },
+          "100%": { transform: "rotateY(0deg)" }
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -134,6 +147,7 @@ export default {
         "achievement-bounce": "achievement-bounce 0.6s ease-in-out",
         "page-fade": "page-fade 0.5s ease-out",
         "streak-pulse": "streak-pulse 2s ease-in-out infinite",
+        "page-flip": "page-flip 0.6s ease-in-out",
       },
     },
   },

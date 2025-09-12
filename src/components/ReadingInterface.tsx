@@ -34,6 +34,8 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
   const [readingTime, setReadingTime] = useState(0);
   const [fontSize, setFontSize] = useState(18);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isFlipping, setIsFlipping] = useState(false);
+  const [flipDirection, setFlipDirection] = useState<'next' | 'prev'>('next');
   const { toast } = useToast();
 
   // Sample content for demonstration
@@ -95,6 +97,20 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
     const startIndex = (currentPage - 1) * wordsPerPage;
     const endIndex = Math.min(startIndex + wordsPerPage, words.length);
     return words.slice(startIndex, endIndex).join(' ');
+  };
+
+  const handlePageChange = (newPage: number, direction: 'next' | 'prev') => {
+    if (newPage < 1 || newPage > totalPages || isFlipping) return;
+    
+    setIsFlipping(true);
+    setFlipDirection(direction);
+    
+    setTimeout(() => {
+      setCurrentPage(newPage);
+      setTimeout(() => {
+        setIsFlipping(false);
+      }, 300);
+    }, 150);
   };
 
   return (
@@ -186,23 +202,49 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       </Card>
 
       {/* Reading Content */}
-      <Card className={`gradient-reading animate-page-fade ${isReading ? 'focus-glow' : ''}`}>
-        <CardContent className="p-8">
-          <div 
-            className="reading-text transition-ritual"
-            style={{ fontSize: `${fontSize}px` }}
-          >
-            {getCurrentPageContent()}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="relative h-[600px] perspective-1000 animate-page-fade">
+        <Card 
+          className={`
+            absolute inset-0 gradient-reading transition-all duration-300 preserve-3d
+            ${isFlipping ? (flipDirection === 'next' ? 'rotate-y-180' : 'rotate-y-neg-180') : 'rotate-y-0'}
+            ${isReading ? 'focus-glow' : ''}
+          `}
+          style={{
+            transformStyle: 'preserve-3d',
+            backfaceVisibility: 'hidden'
+          }}
+        >
+          <CardContent className="p-8 h-full flex flex-col justify-center">
+            <div 
+              className="reading-text transition-ritual leading-relaxed"
+              style={{ 
+                fontSize: `${fontSize}px`,
+                textAlign: 'justify',
+                columnCount: window.innerWidth > 768 ? 2 : 1,
+                columnGap: '2rem'
+              }}
+            >
+              {getCurrentPageContent()}
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Page shadow effect */}
+        <div 
+          className={`
+            absolute inset-0 pointer-events-none transition-opacity duration-300
+            bg-gradient-to-r from-transparent via-black/5 to-transparent
+            ${isFlipping ? 'opacity-100' : 'opacity-0'}
+          `}
+        />
+      </div>
 
       {/* Page Navigation */}
       <div className="flex items-center justify-between animate-page-fade">
         <Button
           variant="outline"
-          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-          disabled={currentPage === 1}
+          onClick={() => handlePageChange(currentPage - 1, 'prev')}
+          disabled={currentPage === 1 || isFlipping}
           className="transition-ritual"
         >
           Previous Page
@@ -218,7 +260,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
                 key={pageNumber}
                 variant={pageNumber === currentPage ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setCurrentPage(pageNumber)}
+                onClick={() => handlePageChange(pageNumber, pageNumber > currentPage ? 'next' : 'prev')}
                 className="transition-ritual"
               >
                 {pageNumber}
@@ -231,7 +273,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setCurrentPage(totalPages)}
+                onClick={() => handlePageChange(totalPages, 'next')}
                 className="transition-ritual"
               >
                 {totalPages}
@@ -242,8 +284,8 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
 
         <Button
           variant="outline"
-          onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-          disabled={currentPage === totalPages}
+          onClick={() => handlePageChange(currentPage + 1, 'next')}
+          disabled={currentPage === totalPages || isFlipping}
           className="transition-ritual"
         >
           Next Page
