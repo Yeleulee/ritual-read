@@ -71,10 +71,12 @@ export default {
       perspective: {
         '1000': '1000px',
       },
-      rotate: {
-        'y-180': 'rotateY(180deg)',
-        'y-neg-180': 'rotateY(-180deg)',
-        'y-0': 'rotateY(0deg)',
+      transform: {
+        'rotate-y-0': 'rotateY(0deg)',
+        'rotate-y-180': 'rotateY(-180deg)', 
+        'rotate-y-neg-180': 'rotateY(180deg)',
+        'page-flip-next': 'rotateY(-180deg) scale(0.95)',
+        'page-flip-prev': 'rotateY(180deg) scale(0.95)',
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -36,6 +36,8 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
   const [currentPage, setCurrentPage] = useState(1);
   const [isFlipping, setIsFlipping] = useState(false);
   const [flipDirection, setFlipDirection] = useState<'next' | 'prev'>('next');
+  const readingAreaRef = useRef<HTMLDivElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const { toast } = useToast();
 
   // Sample content for demonstration
@@ -112,6 +114,47 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       }, 300);
     }, 150);
   };
+
+  // Touch/swipe handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    
+    const touch = e.changedTouches[0];
+    const deltaX = touch.clientX - touchStartRef.current.x;
+    const deltaY = touch.clientY - touchStartRef.current.y;
+    
+    // Only trigger page change if horizontal swipe is dominant
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+      if (deltaX > 0) {
+        // Swipe right - previous page
+        handlePageChange(currentPage - 1, 'prev');
+      } else {
+        // Swipe left - next page
+        handlePageChange(currentPage + 1, 'next');
+      }
+    }
+    
+    touchStartRef.current = null;
+  };
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        handlePageChange(currentPage - 1, 'prev');
+      } else if (e.key === 'ArrowRight') {
+        handlePageChange(currentPage + 1, 'next');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [currentPage, totalPages]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -202,17 +245,23 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       </Card>
 
       {/* Reading Content */}
-      <div className="relative h-[600px] perspective-1000 animate-page-fade">
+      <div 
+        ref={readingAreaRef}
+        className="relative h-[600px] [perspective:1000px] animate-page-fade cursor-pointer select-none"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <Card 
           className={`
-            absolute inset-0 gradient-reading transition-all duration-300 preserve-3d
-            ${isFlipping ? (flipDirection === 'next' ? 'rotate-y-180' : 'rotate-y-neg-180') : 'rotate-y-0'}
+            absolute inset-0 gradient-reading transition-all duration-500 [transform-style:preserve-3d]
+            ${isFlipping ? (
+              flipDirection === 'next' 
+                ? '[transform:rotateY(-180deg)]' 
+                : '[transform:rotateY(180deg)]'
+            ) : '[transform:rotateY(0deg)]'}
             ${isReading ? 'focus-glow' : ''}
+            [backface-visibility:hidden]
           `}
-          style={{
-            transformStyle: 'preserve-3d',
-            backfaceVisibility: 'hidden'
-          }}
         >
           <CardContent className="p-8 h-full flex flex-col justify-center">
             <div 
@@ -220,7 +269,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
               style={{ 
                 fontSize: `${fontSize}px`,
                 textAlign: 'justify',
-                columnCount: window.innerWidth > 768 ? 2 : 1,
+                columnCount: typeof window !== 'undefined' && window.innerWidth > 768 ? 2 : 1,
                 columnGap: '2rem'
               }}
             >
@@ -237,6 +286,18 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
             ${isFlipping ? 'opacity-100' : 'opacity-0'}
           `}
         />
+
+        {/* Touch indicators */}
+        <div className="absolute inset-y-0 left-0 w-1/3 flex items-center justify-start pl-4 pointer-events-none">
+          <div className={`text-muted-foreground/20 transition-opacity ${currentPage > 1 ? 'opacity-100' : 'opacity-0'}`}>
+            ←
+          </div>
+        </div>
+        <div className="absolute inset-y-0 right-0 w-1/3 flex items-center justify-end pr-4 pointer-events-none">
+          <div className={`text-muted-foreground/20 transition-opacity ${currentPage < totalPages ? 'opacity-100' : 'opacity-0'}`}>
+            →
+          </div>
+        </div>
       </div>
 
       {/* Page Navigation */}
