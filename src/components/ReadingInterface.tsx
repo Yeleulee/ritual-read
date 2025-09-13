@@ -11,11 +11,16 @@ import {
   Pause, 
   BookOpen,
   Clock,
-  Eye
+  Eye,
+  MessageSquare
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PdfReader } from "@/components/readers/PdfReader";
 import { EpubReader } from "@/components/readers/EpubReader";
+import { AiChat } from "@/components/AiChat";
+import { useReadingStats } from "@/hooks/use-reading-stats";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+ 
 
 interface BookItem {
   id: string;
@@ -38,11 +43,13 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
   const [readingTime, setReadingTime] = useState(0);
   const [fontSize, setFontSize] = useState(18);
   const [currentPage, setCurrentPage] = useState(1);
-  const [isFlipping, setIsFlipping] = useState(false);
-  const [flipDirection, setFlipDirection] = useState<'next' | 'prev'>('next');
+  // Simplified: remove flip animations
   const readingAreaRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const { toast } = useToast();
+  const { addSeconds } = useReadingStats();
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [chaptersOpen, setChaptersOpen] = useState(false);
 
   // Sample content for demonstration
   const sampleContent = book.content || `
@@ -67,16 +74,50 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
   const [docPageCount, setDocPageCount] = useState<number | null>(null);
   const effectiveTotalPages = book.fileType ? (docPageCount || book.totalPages || 1) : computedTextPages;
 
+  // TOC / Outline state
+  const [epubToc, setEpubToc] = useState<Array<{ label: string; href?: string; cfi?: string }>>([]);
+  const [pdfOutline, setPdfOutline] = useState<Array<{ title: string; pageNumber: number }>>([]);
+  const [gotoEpub, setGotoEpub] = useState<{ cfi?: string; href?: string } | null>(null);
+  const [gotoPdfPage, setGotoPdfPage] = useState<number | null>(null);
+  const [pageText, setPageText] = useState<string>("");
+
+  // Reset pagination and counters when switching books
+  useEffect(() => {
+    setCurrentPage(1);
+    setDocPageCount(null);
+    setEpubToc([]);
+    setPdfOutline([]);
+    setGotoEpub(null);
+    setGotoPdfPage(null);
+    // Bring reader into view and focus when a book opens
+    setTimeout(() => {
+      try {
+        readingAreaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        readingAreaRef.current?.focus?.();
+      } catch {}
+    }, 0);
+  }, [book.id]);
+
   // Reading session timer
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isReading) {
       interval = setInterval(() => {
         setReadingTime(prev => prev + 1);
+        addSeconds(1);
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isReading]);
+  }, [isReading, addSeconds]);
+
+  // Keep page text context updated for plain text books
+  useEffect(() => {
+    if (!book.fileType) {
+      try {
+        setPageText(getTextPageContent(currentPage));
+      } catch {}
+    }
+  }, [book.fileType, currentPage, sampleContent, wordsPerPage]);
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -100,25 +141,51 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
     });
   };
 
-  const getCurrentPageContent = () => {
+  const getTextPageContent = (pageNumber: number) => {
     const words = sampleContent.split(' ');
-    const startIndex = (currentPage - 1) * wordsPerPage;
+    const startIndex = (pageNumber - 1) * wordsPerPage;
     const endIndex = Math.min(startIndex + wordsPerPage, words.length);
     return words.slice(startIndex, endIndex).join(' ');
   };
 
-  const handlePageChange = (newPage: number, direction: 'next' | 'prev') => {
-    if (newPage < 1 || newPage > effectiveTotalPages || isFlipping) return;
-    
-    setIsFlipping(true);
-    setFlipDirection(direction);
-    
-    setTimeout(() => {
+  const clampPage = (n: number) => Math.min(Math.max(1, n), effectiveTotalPages);
+
+  const renderPageContent = (pageNumber: number) => {
+    if (book.fileType === 'pdf' && book.fileUrl) {
+      return (
+        <div className="h-full">
+          <PdfReader fileUrl={book.fileUrl} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onOutline={setPdfOutline} gotoPage={gotoPdfPage} onPageText={setPageText} />
+        </div>
+      );
+    }
+    if (book.fileType === 'epub' && book.fileUrl) {
+      return (
+        <div className="h-full">
+          <EpubReader fileUrl={book.fileUrl} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onToc={setEpubToc} goto={gotoEpub} onRenderedText={setPageText} />
+        </div>
+      );
+    }
+    return (
+      <div 
+        className="reading-text transition-ritual leading-relaxed"
+        style={{ 
+          fontSize: `${fontSize}px`,
+          textAlign: 'justify',
+          columnCount: typeof window !== 'undefined' && window.innerWidth > 768 ? 2 : 1,
+          columnGap: '2rem'
+        }}
+      >
+        {getTextPageContent(pageNumber)}
+      </div>
+    );
+  };
+
+  const handlePageChange = (newPage: number, _direction: 'next' | 'prev') => {
+    if (newPage < 1 || newPage > effectiveTotalPages) return;
       setCurrentPage(newPage);
-      setTimeout(() => {
-        setIsFlipping(false);
-      }, 300);
-    }, 150);
+    // clear goto for pdf/epub so manual nav resumes normal
+    setGotoPdfPage(null);
+    setGotoEpub(null);
   };
 
   // Touch/swipe handlers
@@ -129,22 +196,13 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!touchStartRef.current) return;
-    
     const touch = e.changedTouches[0];
     const deltaX = touch.clientX - touchStartRef.current.x;
     const deltaY = touch.clientY - touchStartRef.current.y;
-    
-    // Only trigger page change if horizontal swipe is dominant
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-      if (deltaX > 0) {
-        // Swipe right - previous page
-        handlePageChange(currentPage - 1, 'prev');
-      } else {
-        // Swipe left - next page
-        handlePageChange(currentPage + 1, 'next');
-      }
+      if (deltaX > 0) handlePageChange(currentPage - 1, 'prev');
+      else handlePageChange(currentPage + 1, 'next');
     }
-    
     touchStartRef.current = null;
   };
 
@@ -157,13 +215,49 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
         handlePageChange(currentPage + 1, 'next');
       }
     };
-
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentPage, totalPages]);
+  }, [currentPage, effectiveTotalPages]);
+
+  // Derived chapters list
+  const chapters = (() => {
+    if (book.fileType === 'epub') {
+      return epubToc.map((t, idx) => ({ id: `epub-${idx}`, label: t.label || `Chapter ${idx + 1}`, href: t.href, cfi: t.cfi }));
+    }
+    if (book.fileType === 'pdf') {
+      return pdfOutline.map((o, idx) => ({ id: `pdf-${idx}`, label: o.title || `Chapter ${idx + 1}`, page: o.pageNumber }));
+    }
+    // basic text heuristics: split by lines that start with Chapter
+    const lines = sampleContent.split('\n');
+    const textChapters: Array<{ id: string; label: string; page: number }> = [];
+    let pageCounter = 1;
+    let wordCounter = 0;
+    for (const line of lines) {
+      if (/^\s*Chapter\s+\d+/i.test(line)) {
+        textChapters.push({ id: `txt-${textChapters.length}`, label: line.trim(), page: Math.max(1, Math.ceil(wordCounter / wordsPerPage)) });
+      }
+      const wordsInLine = line.trim().split(/\s+/).filter(Boolean).length;
+      wordCounter += wordsInLine;
+      pageCounter = Math.max(pageCounter, Math.ceil(wordCounter / wordsPerPage));
+    }
+    return textChapters;
+  })();
+
+  const handleChapterClick = (chap: any) => {
+    if (book.fileType === 'epub') {
+      setGotoEpub(chap.cfi ? { cfi: chap.cfi } : (chap.href ? { href: chap.href } : null));
+    } else if (book.fileType === 'pdf') {
+      if (typeof chap.page === 'number') {
+        setGotoPdfPage(chap.page);
+        setCurrentPage(chap.page);
+      }
+    } else {
+      if (typeof chap.page === 'number') setCurrentPage(chap.page);
+    }
+  };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-6">
       {/* Reading Header */}
       <div className="flex items-center justify-between animate-page-fade">
         <div className="flex items-center space-x-4">
@@ -187,29 +281,47 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
             <Clock className="w-3 h-3" />
             {formatTime(readingTime)}
           </Badge>
-          
           <Button
             variant={isReading ? "destructive" : "ritual"}
             onClick={isReading ? pauseReading : startReading}
           >
-            {isReading ? (
-              <>
-                <Pause className="w-4 h-4 mr-2" />
-                Pause
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4 mr-2" />
-                Start Reading
-              </>
-            )}
+            {isReading ? (<><Pause className="w-4 h-4 mr-2" />Pause</>) : (<><Play className="w-4 h-4 mr-2" />Start Reading</>)}
           </Button>
-
           <Button variant="outline" size="sm" className="transition-ritual">
             <Settings className="w-4 h-4" />
           </Button>
+          <Button variant={chaptersOpen ? "destructive" : "outline"} size="sm" className="transition-ritual" onClick={() => setChaptersOpen(true)}>
+            <BookOpen className="w-4 h-4 mr-2" />
+            Chapters
+          </Button>
+          <Button variant={assistantOpen ? "destructive" : "outline"} size="sm" className="transition-ritual" onClick={() => setAssistantOpen(v => !v)}>
+            <MessageSquare className="w-4 h-4 mr-2" />
+            {assistantOpen ? 'Close Assistant' : 'Ask AI'}
+          </Button>
         </div>
       </div>
+
+      {/* Chapters Sheet */}
+      <Sheet open={chaptersOpen} onOpenChange={setChaptersOpen}>
+        <SheetContent side="left" className="w-[320px] sm:w-[380px]">
+          <SheetHeader>
+            <SheetTitle>Chapters</SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 space-y-1">
+            {chapters.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No chapters detected.</div>
+            ) : chapters.map((c) => (
+              <button
+                key={c.id}
+                className="w-full text-left text-sm p-2 rounded hover:bg-muted transition"
+                onClick={() => { handleChapterClick(c); setChaptersOpen(false); }}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Reading Progress */}
       <Card className="animate-page-fade">
@@ -217,156 +329,64 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-4">
               <BookOpen className="w-5 h-5 text-primary" />
-              <span className="text-sm font-medium">
-                Page {currentPage} of {effectiveTotalPages}
-              </span>
+              <span className="text-sm font-medium">Page {currentPage} of {effectiveTotalPages}</span>
             </div>
-            <div className="text-sm text-muted-foreground">
-              {Math.round((currentPage / effectiveTotalPages) * 100)}% complete
-            </div>
+            <div className="text-sm text-muted-foreground">{Math.round((currentPage / effectiveTotalPages) * 100)}% complete</div>
           </div>
           <Progress value={(currentPage / effectiveTotalPages) * 100} className="h-2" />
         </CardContent>
       </Card>
 
-      {/* Reading Controls */}
-      <Card className="animate-page-fade">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Eye className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Font Size</span>
-              <Slider
-                value={[fontSize]}
-                onValueChange={(value) => setFontSize(value[0])}
-                max={24}
-                min={12}
-                step={1}
-                className="w-24"
-              />
-              <span className="text-sm font-mono">{fontSize}px</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Reading Content */}
+      {/* Layout: Content | Assistant */}
+      <div className={`grid grid-cols-1 md:grid-cols-4 ${assistantOpen ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} gap-4 md:gap-6`}>
+        {/* Reading Content (fixed span to avoid layout shifts) */}
       <div 
         ref={readingAreaRef}
-        className="relative h-[600px] [perspective:1000px] animate-page-fade cursor-pointer select-none"
+          className={`md:col-span-4 lg:col-span-4 relative md:h-[600px] h-[70vh] animate-page-fade cursor-pointer select-none z-[1]`}
+          tabIndex={-1}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        <Card 
-          className={`
-            absolute inset-0 gradient-reading transition-all duration-500 [transform-style:preserve-3d]
-            ${isFlipping ? (
-              flipDirection === 'next' 
-                ? '[transform:rotateY(-180deg)]' 
-                : '[transform:rotateY(180deg)]'
-            ) : '[transform:rotateY(0deg)]'}
-            ${isReading ? 'focus-glow' : ''}
-            [backface-visibility:hidden]
-          `}
-        >
-          <CardContent className="p-8 h-full flex flex-col justify-center">
-            {book.fileType === 'pdf' && book.fileUrl ? (
-              <div className="h-full">
-                <PdfReader fileUrl={book.fileUrl} page={currentPage} onPageCount={setDocPageCount} />
-              </div>
-            ) : book.fileType === 'epub' && book.fileUrl ? (
-              <div className="h-full">
-                <EpubReader fileUrl={book.fileUrl} page={currentPage} onPageCount={setDocPageCount} />
-              </div>
-            ) : (
-              <div 
-                className="reading-text transition-ritual leading-relaxed"
-                style={{ 
-                  fontSize: `${fontSize}px`,
-                  textAlign: 'justify',
-                  columnCount: typeof window !== 'undefined' && window.innerWidth > 768 ? 2 : 1,
-                  columnGap: '2rem'
-                }}
-              >
-                {getCurrentPageContent()}
-              </div>
-            )}
+            <Card className={`${isReading ? 'focus-glow' : ''} h-full`}>
+              <CardContent className="p-6 md:p-8 h-full flex flex-col justify-center">
+                {renderPageContent(currentPage)}
           </CardContent>
         </Card>
         
-        {/* Page shadow effect */}
-        <div 
-          className={`
-            absolute inset-0 pointer-events-none transition-opacity duration-300
-            bg-gradient-to-r from-transparent via-black/5 to-transparent
-            ${isFlipping ? 'opacity-100' : 'opacity-0'}
-          `}
-        />
+            {/* Click/Tap zones */}
+            <button aria-label="Previous page" className="absolute inset-y-0 left-0 w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} />
+            <button aria-label="Next page" className="absolute inset-y-0 right-0 w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} />
+          </div>
 
-        {/* Touch indicators */}
-        <div className="absolute inset-y-0 left-0 w-1/3 flex items-center justify-start pl-4 pointer-events-none">
-          <div className={`text-muted-foreground/20 transition-opacity ${currentPage > 1 ? 'opacity-100' : 'opacity-0'}`}>
-            ←
-          </div>
-        </div>
-        <div className="absolute inset-y-0 right-0 w-1/3 flex items-center justify-end pr-4 pointer-events-none">
-          <div className={`text-muted-foreground/20 transition-opacity ${currentPage < totalPages ? 'opacity-100' : 'opacity-0'}`}>
-            →
-          </div>
-        </div>
+          {/* Side Assistant (visible on large screens when opened) */}
+          {assistantOpen && (
+            <Card className="lg:col-span-2 h-[600px] overflow-hidden hidden lg:flex">
+              <CardContent className="p-0 h-full w-full">
+                <AiChat context={pageText} compact />
+              </CardContent>
+            </Card>
+          )}
       </div>
 
       {/* Page Navigation */}
       <div className="flex items-center justify-between animate-page-fade">
-        <Button
-          variant="outline"
-          onClick={() => handlePageChange(currentPage - 1, 'prev')}
-          disabled={currentPage === 1 || isFlipping}
-          className="transition-ritual"
-        >
-          Previous Page
-        </Button>
-
+        <Button variant="outline" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} className="transition-ritual">Previous Page</Button>
         <div className="flex items-center space-x-2">
           {Array.from({ length: Math.min(5, effectiveTotalPages) }, (_, i) => {
             const pageNumber = currentPage <= 3 ? i + 1 : currentPage - 2 + i;
             if (pageNumber > effectiveTotalPages) return null;
-            
             return (
-              <Button
-                key={pageNumber}
-                variant={pageNumber === currentPage ? "default" : "ghost"}
-                size="sm"
-                onClick={() => handlePageChange(pageNumber, pageNumber > currentPage ? 'next' : 'prev')}
-                className="transition-ritual"
-              >
-                {pageNumber}
-              </Button>
+              <Button key={pageNumber} variant={pageNumber === currentPage ? "default" : "ghost"} size="sm" onClick={() => handlePageChange(pageNumber, pageNumber > currentPage ? 'next' : 'prev')} className="transition-ritual">{pageNumber}</Button>
             );
           })}
           {effectiveTotalPages > 5 && currentPage < effectiveTotalPages - 2 && (
             <>
               <span className="text-muted-foreground">...</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handlePageChange(effectiveTotalPages, 'next')}
-                className="transition-ritual"
-              >
-                {effectiveTotalPages}
-              </Button>
+              <Button variant="ghost" size="sm" onClick={() => handlePageChange(effectiveTotalPages, 'next')} className="transition-ritual">{effectiveTotalPages}</Button>
             </>
           )}
         </div>
-
-        <Button
-          variant="outline"
-          onClick={() => handlePageChange(currentPage + 1, 'next')}
-          disabled={currentPage === totalPages || isFlipping}
-          className="transition-ritual"
-        >
-          Next Page
-        </Button>
+        <Button variant="outline" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} className="transition-ritual">Next Page</Button>
       </div>
     </div>
   );

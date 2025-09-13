@@ -83,12 +83,12 @@ All colors MUST be HSL for proper theming.
   }
 
   .dark {
-    /* Dark mode - deeper ritual atmosphere */
-    --background: 220 25% 8%;
-    --foreground: 28 15% 97%;
+    /* Dark mode - matte black theme */
+    --background: 220 15% 6%;
+    --foreground: 28 10% 96%;
 
-    --card: 220 25% 10%;
-    --card-foreground: 28 15% 97%;
+    --card: 220 12% 8%;
+    --card-foreground: 28 10% 96%;
 
     --popover: 220 25% 10%;
     --popover-foreground: 28 15% 97%;
@@ -101,8 +101,8 @@ All colors MUST be HSL for proper theming.
     --secondary-foreground: 220 25% 8%;
     --secondary-glow: 35 95% 85%;
 
-    --muted: 220 20% 15%;
-    --muted-foreground: 28 15% 75%;
+    --muted: 220 8% 12%;
+    --muted-foreground: 28 10% 72%;
 
     --accent: 200 70% 25%;
     --accent-foreground: 28 15% 97%;
@@ -116,15 +116,15 @@ All colors MUST be HSL for proper theming.
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 28 15% 97%;
 
-    --border: 220 20% 18%;
-    --input: 220 20% 16%;
+    --border: 220 10% 14%;
+    --input: 220 10% 12%;
     --ring: 265 85% 67%;
 
     /* Dark mode gradients */
     --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
     --gradient-secondary: linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--secondary-glow)));
     --gradient-ethereal: linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted)));
-    --gradient-reading: linear-gradient(135deg, hsl(220 25% 12%), hsl(220 20% 15%));
+    --gradient-reading: linear-gradient(135deg, hsl(220 12% 9%), hsl(220 10% 12%));
 
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
@@ -229,4 +229,18 @@ All colors MUST be HSL for proper theming.
     height: 100%;
     transition: transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   }
+
+  /* Minimal loader for Spline fallback */
+  .loader {
+    width: 24px;
+    height: 24px;
+    border-radius: 9999px;
+    border: 3px solid hsl(var(--muted-foreground) / 0.3);
+    border-top-color: hsl(var(--primary));
+    animation: spin 1s linear infinite;
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

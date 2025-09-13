@@ -46,8 +46,15 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook }: BookLibraryProps
     let estimatedPages = 0;
     let fileUrl: string | undefined;
     let fileType: string | undefined;
+    let coverUrl: string | undefined;
 
     try {
+      // Generate an object URL for supported binary formats so the readers can open them later
+      if (fileExtension && ['pdf', 'epub', 'mobi', 'azw', 'azw3'].includes(fileExtension)) {
+        fileUrl = URL.createObjectURL(file);
+        fileType = fileExtension;
+      }
+
       if (fileExtension === 'txt') {
         // Handle text files
         const text = await file.text();
@@ -56,13 +63,29 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook }: BookLibraryProps
       } else if (fileExtension === 'pdf') {
         // Handle PDF files
         fileType = 'pdf';
-        fileUrl = URL.createObjectURL(file);
         const pdfjsLib = await import('pdfjs-dist');
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+        // @ts-ignore - version prop available at runtime
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
         
         const pdf = await pdfjsLib.getDocument(fileUrl).promise;
         estimatedPages = pdf.numPages;
         content = `PDF: ${newBook.title || file.name}\n\nOpen to render.`;
+
+        // Render first page to a small canvas to create a cover image
+        try {
+          const page1 = await pdf.getPage(1);
+          const viewport = page1.getViewport({ scale: 0.5 });
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            await page1.render({ canvasContext: ctx, viewport }).promise;
+            coverUrl = canvas.toDataURL('image/png');
+          }
+        } catch (err) {
+          console.warn('Could not render PDF cover:', err);
+        }
       } else if (fileExtension === 'epub') {
         // Handle EPUB files
         const arrayBuffer = await file.arrayBuffer();
@@ -84,6 +107,17 @@ File: ${file.name}
 Estimated pages: ${estimatedPages}
 
 Start reading to view the full content.`;
+
+          // Try to get cover from epub.js
+          try {
+            const maybeCoverUrl = await (book as any).coverUrl?.();
+            if (maybeCoverUrl) {
+              coverUrl = maybeCoverUrl as string;
+            }
+          } catch (e) {
+            // Best-effort only
+            console.warn('Failed to extract EPUB cover via coverUrl():', e);
+          }
         } catch (error) {
           console.warn('EPUB parsing failed, treating as generic file:', error);
           estimatedPages = 100;
@@ -105,6 +139,7 @@ This EPUB file has been imported but could not be fully parsed. You can still re
         content,
         fileUrl,
         fileType: fileType || fileExtension,
+        coverUrl,
         lastRead: new Date(),
       });
 
@@ -213,8 +248,15 @@ This EPUB file has been imported but could not be fully parsed. You can still re
           >
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between">
-                <div className="w-12 h-16 gradient-reading rounded-lg flex items-center justify-center mb-3">
-                  <BookOpen className="w-6 h-6 text-primary" />
+                <div className="w-12 h-16 rounded-lg overflow-hidden mb-3 bg-muted flex items-center justify-center">
+                  {book.coverUrl ? (
+                    // eslint-disable-next-line jsx-a11y/alt-text
+                    <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full gradient-reading flex items-center justify-center">
+                      <BookOpen className="w-6 h-6 text-primary" />
+                    </div>
+                  )}
                 </div>
                 {book.progress > 0 && (
                   <Badge variant="secondary" className="text-xs">

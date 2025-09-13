@@ -1,36 +1,24 @@
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Flame, Calendar, Trophy, Target, Star } from "lucide-react";
+import { useReadingStats } from "@/hooks/use-reading-stats";
 
 interface StreakTrackerProps {
   detailed?: boolean;
 }
 
 export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
-  const [currentStreak, setCurrentStreak] = useState(7);
-  const [longestStreak, setLongestStreak] = useState(23);
-  const [todayProgress, setTodayProgress] = useState(65);
-  const [badges, setBadges] = useState([
-    { id: 1, name: "First Steps", description: "Read for 1 day", earned: true, icon: "🌱" },
-    { id: 2, name: "Week Warrior", description: "7-day streak", earned: true, icon: "⚡" },
-    { id: 3, name: "Page Turner", description: "Read 100 pages", earned: true, icon: "📖" },
-    { id: 4, name: "Month Master", description: "30-day streak", earned: false, icon: "🏆" },
-    { id: 5, name: "Reading Sage", description: "Read 1000 pages", earned: false, icon: "🧙‍♂️" },
-  ]);
+  const { state, current, weekly, setGoalMinutes } = useReadingStats();
 
-  // Weekly reading calendar (last 7 days)
-  const weeklyData = [
-    { day: 'Sun', read: true, minutes: 25 },
-    { day: 'Mon', read: true, minutes: 30 },
-    { day: 'Tue', read: true, minutes: 20 },
-    { day: 'Wed', read: true, minutes: 35 },
-    { day: 'Thu', read: true, minutes: 15 },
-    { day: 'Fri', read: true, minutes: 40 },
-    { day: 'Sat', read: true, minutes: 22 },
-  ];
+  const badges = useMemo(() => ([
+    { id: 1, name: "First Steps", description: "Read for 1 day", earned: current.currentStreak >= 1, icon: "🌱" },
+    { id: 2, name: "Week Warrior", description: "7-day streak", earned: current.currentStreak >= 7, icon: "⚡" },
+    { id: 3, name: "Consistency Champ", description: "14-day streak", earned: current.currentStreak >= 14, icon: "🏅" },
+    { id: 4, name: "Month Master", description: "30-day streak", earned: current.currentStreak >= 30, icon: "🏆" },
+  ]), [current.currentStreak]);
 
   if (!detailed) {
     return (
@@ -41,7 +29,7 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
               <Flame className="w-6 h-6 text-streak animate-streak-pulse" />
             </div>
             <div>
-              <div className="text-lg font-bold">{currentStreak}</div>
+              <div className="text-lg font-bold">{current.currentStreak}</div>
               <div className="text-xs text-muted-foreground">day streak</div>
             </div>
           </div>
@@ -59,7 +47,7 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
             <div className="w-16 h-16 gradient-secondary rounded-full flex items-center justify-center mx-auto mb-4 animate-streak-pulse">
               <Flame className="w-8 h-8 text-streak-foreground" />
             </div>
-            <div className="text-3xl font-bold text-streak mb-2">{currentStreak}</div>
+            <div className="text-3xl font-bold text-streak mb-2">{current.currentStreak}</div>
             <div className="text-sm text-muted-foreground">Current Streak</div>
           </CardContent>
         </Card>
@@ -69,7 +57,7 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
               <Trophy className="w-8 h-8 text-secondary" />
             </div>
-            <div className="text-3xl font-bold mb-2">{longestStreak}</div>
+            <div className="text-3xl font-bold mb-2">{state.longestStreak}</div>
             <div className="text-sm text-muted-foreground">Longest Streak</div>
           </CardContent>
         </Card>
@@ -79,7 +67,7 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
               <Target className="w-8 h-8 text-focus" />
             </div>
-            <div className="text-3xl font-bold mb-2">{todayProgress}%</div>
+            <div className="text-3xl font-bold mb-2">{current.todayProgress}%</div>
             <div className="text-sm text-muted-foreground">Today's Goal</div>
           </CardContent>
         </Card>
@@ -95,12 +83,20 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">20 minutes daily goal</span>
-            <span className="font-medium">{Math.round((todayProgress / 100) * 20)} min read</span>
+            <span className="text-muted-foreground">{state.goalMinutesPerDay} minutes daily goal</span>
+            <span className="font-medium">{Math.floor((current.todayProgress / 100) * state.goalMinutesPerDay)} min read</span>
           </div>
-          <Progress value={todayProgress} className="h-3" />
+          <Progress value={current.todayProgress} className="h-3" />
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Adjust goal:</span>
+            <div className="flex gap-1">
+              {[10,20,30,45,60].map(m => (
+                <Button key={m} size="xs" variant="outline" onClick={() => setGoalMinutes(m)}>{m}m</Button>
+              ))}
+            </div>
+          </div>
           <p className="text-sm text-muted-foreground">
-            Keep going! You're {100 - todayProgress}% away from maintaining your streak.
+            Keep going! You're {Math.max(0, 100 - current.todayProgress)}% away from maintaining your streak.
           </p>
         </CardContent>
       </Card>
@@ -112,7 +108,7 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-7 gap-3">
-            {weeklyData.map((day, index) => (
+            {weekly.map((day, index) => (
               <div key={index} className="text-center">
                 <div className="text-xs text-muted-foreground mb-2">{day.day}</div>
                 <div 
@@ -175,9 +171,9 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
           <Flame className="w-12 h-12 mx-auto mb-4 animate-ritual-glow" />
           <h3 className="text-xl font-bold mb-2">You're on fire! 🔥</h3>
           <p className="text-primary-foreground/90">
-            {currentStreak >= 7 
-              ? `Amazing! You've been reading consistently for ${currentStreak} days. Keep the momentum going!`
-              : `You're doing great! Just ${7 - currentStreak} more days to unlock the Week Warrior badge.`
+            {current.currentStreak >= 7 
+              ? `Amazing! You've been reading consistently for ${current.currentStreak} days. Keep the momentum going!`
+              : `You're doing great! Just ${Math.max(0, 7 - current.currentStreak)} more days to unlock the Week Warrior badge.`
             }
           </p>
         </CardContent>
