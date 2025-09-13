@@ -14,6 +14,8 @@ import {
   Eye
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { PdfReader } from "@/components/readers/PdfReader";
+import { EpubReader } from "@/components/readers/EpubReader";
 
 interface BookItem {
   id: string;
@@ -22,6 +24,8 @@ interface BookItem {
   progress: number;
   totalPages: number;
   content?: string;
+  fileUrl?: string;
+  fileType?: string;
 }
 
 interface ReadingInterfaceProps {
@@ -59,7 +63,9 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
 
   const totalWords = sampleContent.split(' ').length;
   const wordsPerPage = 300;
-  const totalPages = Math.ceil(totalWords / wordsPerPage);
+  const computedTextPages = Math.ceil(totalWords / wordsPerPage);
+  const [docPageCount, setDocPageCount] = useState<number | null>(null);
+  const effectiveTotalPages = book.fileType ? (docPageCount || book.totalPages || 1) : computedTextPages;
 
   // Reading session timer
   useEffect(() => {
@@ -102,7 +108,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
   };
 
   const handlePageChange = (newPage: number, direction: 'next' | 'prev') => {
-    if (newPage < 1 || newPage > totalPages || isFlipping) return;
+    if (newPage < 1 || newPage > effectiveTotalPages || isFlipping) return;
     
     setIsFlipping(true);
     setFlipDirection(direction);
@@ -212,14 +218,14 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
             <div className="flex items-center space-x-4">
               <BookOpen className="w-5 h-5 text-primary" />
               <span className="text-sm font-medium">
-                Page {currentPage} of {totalPages}
+                Page {currentPage} of {effectiveTotalPages}
               </span>
             </div>
             <div className="text-sm text-muted-foreground">
-              {Math.round((currentPage / totalPages) * 100)}% complete
+              {Math.round((currentPage / effectiveTotalPages) * 100)}% complete
             </div>
           </div>
-          <Progress value={(currentPage / totalPages) * 100} className="h-2" />
+          <Progress value={(currentPage / effectiveTotalPages) * 100} className="h-2" />
         </CardContent>
       </Card>
 
@@ -264,17 +270,27 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
           `}
         >
           <CardContent className="p-8 h-full flex flex-col justify-center">
-            <div 
-              className="reading-text transition-ritual leading-relaxed"
-              style={{ 
-                fontSize: `${fontSize}px`,
-                textAlign: 'justify',
-                columnCount: typeof window !== 'undefined' && window.innerWidth > 768 ? 2 : 1,
-                columnGap: '2rem'
-              }}
-            >
-              {getCurrentPageContent()}
-            </div>
+            {book.fileType === 'pdf' && book.fileUrl ? (
+              <div className="h-full">
+                <PdfReader fileUrl={book.fileUrl} page={currentPage} onPageCount={setDocPageCount} />
+              </div>
+            ) : book.fileType === 'epub' && book.fileUrl ? (
+              <div className="h-full">
+                <EpubReader fileUrl={book.fileUrl} page={currentPage} onPageCount={setDocPageCount} />
+              </div>
+            ) : (
+              <div 
+                className="reading-text transition-ritual leading-relaxed"
+                style={{ 
+                  fontSize: `${fontSize}px`,
+                  textAlign: 'justify',
+                  columnCount: typeof window !== 'undefined' && window.innerWidth > 768 ? 2 : 1,
+                  columnGap: '2rem'
+                }}
+              >
+                {getCurrentPageContent()}
+              </div>
+            )}
           </CardContent>
         </Card>
         
@@ -312,9 +328,9 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
         </Button>
 
         <div className="flex items-center space-x-2">
-          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+          {Array.from({ length: Math.min(5, effectiveTotalPages) }, (_, i) => {
             const pageNumber = currentPage <= 3 ? i + 1 : currentPage - 2 + i;
-            if (pageNumber > totalPages) return null;
+            if (pageNumber > effectiveTotalPages) return null;
             
             return (
               <Button
@@ -328,16 +344,16 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
               </Button>
             );
           })}
-          {totalPages > 5 && currentPage < totalPages - 2 && (
+          {effectiveTotalPages > 5 && currentPage < effectiveTotalPages - 2 && (
             <>
               <span className="text-muted-foreground">...</span>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handlePageChange(totalPages, 'next')}
+                onClick={() => handlePageChange(effectiveTotalPages, 'next')}
                 className="transition-ritual"
               >
-                {totalPages}
+                {effectiveTotalPages}
               </Button>
             </>
           )}

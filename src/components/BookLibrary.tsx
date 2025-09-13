@@ -17,6 +17,8 @@ interface BookItem {
   totalPages: number;
   coverUrl?: string;
   content?: string;
+  fileUrl?: string;
+  fileType?: string;
   lastRead?: Date;
 }
 
@@ -42,6 +44,8 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook }: BookLibraryProps
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
     let content = "";
     let estimatedPages = 0;
+    let fileUrl: string | undefined;
+    let fileType: string | undefined;
 
     try {
       if (fileExtension === 'txt') {
@@ -51,24 +55,14 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook }: BookLibraryProps
         estimatedPages = Math.ceil(text.length / 2000);
       } else if (fileExtension === 'pdf') {
         // Handle PDF files
-        const arrayBuffer = await file.arrayBuffer();
+        fileType = 'pdf';
+        fileUrl = URL.createObjectURL(file);
         const pdfjsLib = await import('pdfjs-dist');
         pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
         
-        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+        const pdf = await pdfjsLib.getDocument(fileUrl).promise;
         estimatedPages = pdf.numPages;
-        
-        // Extract text from all pages
-        const textPromises = [];
-        for (let i = 1; i <= Math.min(pdf.numPages, 50); i++) { // Limit to first 50 pages for performance
-          textPromises.push(
-            pdf.getPage(i).then(page => page.getTextContent()).then(textContent => 
-              textContent.items.map((item: any) => item.str).join(' ')
-            )
-          );
-        }
-        const pageTexts = await Promise.all(textPromises);
-        content = pageTexts.join('\n\n');
+        content = `PDF: ${newBook.title || file.name}\n\nOpen to render.`;
       } else if (fileExtension === 'epub') {
         // Handle EPUB files
         const arrayBuffer = await file.arrayBuffer();
@@ -109,6 +103,8 @@ This EPUB file has been imported but could not be fully parsed. You can still re
         progress: 0,
         totalPages: newBook.totalPages || estimatedPages,
         content,
+        fileUrl,
+        fileType: fileType || fileExtension,
         lastRead: new Date(),
       });
 
