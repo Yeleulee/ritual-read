@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +19,7 @@ import {
   Wind
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useReadingStats } from "@/hooks/use-reading-stats";
 
 export const RitualModeButton = () => {
   const [isRitualActive, setIsRitualActive] = useState(false);
@@ -28,6 +29,18 @@ export const RitualModeButton = () => {
   const [notifications, setNotifications] = useState(true);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const { toast } = useToast();
+  const { addSeconds } = useReadingStats();
+
+  const intervalRef = useRef<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Optional ambient sound files from public/ (user can add their own)
+  const SOUND_URLS: Record<string, string> = {
+    rain: "/ambient-rain.mp3",
+    waves: "/ambient-waves.mp3",
+    cafe: "/ambient-cafe.mp3",
+    wind: "/ambient-wind.mp3",
+  };
 
   const soundscapes = [
     { id: "rain", name: "Rain", icon: CloudRain, description: "Gentle rainfall" },
@@ -39,6 +52,39 @@ export const RitualModeButton = () => {
   const startRitual = () => {
     setIsRitualActive(true);
     setTimeRemaining(ritualTime * 60); // convert to seconds
+    
+    // Start countdown
+    if (intervalRef.current) window.clearInterval(intervalRef.current);
+    intervalRef.current = window.setInterval(() => {
+      setTimeRemaining((prev) => {
+        const next = Math.max(0, prev - 1);
+        // Track reading time
+        addSeconds(1);
+        if (next === 0) {
+          stopRitual();
+        }
+        return next;
+      });
+    }, 1000);
+
+    // Play ambient sound (if present in public/)
+    const url = SOUND_URLS[selectedSound];
+    try {
+      if (url) {
+        audioRef.current = new Audio(url);
+        audioRef.current.loop = true;
+        audioRef.current.volume = Math.max(0, Math.min(1, volume / 100));
+        // Attempt to play; ignore failures (e.g., missing file)
+        audioRef.current.play().catch(() => {});
+      }
+    } catch {}
+
+    // Ask for notification permission (for end notification)
+    if (notifications && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+    }
     toast({
       title: "Ritual Mode Activated",
       description: `${ritualTime} minutes of focused reading begins now. Notifications disabled.`,
@@ -48,10 +94,22 @@ export const RitualModeButton = () => {
   const stopRitual = () => {
     setIsRitualActive(false);
     setTimeRemaining(0);
+    if (intervalRef.current) {
+      window.clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (audioRef.current) {
+      try { audioRef.current.pause(); audioRef.current.currentTime = 0; } catch {}
+      audioRef.current = null;
+    }
     toast({
       title: "Ritual Complete",
       description: "Great work! Your focused reading session is complete.",
     });
+
+    if (notifications && "Notification" in window && Notification.permission === "granted") {
+      try { new Notification("Ritual complete ✨", { body: "Nice focus session. Time for a break." }); } catch {}
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -186,7 +244,7 @@ export const RitualModeButton = () => {
           </div>
 
           {/* Start Button */}
-          <Button variant="ritual" className="w-full">
+          <Button variant="ritual" className="w-full" onClick={startRitual}>
             <Play className="w-4 h-4 mr-2" />
             Begin {ritualTime}-Minute Ritual
           </Button>
