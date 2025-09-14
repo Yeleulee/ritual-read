@@ -237,8 +237,11 @@ CREATE POLICY "Users can delete their own books" ON public.books
         lastRead: data.last_read ? new Date(data.last_read) : undefined,
       };
 
-      setBooks(prev => [formattedBook, ...prev]);
-      writeLocalBooks([formattedBook, ...books]);
+      setBooks(prev => {
+        const next = [formattedBook, ...prev];
+        writeLocalBooks(next);
+        return next;
+      });
       return formattedBook;
     } catch (error: any) {
       console.error('Error adding book:', error);
@@ -285,18 +288,82 @@ CREATE POLICY "Users can delete their own books" ON public.books
         throw error;
       }
 
-      setBooks(prev => prev.map(book => 
-        book.id === bookId 
-          ? { ...book, progress, lastRead: new Date() }
-          : book
-      ));
-      writeLocalBooks(books.map((b) => (b.id === bookId ? { ...b, progress, lastRead: new Date() } : b)));
+      setBooks(prev => {
+        const next = prev.map(book => 
+          book.id === bookId 
+            ? { ...book, progress, lastRead: new Date() }
+            : book
+        );
+        writeLocalBooks(next);
+        return next;
+      });
     } catch (error: any) {
       console.error('Error updating book progress:', error);
       toast({
         title: "Error Updating Progress",
         description: error.message,
         variant: "destructive",
+      });
+    }
+  };
+
+  // Remove a book
+  const removeBook = async (bookId: string) => {
+    if (!user) {
+      // Fallback: remove from local cache only
+      setBooks((prev) => {
+        const next = prev.filter((b) => b.id !== bookId);
+        writeLocalBooks(next);
+        return next;
+      });
+      toast({
+        title: 'Removed from device',
+        description: 'The book was removed from your local library.',
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('books')
+        .delete()
+        .eq('id', bookId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        // If table missing or server-side issue, remove locally so user can proceed
+        if (
+          error.code === 'PGRST116' ||
+          error.code === 'PGRST205' ||
+          error.message?.includes('does not exist') ||
+          error.message?.includes("Could not find the table 'public.books'")
+        ) {
+          setBooks((prev) => {
+            const next = prev.filter((b) => b.id !== bookId);
+            writeLocalBooks(next);
+            return next;
+          });
+          toast({
+            title: 'Removed locally',
+            description: 'Book removed on this device. Cloud will sync when available.',
+          });
+          return;
+        }
+        throw error;
+      }
+
+      setBooks((prev) => {
+        const next = prev.filter((b) => b.id !== bookId);
+        writeLocalBooks(next);
+        return next;
+      });
+      toast({ title: 'Book removed' });
+    } catch (error: any) {
+      console.error('Error removing book:', error);
+      toast({
+        title: 'Error Removing Book',
+        description: error.message || 'Unknown error',
+        variant: 'destructive',
       });
     }
   };
@@ -311,6 +378,7 @@ CREATE POLICY "Users can delete their own books" ON public.books
     loading,
     addBook,
     updateBookProgress,
+    removeBook,
     loadBooks,
   };
 };

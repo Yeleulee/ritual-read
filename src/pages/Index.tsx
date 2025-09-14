@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 const Index = () => {
   const { theme, setTheme } = useTheme();
   const { user, loading: authLoading, signOut } = useAuth();
-  const { books, loading: booksLoading, addBook, updateBookProgress } = useBooks();
+  const { books, loading: booksLoading, addBook, updateBookProgress, removeBook } = useBooks();
   const [currentBook, setCurrentBook] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("library");
 
@@ -60,6 +60,18 @@ const Index = () => {
       }
     } catch (error) {
       console.error('Failed to add book:', error);
+    }
+  };
+
+  const handleRemoveBook = async (bookId: string) => {
+    try {
+      if (currentBook?.id === bookId) {
+        setCurrentBook(null);
+        setActiveTab('library');
+      }
+      await removeBook(bookId);
+    } catch (error) {
+      console.error('Failed to remove book:', error);
     }
   };
 
@@ -160,6 +172,7 @@ const Index = () => {
               books={books} 
               onBookSelect={handleBookSelect}
               onAddBook={handleAddBook}
+              onRemoveBook={handleRemoveBook}
             />
           </TabsContent>
 

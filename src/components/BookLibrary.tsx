@@ -6,8 +6,19 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, BookOpen, Clock, FileText } from "lucide-react";
+import { Plus, BookOpen, Clock, FileText, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface BookItem {
   id: string;
@@ -26,9 +37,10 @@ interface BookLibraryProps {
   books: BookItem[];
   onBookSelect: (book: BookItem) => void;
   onAddBook: (book: Omit<BookItem, "id">) => void;
+  onRemoveBook?: (bookId: string) => void;
 }
 
-export const BookLibrary = ({ books, onBookSelect, onAddBook }: BookLibraryProps) => {
+export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: BookLibraryProps) => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newBook, setNewBook] = useState({
     title: "",
@@ -49,6 +61,40 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook }: BookLibraryProps
     let coverUrl: string | undefined;
 
     try {
+      const blobUrlToDataUrl = async (blobUrl: string): Promise<string> => {
+        const res = await fetch(blobUrl);
+        const blob = await res.blob();
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      };
+
+      const generatePlaceholderCover = (title: string): string => {
+        const canvas = document.createElement('canvas');
+        // 3:4 thumbnail
+        canvas.width = 240;
+        canvas.height = 320;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return '';
+        // gradient background
+        const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+        grad.addColorStop(0, 'hsl(265,85%,47%)');
+        grad.addColorStop(1, 'hsl(35,85%,65%)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // title initial
+        const initial = (title?.trim()?.[0] || 'B').toUpperCase();
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.font = 'bold 160px Georgia, serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(initial, canvas.width / 2, canvas.height / 2 + 10);
+        return canvas.toDataURL('image/png');
+      };
+
       // Generate an object URL for supported binary formats so the readers can open them later
       if (fileExtension && ['pdf', 'epub', 'mobi', 'azw', 'azw3'].includes(fileExtension)) {
         fileUrl = URL.createObjectURL(file);
@@ -108,11 +154,16 @@ Estimated pages: ${estimatedPages}
 
 Start reading to view the full content.`;
 
-          // Try to get cover from epub.js
+          // Try to get cover from epub.js and convert to a data URL (persistent)
           try {
             const maybeCoverUrl = await (book as any).coverUrl?.();
             if (maybeCoverUrl) {
-              coverUrl = maybeCoverUrl as string;
+              try {
+                coverUrl = await blobUrlToDataUrl(maybeCoverUrl as string);
+              } catch (e) {
+                console.warn('Failed to cache EPUB cover blob, using blob URL directly:', e);
+                coverUrl = maybeCoverUrl as string;
+              }
             }
           } catch (e) {
             // Best-effort only
@@ -129,6 +180,11 @@ This EPUB file has been imported but could not be fully parsed. You can still re
         // Fallback for other formats - try to read as text
         content = await file.text();
         estimatedPages = Math.ceil(content.length / 2000);
+      }
+
+      // Ensure we always have a persistent cover image if possible
+      if (!coverUrl) {
+        coverUrl = generatePlaceholderCover(newBook.title || file.name.replace(/\.[^/.]+$/, ""));
       }
 
       onAddBook({
@@ -247,7 +303,7 @@ This EPUB file has been imported but could not be fully parsed. You can still re
             onClick={() => onBookSelect(book)}
           >
             <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-3">
                 <div className="w-12 h-16 rounded-lg overflow-hidden mb-3 bg-muted flex items-center justify-center">
                   {book.coverUrl ? (
                     // eslint-disable-next-line jsx-a11y/alt-text
@@ -258,11 +314,47 @@ This EPUB file has been imported but could not be fully parsed. You can still re
                     </div>
                   )}
                 </div>
-                {book.progress > 0 && (
-                  <Badge variant="secondary" className="text-xs">
-                    {Math.round(book.progress)}%
-                  </Badge>
-                )}
+                <div className="flex items-center gap-2">
+                  {book.progress > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      {Math.round(book.progress)}%
+                    </Badge>
+                  )}
+                  {onRemoveBook && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <button
+                          aria-label="Delete book"
+                          className="inline-flex items-center justify-center rounded-md h-8 w-8 hover:bg-muted transition-colors text-red-600 hover:text-red-700 dark:text-red-400"
+                          onClick={(e) => e.stopPropagation()}
+                          title="Remove book"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Remove this book?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            "{book.title}" will be removed from your library. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRemoveBook(book.id);
+                            }}
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </div>
               </div>
               <CardTitle className="text-lg line-clamp-2 group-hover:text-primary transition-colors">
                 {book.title}
