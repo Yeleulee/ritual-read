@@ -206,6 +206,22 @@ All colors MUST be HSL for proper theming.
     background-clip: text;
   }
 
+  .gradient-text {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Scrollbar utilities */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
   /* 3D Page flip utilities */
   .preserve-3d {
     transform-style: preserve-3d;

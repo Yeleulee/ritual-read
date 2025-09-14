@@ -9,7 +9,7 @@ import { AiChat } from "@/components/AiChat";
 import { AuthForm } from "@/components/AuthForm";
 import { useAuth } from "@/hooks/use-auth";
 import { useBooks } from "@/hooks/use-books";
-import { Book, BookOpen, TrendingUp, Flame, Moon, Sun, Home, LogOut } from "lucide-react";
+import { Book, BookOpen, TrendingUp, Flame, Moon, Sun, Home, LogOut, BookMarked, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -77,95 +77,113 @@ const Index = () => {
 
   return (
     <div className="min-h-screen gradient-ethereal">
-      <div className="container mx-auto px-4 py-4">
+      <div className="container mx-auto px-3 md:px-4 py-3 md:py-4 max-w-7xl">
         {/* Header */}
-        <header className="flex items-center justify-between mb-6 animate-page-fade gap-3 flex-wrap">
-          <Link to="/" className="flex items-center space-x-3 hover:opacity-90 transition-ritual">
-            <div className="w-14 h-14 md:w-20 md:h-20 rounded-full overflow-hidden bg-white/95 ring-1 ring-border shadow-sm flex items-center justify-center">
-              <img src="/logo.png" alt="Ritual Reader logo" className="w-full h-full object-contain p-1" />
+        <header className="flex items-center justify-between mb-4 md:mb-6 animate-page-fade gap-3 flex-wrap">
+          <Link to="/" className="flex items-center space-x-2 md:space-x-3 hover:opacity-90 transition-ritual min-w-0">
+            <div className="w-12 h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 rounded-2xl overflow-hidden bg-white/95 ring-1 ring-border shadow-lg flex items-center justify-center flex-shrink-0">
+              <img src="/logo.png" alt="Ritual Reader logo" className="w-full h-full object-contain p-1.5" />
             </div>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold ritual-heading">Ritual Reader</h1>
-              <p className="text-muted-foreground text-sm md:text-base">Transform reading into a mindful ritual</p>
+            <div className="min-w-0">
+              <h1 className="text-lg md:text-2xl lg:text-3xl font-bold ritual-heading truncate">Ritual Reader</h1>
+              <p className="text-muted-foreground text-xs md:text-sm lg:text-base truncate">Transform reading into mindful ritual</p>
             </div>
           </Link>
           
-          <div className="flex items-center space-x-4 flex-wrap">
-            <StreakTracker />
-            <RitualModeButton />
+          <div className="flex items-center space-x-2 md:space-x-3 flex-wrap">
+            <div className="hidden sm:block">
+              <StreakTracker />
+            </div>
+            <div className="hidden md:block">
+              <RitualModeButton />
+            </div>
             <button
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border bg-background hover:bg-muted h-9 w-9"
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border bg-background/80 hover:bg-muted h-8 w-8 md:h-9 md:w-9 backdrop-blur-sm"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               title="Toggle theme"
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
-            <Link to="/" className="hidden md:inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border bg-background hover:bg-muted h-9 px-3">
+            <Link to="/" className="hidden lg:inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border bg-background/80 hover:bg-muted h-9 px-3 backdrop-blur-sm">
               <Home className="w-4 h-4 mr-1" /> Home
             </Link>
             <Button 
               variant="outline" 
               size="sm"
               onClick={signOut}
-              className="hidden md:inline-flex"
+              className="hidden md:inline-flex bg-background/80 hover:bg-muted backdrop-blur-sm rounded-lg"
               title="Sign Out"
             >
               <LogOut className="w-4 h-4 mr-1" /> Sign Out
             </Button>
-            <div className="text-xs text-muted-foreground hidden md:block">
+            <div className="text-xs text-muted-foreground hidden lg:block max-w-[120px] truncate">
               {user?.email}
             </div>
           </div>
         </header>
 
-        {/* Hero */}
-        <div className="rounded-2xl border bg-card/50 backdrop-blur p-4 md:p-6 mb-4 shadow-sm">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h2 className="text-xl md:text-2xl font-semibold tracking-tight">Transform reading into a mindful ritual</h2>
-              <p className="text-muted-foreground mt-1 text-sm">Import books, track streaks, ask AI, and enjoy a distraction-free reader.</p>
+        {/* Hero Banner */}
+        <div className="rounded-2xl md:rounded-3xl border bg-gradient-to-r from-card/90 to-card/70 backdrop-blur-md p-4 md:p-6 lg:p-8 mb-4 md:mb-6 shadow-lg">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 md:gap-6">
+            <div className="space-y-2 md:space-y-3">
+              <h2 className="text-lg md:text-2xl lg:text-3xl font-bold tracking-tight gradient-text">Transform reading into mindful ritual</h2>
+              <p className="text-muted-foreground text-sm md:text-base max-w-2xl leading-relaxed">Import your favorite books, build consistent reading habits, get AI-powered insights, and enjoy a beautifully distraction-free reading experience.</p>
             </div>
-            <div className="flex gap-2">
-              <button
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow h-8 px-3"
+            <div className="flex flex-col sm:flex-row gap-2 md:gap-3 w-full lg:w-auto">
+              <Button
+                className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg hover:shadow-xl transition-all h-9 md:h-10 px-4 md:px-6 rounded-xl font-medium"
                 onClick={() => setActiveTab("library")}
               >
+                <BookOpen className="w-4 h-4 mr-2" />
                 Open Library
-              </button>
-              <button
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border bg-background hover:bg-muted h-8 px-3"
+              </Button>
+              <Button
+                variant="outline"
+                className="border-2 bg-background/80 hover:bg-muted backdrop-blur-sm h-9 md:h-10 px-4 md:px-6 rounded-xl font-medium"
                 onClick={() => setActiveTab(currentBook ? "reader" : "assistant")}
               >
-                {currentBook ? "Continue Reading" : "Ask Assistant"}
-              </button>
+                {currentBook ? (
+                  <>
+                    <BookMarked className="w-4 h-4 mr-2" />
+                    Continue Reading
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4 mr-2" />
+                    Ask Assistant
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </div>
 
-        {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="flex w-full max-w-full mx-auto rounded-full bg-muted/40 p-1 overflow-x-auto gap-1">
-            <TabsTrigger value="library" className="flex items-center gap-2 h-8 flex-none px-3">
-              <Book className="w-4 h-4" />
-              Library
-            </TabsTrigger>
-            <TabsTrigger value="reader" className="flex items-center gap-2 h-8 flex-none px-3" disabled={!currentBook}>
-              <BookOpen className="w-4 h-4" />
-              Reader
-            </TabsTrigger>
-            <TabsTrigger value="progress" className="flex items-center gap-2 h-8 flex-none px-3">
-              <TrendingUp className="w-4 h-4" />
-              Progress
-            </TabsTrigger>
-            <TabsTrigger value="streaks" className="flex items-center gap-2 h-8 flex-none px-3">
-              <Flame className="w-4 h-4" />
-              Streaks
-            </TabsTrigger>
-            <TabsTrigger value="assistant" className="flex items-center gap-2 h-8 flex-none px-3">
-              <BookOpen className="w-4 h-4" />
-              Assistant
-            </TabsTrigger>
-          </TabsList>
+        {/* Main Navigation & Content */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 md:space-y-6">
+          <div className="w-full overflow-x-auto scrollbar-hide">
+            <TabsList className="flex w-full min-w-max mx-auto rounded-2xl bg-muted/50 backdrop-blur-sm p-1 gap-1 border">
+              <TabsTrigger value="library" className="flex items-center gap-2 h-9 md:h-10 flex-none px-3 md:px-4 rounded-xl font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Book className="w-4 h-4" />
+                <span className="hidden sm:inline">Library</span>
+              </TabsTrigger>
+              <TabsTrigger value="reader" className="flex items-center gap-2 h-9 md:h-10 flex-none px-3 md:px-4 rounded-xl font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm" disabled={!currentBook}>
+                <BookOpen className="w-4 h-4" />
+                <span className="hidden sm:inline">Reader</span>
+              </TabsTrigger>
+              <TabsTrigger value="progress" className="flex items-center gap-2 h-9 md:h-10 flex-none px-3 md:px-4 rounded-xl font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <TrendingUp className="w-4 h-4" />
+                <span className="hidden sm:inline">Analytics</span>
+              </TabsTrigger>
+              <TabsTrigger value="streaks" className="flex items-center gap-2 h-9 md:h-10 flex-none px-3 md:px-4 rounded-xl font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Flame className="w-4 h-4" />
+                <span className="hidden sm:inline">Streaks</span>
+              </TabsTrigger>
+              <TabsTrigger value="assistant" className="flex items-center gap-2 h-9 md:h-10 flex-none px-3 md:px-4 rounded-xl font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <Zap className="w-4 h-4" />
+                <span className="hidden sm:inline">AI Assistant</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="library" className="animate-page-fade">
             <BookLibrary 
