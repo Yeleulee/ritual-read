@@ -368,6 +368,17 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
           )}
       </div>
 
+      {/* Mobile Assistant Sheet */}
+      {assistantOpen && (
+        <Sheet open={assistantOpen} onOpenChange={setAssistantOpen}>
+          <SheetContent side="bottom" className="h-[75vh] p-0 lg:hidden">
+            <div className="h-full">
+              <AiChat context={pageText} compact />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+ 
       {/* Page Navigation */}
       <div className="grid grid-cols-[auto,1fr,auto] items-center animate-page-fade gap-2">
         <div className="justify-self-start">
