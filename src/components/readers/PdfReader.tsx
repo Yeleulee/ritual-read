@@ -40,10 +40,14 @@ export const PdfReader = ({ fileUrl, page, onPageCount, onOutline, gotoPage, onP
             const items: Array<{ title: string; pageNumber: number }> = [];
             for (const item of outline) {
               try {
-                const dest = await doc.getDestination(item.dest);
-                const ref = Array.isArray(dest) ? dest[0] : dest?.[0];
-                const pageIndex = await doc.getPageIndex(ref);
-                items.push({ title: item.title || 'Untitled', pageNumber: pageIndex + 1 });
+                if (typeof item.dest === 'string') {
+                  const dest: any = await doc.getDestination(item.dest);
+                  const ref: any = Array.isArray(dest) ? dest[0] : (dest as any)?.[0];
+                  if (ref) {
+                    const pageIndex = await doc.getPageIndex(ref);
+                    items.push({ title: item.title || 'Untitled', pageNumber: pageIndex + 1 });
+                  }
+                }
               } catch {}
             }
             if (items.length) onOutline?.(items);
@@ -84,7 +88,7 @@ export const PdfReader = ({ fileUrl, page, onPageCount, onOutline, gotoPage, onP
 
         // Cancel previous render if any
         try { renderTaskRef.current?.cancel(); } catch {}
-        renderTaskRef.current = p.render({ canvasContext: context, viewport: scaledViewport });
+        renderTaskRef.current = p.render({ canvasContext: context as any, canvas, viewport: scaledViewport } as any);
         await renderTaskRef.current.promise;
 
         // Extract text for side assistant

@@ -75,7 +75,7 @@ export function useReadingStats() {
         seconds: d.seconds,
         pages: d.pages ?? 0,
       }));
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('reading_stats')
         .upsert(payload, { onConflict: 'user_id,date' });
       if (error) {

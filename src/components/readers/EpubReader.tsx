@@ -64,7 +64,7 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
           rendition.on('rendered', async (_section: any) => {
             try {
               const currentLoc = rendition.currentLocation();
-              const cfi = currentLoc?.start?.cfi;
+              const cfi = (currentLoc as any)?.start?.cfi;
               if (cfi && book.getRange) {
                 const range = await (book as any).getRange(cfi);
                 const text = range?.toString?.() || '';
