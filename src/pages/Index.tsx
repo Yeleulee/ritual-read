@@ -60,6 +60,7 @@ const Index = () => {
       }
     } catch (error) {
       console.error('Failed to add book:', error);
+      // Error is already handled in the addBook function with toast
     }
   };
 

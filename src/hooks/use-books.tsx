@@ -113,6 +113,11 @@ export const useBooks = () => {
   const addBook = async (newBook: Omit<BookItem, 'id'>) => {
     if (!user) {
       console.error('No user found when trying to add book');
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to add books to your library.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -172,11 +177,14 @@ export const useBooks = () => {
             title: 'Saved Locally',
             description: 'Your book was saved on this device. The cloud will sync once the database is ready.',
           });
-          toast({
-            title: "Database Setup Required",
-            description: "Please run the SQL migration in your Supabase dashboard first. Check the console for instructions.",
-            variant: "destructive",
-          });
+          // Only show database setup message in development
+          if (import.meta.env.DEV) {
+            toast({
+              title: "Database Setup Required",
+              description: "Please run the SQL migration in your Supabase dashboard first. Check the console for instructions.",
+              variant: "destructive",
+            });
+          }
           console.error(`
 🚨 DATABASE SETUP REQUIRED 🚨
 
@@ -218,7 +226,7 @@ CREATE POLICY "Users can update their own books" ON public.books
 CREATE POLICY "Users can delete their own books" ON public.books
   FOR DELETE USING (auth.uid() = user_id);
           `);
-          return;
+          return localBook;
         }
         
         throw error;
@@ -242,6 +250,12 @@ CREATE POLICY "Users can delete their own books" ON public.books
         writeLocalBooks(next);
         return next;
       });
+      
+      toast({
+        title: "Book Added Successfully",
+        description: `"${formattedBook.title}" has been added to your library.`,
+      });
+      
       return formattedBook;
     } catch (error: any) {
       console.error('Error adding book:', error);

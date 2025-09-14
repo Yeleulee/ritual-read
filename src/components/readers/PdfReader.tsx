@@ -20,13 +20,14 @@ export const PdfReader = ({ fileUrl, page, onPageCount, onOutline, gotoPage, onP
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const pdfjsLib = await import("pdfjs-dist");
-      // Use CDN worker to avoid bundler worker config
-      // @ts-ignore
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
       setLoading(true);
       setError(null);
       try {
+        const pdfjsLib = await import("pdfjs-dist");
+        // Use CDN worker to avoid bundler worker config
+        // @ts-ignore
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
+        
         const loadingTask = pdfjsLib.getDocument({ url: fileUrl, withCredentials: false });
         const doc = await loadingTask.promise;
         if (cancelled) return;
@@ -55,7 +56,15 @@ export const PdfReader = ({ fileUrl, page, onPageCount, onOutline, gotoPage, onP
         } catch {}
       } catch (e: any) {
         console.error("PDF load error:", e);
-        setError("Failed to load PDF. Try re-importing the book.");
+        if (e.name === 'InvalidPDFException') {
+          setError("This PDF file appears to be corrupted or invalid. Please try a different file.");
+        } else if (e.name === 'MissingPDFException') {
+          setError("PDF file not found. Please try re-importing the book.");
+        } else if (e.name === 'UnexpectedResponseException') {
+          setError("Network error loading PDF. Please check your connection and try again.");
+        } else {
+          setError("Failed to load PDF. The file may be corrupted or in an unsupported format.");
+        }
       } finally {
         setLoading(false);
       }

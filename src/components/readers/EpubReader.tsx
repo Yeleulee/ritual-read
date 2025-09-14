@@ -24,70 +24,87 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const ePub = (await import("epubjs")).default;
       setLoading(true);
       setError(null);
 
-      // If using a blob: URL, load as ArrayBuffer to avoid fetch/CORS quirks
-      let resource: any = fileUrl;
       try {
-        if (fileUrl.startsWith('blob:')) {
-          const resp = await fetch(fileUrl);
-          const ab = await resp.arrayBuffer();
-          resource = ab;
+        const ePub = (await import("epubjs")).default;
+        
+        // If using a blob: URL, load as ArrayBuffer to avoid fetch/CORS quirks
+        let resource: any = fileUrl;
+        try {
+          if (fileUrl.startsWith('blob:')) {
+            const resp = await fetch(fileUrl);
+            const ab = await resp.arrayBuffer();
+            resource = ab;
+          }
+        } catch (e) {
+          console.warn('Falling back to direct URL for EPUB load');
         }
-      } catch (e) {
-        console.warn('Falling back to direct URL for EPUB load');
-      }
 
-      const book = ePub(resource);
-      bookRef.current = book;
-      const rendition = book.renderTo(containerRef.current!, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
-      renditionRef.current = rendition;
+        const book = ePub(resource);
+        bookRef.current = book;
+        const rendition = book.renderTo(containerRef.current!, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
+        renditionRef.current = rendition;
 
-      await book.ready;
-      // TOC
-      try {
-        const toc = (book as any).navigation?.toc || [];
-        if (toc && Array.isArray(toc)) {
-          onToc?.(toc.map((t: any) => ({ label: t.label, href: t.href, cfi: t.cfi }))); 
-          setTocReady(true);
-        }
-      } catch {}
-      try {
-        await rendition.display();
-        if (!cancelled) {
-          setReady(true);
+        await book.ready;
+        // TOC
+        try {
+          const toc = (book as any).navigation?.toc || [];
+          if (toc && Array.isArray(toc)) {
+            onToc?.(toc.map((t: any) => ({ label: t.label, href: t.href, cfi: t.cfi }))); 
+            setTocReady(true);
+          }
+        } catch {}
+        try {
+          await rendition.display();
+          if (!cancelled) {
+            setReady(true);
+            setLoading(false);
+          }
+          try {
+            rendition.on('rendered', async (_section: any) => {
+              try {
+                const currentLoc = rendition.currentLocation();
+                const cfi = (currentLoc as any)?.start?.cfi;
+                if (cfi && book.getRange) {
+                  const range = await (book as any).getRange(cfi);
+                  const text = range?.toString?.() || '';
+                  if (text) onRenderedText?.(text);
+                }
+              } catch {}
+            });
+          } catch {}
+        } catch (e) {
+          console.error('EPUB display error:', e);
+          setError('Failed to display EPUB content. The file may be corrupted or in an unsupported format.');
           setLoading(false);
         }
-        try {
-          rendition.on('rendered', async (_section: any) => {
-            try {
-              const currentLoc = rendition.currentLocation();
-              const cfi = (currentLoc as any)?.start?.cfi;
-              if (cfi && book.getRange) {
-                const range = await (book as any).getRange(cfi);
-                const text = range?.toString?.() || '';
-                if (text) onRenderedText?.(text);
-              }
-            } catch {}
-          });
-        } catch {}
-      } catch (e) {
-        console.error('EPUB display error:', e);
-        setError('Failed to display EPUB.');
-        setLoading(false);
-      }
 
-      // Generate locations after initial display so UI is not blocked
-      try {
-        await book.locations.generate(1024);
-        const total = (book.locations as any)?.length?.() || 100;
-        setLocationsCount(total);
-        onPageCount?.(total);
-      } catch {
-        setLocationsCount(100);
-        onPageCount?.(100);
+        // Generate locations after initial display so UI is not blocked
+        try {
+          await book.locations.generate(1024);
+          const total = (book.locations as any)?.length?.() || 100;
+          setLocationsCount(total);
+          onPageCount?.(total);
+        } catch {
+          setLocationsCount(100);
+          onPageCount?.(100);
+        }
+      } catch (e) {
+        console.error("EPUB load error:", e);
+        if (e instanceof Error) {
+          if (e.message.includes('zip')) {
+            setError("This EPUB file appears to be corrupted or invalid. Please try a different file.");
+          } else if (e.message.includes('network') || e.message.includes('fetch')) {
+            setError("Network error loading EPUB. Please check your connection and try again.");
+          } else {
+            setError("Failed to load EPUB. The file may be corrupted or in an unsupported format.");
+          }
+        } else {
+          setError("Failed to load EPUB. Try re-importing the book.");
+        }
+        setLoading(false);
       }
     })().catch((e) => {
       console.error("EPUB load error:", e);
@@ -96,6 +113,7 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
     });
 
     return () => {
+      cancelled = true;
       try { renditionRef.current?.destroy?.(); } catch {}
       try { bookRef.current?.destroy?.(); } catch {}
     };

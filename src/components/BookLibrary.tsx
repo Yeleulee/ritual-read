@@ -53,6 +53,23 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Validate file size (50MB limit)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+      toast({
+        title: "File Too Large",
+        description: "Please select a file smaller than 50MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Show loading state
+    toast({
+      title: "Processing File",
+      description: "Please wait while we process your book...",
+    });
+
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
     let content = "";
     let estimatedPages = 0;
@@ -109,28 +126,34 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
       } else if (fileExtension === 'pdf') {
         // Handle PDF files
         fileType = 'pdf';
-        const pdfjsLib = await import('pdfjs-dist');
-        // @ts-ignore - version prop available at runtime
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
-        
-        const pdf = await pdfjsLib.getDocument(fileUrl).promise;
-        estimatedPages = pdf.numPages;
-        content = `PDF: ${newBook.title || file.name}\n\nOpen to render.`;
-
-        // Render first page to a small canvas to create a cover image
         try {
-          const page1 = await pdf.getPage(1);
-          const viewport = page1.getViewport({ scale: 0.5 });
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            await page1.render({ canvasContext: ctx as any, canvas, viewport } as any).promise;
-            coverUrl = canvas.toDataURL('image/png');
+          const pdfjsLib = await import('pdfjs-dist');
+          // @ts-ignore - version prop available at runtime
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
+          
+          const pdf = await pdfjsLib.getDocument(fileUrl).promise;
+          estimatedPages = pdf.numPages;
+          content = `PDF: ${newBook.title || file.name}\n\nOpen to render.`;
+
+          // Render first page to a small canvas to create a cover image
+          try {
+            const page1 = await pdf.getPage(1);
+            const viewport = page1.getViewport({ scale: 0.5 });
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              canvas.width = viewport.width;
+              canvas.height = viewport.height;
+              await page1.render({ canvasContext: ctx as any, canvas, viewport } as any).promise;
+              coverUrl = canvas.toDataURL('image/png');
+            }
+          } catch (err) {
+            console.warn('Could not render PDF cover:', err);
           }
         } catch (err) {
-          console.warn('Could not render PDF cover:', err);
+          console.warn('PDF processing failed, using fallback:', err);
+          estimatedPages = 100; // Fallback estimate
+          content = `PDF File: ${newBook.title || file.name}\n\nThis PDF file has been imported but could not be fully processed. You can still read it in the reader interface.`;
         }
       } else if (fileExtension === 'epub') {
         // Handle EPUB files
@@ -176,10 +199,25 @@ Start reading to view the full content.`;
 
 This EPUB file has been imported but could not be fully parsed. You can still read it in the reader interface.`;
         }
+      } else if (fileExtension && ['mobi', 'azw', 'azw3'].includes(fileExtension)) {
+        // Handle Kindle formats (basic support)
+        estimatedPages = 100; // Default estimate
+        content = `${fileExtension.toUpperCase()} File: ${newBook.title || file.name}
+
+This is a Kindle format file that has been imported into your library. Note that support for this format may be limited.
+
+File: ${file.name}
+Estimated pages: ${estimatedPages}
+
+Start reading to view the content.`;
       } else {
         // Fallback for other formats - try to read as text
-        content = await file.text();
-        estimatedPages = Math.ceil(content.length / 2000);
+        try {
+          content = await file.text();
+          estimatedPages = Math.ceil(content.length / 2000);
+        } catch (error) {
+          throw new Error(`Unsupported file format: ${fileExtension || 'unknown'}. Please use TXT, PDF, EPUB, or other supported formats.`);
+        }
       }
 
       // Ensure we always have a persistent cover image if possible
@@ -187,7 +225,7 @@ This EPUB file has been imported but could not be fully parsed. You can still re
         coverUrl = generatePlaceholderCover(newBook.title || file.name.replace(/\.[^/.]+$/, ""));
       }
 
-      onAddBook({
+      await onAddBook({
         title: newBook.title || file.name.replace(/\.[^/.]+$/, ""),
         author: newBook.author || "Unknown Author",
         progress: 0,
@@ -199,10 +237,6 @@ This EPUB file has been imported but could not be fully parsed. You can still re
         lastRead: new Date(),
       });
 
-      toast({
-        title: "Book Added Successfully",
-        description: `"${newBook.title || file.name}" has been added to your library.`,
-      });
 
       setNewBook({ title: "", author: "", totalPages: 0 });
       setIsAddDialogOpen(false);
@@ -210,7 +244,7 @@ This EPUB file has been imported but could not be fully parsed. You can still re
       console.error('Error processing file:', error);
       toast({
         title: "Error Adding Book",
-        description: "There was an error processing your file. Please try again.",
+        description: error instanceof Error ? error.message : "There was an error processing your file. Please try again.",
         variant: "destructive",
       });
     }
