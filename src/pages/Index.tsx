@@ -67,7 +67,7 @@ const Index = () => {
     <div className="min-h-screen gradient-ethereal">
       <div className="container mx-auto px-4 py-4">
         {/* Header */}
-        <header className="flex items-center justify-between mb-6 animate-page-fade">
+        <header className="flex items-center justify-between mb-6 animate-page-fade gap-3 flex-wrap">
           <Link to="/" className="flex items-center space-x-3 hover:opacity-90 transition-ritual">
             <div className="w-14 h-14 md:w-20 md:h-20 rounded-full overflow-hidden bg-white/95 ring-1 ring-border shadow-sm flex items-center justify-center">
               <img src="/logo.png" alt="Ritual Reader logo" className="w-full h-full object-contain p-1" />
@@ -78,7 +78,7 @@ const Index = () => {
             </div>
           </Link>
           
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-4 flex-wrap">
             <StreakTracker />
             <RitualModeButton />
             <button

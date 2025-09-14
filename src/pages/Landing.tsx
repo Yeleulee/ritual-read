@@ -9,14 +9,14 @@ const Landing = () => {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="container mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="container mx-auto px-4 py-4 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full overflow-hidden bg-white ring-1 ring-border shadow-sm flex items-center justify-center">
             <img src="/logo.png" alt="Ritual Reader" className="w-full h-full object-contain p-1" />
           </div>
           <div className="text-lg font-semibold">Ritual Reader</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Link to="/app">
             <Button variant="outline">Open App</Button>
           </Link>
@@ -27,7 +27,7 @@ const Landing = () => {
       </header>
 
       {/* Hero */}
-      <section className="container mx-auto px-4 py-10">
+      <section className="container mx-auto px-4 py-8 md:py-10">
         <SplineSceneBasic />
       </section>
 
@@ -48,9 +48,9 @@ const Landing = () => {
       </section>
 
       {/* CTA */}
-      <section className="container mx-auto px-4 py-12">
+      <section className="container mx-auto px-4 py-10 md:py-12">
         <div className="rounded-3xl border bg-card/60 backdrop-blur p-8 text-center">
-          <h3 className="text-2xl md:text-3xl font-semibold">Ready to build your reading ritual?</h3>
+          <h3 className="text-2xl md:text-3xl font-semibold text-balance">Ready to build your reading ritual?</h3>
           <p className="text-muted-foreground mt-2">Open the app and add your first book.</p>
           <Link to="/app">
             <Button className="mt-5 gap-2">Open App <ArrowRight className="w-4 h-4" /></Button>
@@ -59,9 +59,9 @@ const Landing = () => {
       </section>
 
       {/* Footer */}
-      <footer className="container mx-auto px-4 py-6 text-xs text-muted-foreground flex items-center justify-between">
-        <div>© {new Date().getFullYear()} Ritual Reader</div>
-        <div className="flex items-center gap-3">
+      <footer className="container mx-auto px-4 py-6 text-xs text-muted-foreground flex items-center justify-between gap-2 flex-wrap">
+        <div className="whitespace-nowrap">© {new Date().getFullYear()} Ritual Reader</div>
+        <div className="flex items-center gap-3 flex-wrap">
           <a href="#features" className="hover:underline">Features</a>
           <Link to="/app" className="hover:underline">App</Link>
         </div>
