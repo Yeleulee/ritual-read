@@ -107,21 +107,23 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
           <CardTitle className="ritual-heading">This Week's Progress</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-7 gap-3">
-            {weekly.map((day, index) => (
-              <div key={index} className="text-center">
-                <div className="text-xs text-muted-foreground mb-2">{day.day}</div>
-                <div 
-                  className={`w-12 h-12 rounded-lg flex items-center justify-center text-sm font-medium transition-ritual ${
-                    day.read 
-                      ? 'gradient-secondary text-secondary-foreground achievement-glow' 
-                      : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {day.read ? day.minutes : '—'}
+          <div className="overflow-x-auto -mx-2 px-2">
+            <div className="grid grid-cols-7 min-w-[420px] gap-3">
+              {weekly.map((day, index) => (
+                <div key={index} className="text-center">
+                  <div className="text-[10px] md:text-xs text-muted-foreground mb-2">{day.day}</div>
+                  <div 
+                    className={`w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center text-xs md:text-sm font-medium transition-ritual ${
+                      day.read 
+                        ? 'gradient-secondary text-secondary-foreground achievement-glow' 
+                        : 'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {day.read ? day.minutes : '—'}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -172,12 +172,13 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto -mx-2 px-2">
           <ChartContainer
             config={{
               minutes: { label: "Minutes", color: "hsl(var(--primary))" },
               pages: { label: "Pages", color: "hsl(var(--secondary))" },
             }}
-            className="w-full h-[260px]"
+            className="min-w-[520px] w-full h-[260px]"
           >
             <ReBarChart data={weeklyStats} margin={{ left: 8, right: 8 }}>
               <CartesianGrid vertical={false} strokeOpacity={0.3} />
@@ -187,6 +188,7 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
               <Bar dataKey="pages" fill="var(--color-pages)" radius={[6,6,0,0]} />
             </ReBarChart>
           </ChartContainer>
+          </div>
           <div className="text-center text-sm text-muted-foreground mt-3">
             Total this week: {weeklyStats.reduce((sum, day) => sum + day.minutes, 0)} minutes · {weeklyStats.reduce((sum, day) => sum + day.pages, 0)} pages
           </div>

@@ -26,8 +26,8 @@ const Index = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="w-16 h-16 rounded-full overflow-hidden bg-white ring-1 ring-border shadow-sm flex items-center justify-center mx-auto mb-4">
-            <img src="/logo.png" alt="Ritual Reader" className="w-full h-full object-contain p-2" />
+          <div className="w-16 h-16 rounded-2xl overflow-hidden bg-white ring-1 ring-border shadow-sm flex items-center justify-center mx-auto mb-4">
+            <img src="/logo.png" alt="Ritual Reader" className="w-full h-full object-cover scale-125" />
           </div>
           <p className="text-muted-foreground">Loading...</p>
         </div>
@@ -81,8 +81,8 @@ const Index = () => {
         {/* Header */}
         <header className="flex items-center justify-between mb-6 animate-page-fade gap-3 flex-wrap">
           <Link to="/" className="flex items-center space-x-3 hover:opacity-90 transition-ritual">
-            <div className="w-14 h-14 md:w-20 md:h-20 rounded-full overflow-hidden bg-white/95 ring-1 ring-border shadow-sm flex items-center justify-center">
-              <img src="/logo.png" alt="Ritual Reader logo" className="w-full h-full object-contain p-1" />
+            <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl overflow-hidden bg-white/95 ring-1 ring-border shadow-sm flex items-center justify-center">
+              <img src="/logo.png" alt="Ritual Reader logo" className="w-full h-full object-cover scale-125" />
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold ritual-heading">Ritual Reader</h1>

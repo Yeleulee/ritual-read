@@ -325,8 +325,8 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
 
       {/* Reading Progress */}
       <Card className="animate-page-fade">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
+        <CardContent className="p-4 md:p-6">
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
             <div className="flex items-center space-x-4">
               <BookOpen className="w-5 h-5 text-primary" />
               <span className="text-sm font-medium">Page {currentPage} of {effectiveTotalPages}</span>
@@ -368,25 +368,73 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
           )}
       </div>
 
+      {/* Mobile Assistant Sheet */}
+      {assistantOpen && (
+        <Sheet open={assistantOpen} onOpenChange={setAssistantOpen}>
+          <SheetContent side="bottom" className="h-[75vh] p-0 lg:hidden">
+            <div className="h-full">
+              <AiChat context={pageText} compact />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+
       {/* Page Navigation */}
-      <div className="flex items-center justify-between animate-page-fade">
-        <Button variant="outline" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} className="transition-ritual">Previous Page</Button>
-        <div className="flex items-center space-x-2">
-          {Array.from({ length: Math.min(5, effectiveTotalPages) }, (_, i) => {
-            const pageNumber = currentPage <= 3 ? i + 1 : currentPage - 2 + i;
-            if (pageNumber > effectiveTotalPages) return null;
-            return (
-              <Button key={pageNumber} variant={pageNumber === currentPage ? "default" : "ghost"} size="sm" onClick={() => handlePageChange(pageNumber, pageNumber > currentPage ? 'next' : 'prev')} className="transition-ritual">{pageNumber}</Button>
-            );
-          })}
-          {effectiveTotalPages > 5 && currentPage < effectiveTotalPages - 2 && (
-            <>
-              <span className="text-muted-foreground">...</span>
-              <Button variant="ghost" size="sm" onClick={() => handlePageChange(effectiveTotalPages, 'next')} className="transition-ritual">{effectiveTotalPages}</Button>
-            </>
-          )}
+      <div className="grid grid-cols-[auto,1fr,auto] items-center animate-page-fade gap-2">
+        <div className="justify-self-start">
+          <Button
+            variant="outline"
+            onClick={() => handlePageChange(currentPage - 1, 'prev')}
+            disabled={currentPage === 1}
+            className="transition-ritual"
+          >
+            Previous
+          </Button>
         </div>
-        <Button variant="outline" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} className="transition-ritual">Next Page</Button>
+
+        <div className="min-w-0">
+          <div className="w-full flex items-center justify-center gap-2 overflow-x-auto no-scrollbar px-1">
+            {Array.from({ length: Math.min(5, effectiveTotalPages) }, (_, i) => {
+              const pageNumber = currentPage <= 3 ? i + 1 : currentPage - 2 + i;
+              if (pageNumber > effectiveTotalPages) return null;
+              return (
+                <Button
+                  key={pageNumber}
+                  variant={pageNumber === currentPage ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => handlePageChange(pageNumber, pageNumber > currentPage ? 'next' : 'prev')}
+                  className="transition-ritual"
+                >
+                  {pageNumber}
+                </Button>
+              );
+            })}
+            {effectiveTotalPages > 5 && currentPage < effectiveTotalPages - 2 && (
+              <>
+                <span className="text-muted-foreground">...</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handlePageChange(effectiveTotalPages, 'next')}
+                  className="transition-ritual"
+                >
+                  {effectiveTotalPages}
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="justify-self-end">
+          <Button
+            variant="outline"
+            onClick={() => handlePageChange(currentPage + 1, 'next')}
+            disabled={currentPage === effectiveTotalPages}
+            className="transition-ritual"
+          >
+            Next
+          </Button>
+        </div>
       </div>
     </div>
   );
