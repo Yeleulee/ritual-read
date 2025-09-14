@@ -11,8 +11,8 @@ const Landing = () => {
       {/* Header */}
       <header className="container mx-auto px-4 py-4 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 md:w-14 md:h-14 rounded-2xl overflow-hidden bg-white ring-1 ring-border shadow-sm flex items-center justify-center">
-            <img src="/logo.png" alt="Ritual Reader" className="w-full h-full object-cover scale-125" />
+          <div className="w-10 h-10 rounded-full overflow-hidden bg-white ring-1 ring-border shadow-sm flex items-center justify-center">
+            <img src="/logo.png" alt="Ritual Reader" className="w-full h-full object-contain p-1" />
           </div>
           <div className="text-lg font-semibold">Ritual Reader</div>
         </div>
