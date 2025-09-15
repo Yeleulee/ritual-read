@@ -28,26 +28,39 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
       setError(null);
 
       try {
+        console.log('Loading EPUB from URL:', fileUrl);
         const ePub = (await import("epubjs")).default;
         
         // If using a blob: URL, load as ArrayBuffer to avoid fetch/CORS quirks
         let resource: any = fileUrl;
         try {
           if (fileUrl.startsWith('blob:')) {
+            console.log('Converting blob URL to ArrayBuffer');
             const resp = await fetch(fileUrl);
+            if (!resp.ok) {
+              throw new Error(`Failed to fetch blob: ${resp.status} ${resp.statusText}`);
+            }
             const ab = await resp.arrayBuffer();
             resource = ab;
+          } else if (fileUrl.startsWith('http')) {
+            console.log('Using HTTP URL directly');
+            // For HTTP URLs, let epub.js handle the loading
+            resource = fileUrl;
           }
         } catch (e) {
-          console.warn('Falling back to direct URL for EPUB load');
+          console.warn('Falling back to direct URL for EPUB load:', e);
+          resource = fileUrl;
         }
 
+        console.log('Creating EPUB book instance');
         const book = ePub(resource);
         bookRef.current = book;
         const rendition = book.renderTo(containerRef.current!, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
         renditionRef.current = rendition;
 
         await book.ready;
+        console.log('EPUB book ready');
+        
         // TOC
         try {
           const toc = (book as any).navigation?.toc || [];
@@ -58,6 +71,7 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
         } catch {}
         try {
           await rendition.display();
+          console.log('EPUB rendition displayed successfully');
           if (!cancelled) {
             setReady(true);
             setLoading(false);
@@ -77,7 +91,11 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
           } catch {}
         } catch (e) {
           console.error('EPUB display error:', e);
-          setError('Failed to display EPUB content. The file may be corrupted or in an unsupported format.');
+          if (e instanceof Error && e.message.includes('fetch')) {
+            setError('Could not load EPUB file. The file may have expired or been moved. Please try re-importing the book.');
+          } else {
+            setError(`Failed to display EPUB content: ${e instanceof Error ? e.message : 'Unknown error'}. Please try re-importing the book.`);
+          }
           setLoading(false);
         }
 
@@ -87,6 +105,7 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
           const total = (book.locations as any)?.length?.() || 100;
           setLocationsCount(total);
           onPageCount?.(total);
+          console.log('EPUB locations generated, total pages:', total);
         } catch {
           setLocationsCount(100);
           onPageCount?.(100);
@@ -97,9 +116,11 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
           if (e.message.includes('zip')) {
             setError("This EPUB file appears to be corrupted or invalid. Please try a different file.");
           } else if (e.message.includes('network') || e.message.includes('fetch')) {
-            setError("Network error loading EPUB. Please check your connection and try again.");
+            setError("Could not load EPUB file. The file may have expired or been moved. Please try re-importing the book.");
+          } else if (e.message.includes('cors') || e.message.includes('Access')) {
+            setError("Access denied loading EPUB. Please try re-importing the book.");
           } else {
-            setError("Failed to load EPUB. The file may be corrupted or in an unsupported format.");
+            setError(`Failed to load EPUB: ${e.message}. Please try re-importing the book.`);
           }
         } else {
           setError("Failed to load EPUB. Try re-importing the book.");

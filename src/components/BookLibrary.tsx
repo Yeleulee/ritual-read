@@ -240,19 +240,26 @@ Start reading to view the content.`;
       if (!coverUrl) {
         coverUrl = generatePlaceholderCover(newBook.title || file.name.replace(/\.[^/.]+$/, ""));
       }
+      
       // Persist binary files to Supabase Storage and store a stable URL
       if (fileExtension && ['pdf', 'epub', 'mobi', 'azw', 'azw3'].includes(fileExtension)) {
         try {
+          console.log('Uploading file to cloud storage...');
           fileUrl = await saveBookFile(file, user.id);
+          console.log('File uploaded successfully, URL:', fileUrl);
         } catch (error) {
           console.error('File upload failed:', error);
           toast({
             title: "Upload Failed",
-            description: "Could not save the file. Using local cache instead.",
+            description: "Could not save the file to cloud storage. The book will work for this session but may not persist.",
             variant: "destructive",
           });
-          fileUrl = processingUrl; // Fallback to blob URL
+          // Keep the processing URL as fallback, but warn user
+          fileUrl = processingUrl;
         }
+      } else {
+        // For text files, we don't need to store the file separately since content is in the database
+        console.log('Text file - content stored in database, no separate file storage needed');
       }
 
       await onAddBook({

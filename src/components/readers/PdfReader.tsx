@@ -28,9 +28,18 @@ export const PdfReader = ({ fileUrl, page, onPageCount, onOutline, gotoPage, onP
         // @ts-ignore
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
         
-        const loadingTask = pdfjsLib.getDocument({ url: fileUrl, withCredentials: false });
+        console.log('Loading PDF from URL:', fileUrl);
+        const loadingTask = pdfjsLib.getDocument({ 
+          url: fileUrl, 
+          withCredentials: false,
+          // Add timeout and retry options
+          maxImageSize: 1024 * 1024 * 10, // 10MB max image size
+          disableAutoFetch: false,
+          disableStream: false
+        });
         const doc = await loadingTask.promise;
         if (cancelled) return;
+        console.log('PDF loaded successfully, pages:', doc.numPages);
         setPdfDoc(doc);
         onPageCount?.(doc.numPages);
 
@@ -56,14 +65,20 @@ export const PdfReader = ({ fileUrl, page, onPageCount, onOutline, gotoPage, onP
         } catch {}
       } catch (e: any) {
         console.error("PDF load error:", e);
+        
+        // More specific error handling
         if (e.name === 'InvalidPDFException') {
           setError("This PDF file appears to be corrupted or invalid. Please try a different file.");
         } else if (e.name === 'MissingPDFException') {
           setError("PDF file not found. Please try re-importing the book.");
         } else if (e.name === 'UnexpectedResponseException') {
           setError("Network error loading PDF. Please check your connection and try again.");
+        } else if (e.message?.includes('fetch')) {
+          setError("Could not load PDF file. The file may have expired or been moved. Please try re-importing the book.");
+        } else if (e.message?.includes('cors')) {
+          setError("Access denied loading PDF. Please try re-importing the book.");
         } else {
-          setError("Failed to load PDF. The file may be corrupted or in an unsupported format.");
+          setError(`Failed to load PDF: ${e.message || 'Unknown error'}. Please try re-importing the book.`);
         }
       } finally {
         setLoading(false);
