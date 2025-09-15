@@ -91,7 +91,7 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
             <span>Adjust goal:</span>
             <div className="flex gap-1">
               {[10,20,30,45,60].map(m => (
-                <Button key={m} size="xs" variant="outline" onClick={() => setGoalMinutes(m)}>{m}m</Button>
+                <Button key={m} size="sm" variant="outline" onClick={() => setGoalMinutes(m)}>{m}m</Button>
               ))}
             </div>
           </div>

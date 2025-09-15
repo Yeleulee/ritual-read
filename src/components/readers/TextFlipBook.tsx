@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import HTMLFlipBook from "react-pageflip";
+const AnyFlipBook: any = HTMLFlipBook as any;
 
 interface TextFlipBookProps {
   content: string;
@@ -35,7 +36,7 @@ export const TextFlipBook = ({ content, wordsPerPage, currentPage, onPageChange 
 
   return (
     <div className="w-full h-full">
-      <HTMLFlipBook
+      <AnyFlipBook
         width={800}
         height={560}
         size="stretch"
@@ -63,7 +64,7 @@ export const TextFlipBook = ({ content, wordsPerPage, currentPage, onPageChange 
             </div>
           </div>
         ))}
-      </HTMLFlipBook>
+      </AnyFlipBook>
     </div>
   );
 };

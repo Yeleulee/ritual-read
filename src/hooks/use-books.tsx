@@ -47,17 +47,14 @@ export const useBooks = () => {
 
   // Load books from Supabase (fallback to local storage if needed)
   const loadBooks = async () => {
-    console.log('Loading books, user:', user?.id || 'none');
-    
-    // Always start with local books for immediate display
-    const localBooks = readLocalBooks();
-    setBooks(localBooks);
-    
     if (!user) {
-      console.log('No user, using local books only');
+      console.log('No user, skipping book load');
+      setBooks([]);
       setLoading(false);
       return;
     }
+
+    console.log('Loading books for user:', user.id);
 
     try {
       const { data, error } = await supabase
@@ -67,26 +64,21 @@ export const useBooks = () => {
         .order('last_read', { ascending: false });
 
       if (error) {
-        console.error('Error loading books from Supabase:', error);
-        // If table doesn't exist or other error, keep using local books
+        console.error('Error loading books:', error);
+        // If table doesn't exist, just start with empty books array
         if (
           error.code === 'PGRST116' ||
           error.code === 'PGRST205' ||
           error.message?.includes('does not exist') ||
           error.message?.includes("Could not find the table 'public.books'")
         ) {
-          console.warn('Books table not available yet. Using local library only.');
+          console.warn('Books table not available yet. Using local library fallback.');
+          const local = readLocalBooks();
+          setBooks(local);
           setLoading(false);
           return;
         }
-        // For other errors, show toast but keep local books
-        toast({
-          title: "Sync Warning",
-          description: "Using local books. Cloud sync will retry automatically.",
-          variant: "default",
-        });
-        setLoading(false);
-        return;
+        throw error;
       }
 
       const formattedBooks: BookItem[] = data.map((book: any) => ({
@@ -102,23 +94,15 @@ export const useBooks = () => {
         lastRead: book.last_read ? new Date(book.last_read) : undefined,
       }));
 
-      // Merge with local books, prioritizing cloud data
-      const mergedBooks = [...formattedBooks];
-      localBooks.forEach(localBook => {
-        if (!formattedBooks.find(cloudBook => cloudBook.id === localBook.id)) {
-          mergedBooks.push(localBook);
-        }
-      });
-
-      setBooks(mergedBooks);
-      // Update local cache with merged data
-      writeLocalBooks(mergedBooks);
+      setBooks(formattedBooks);
+      // Keep a mirrored local cache for instant loads
+      writeLocalBooks(formattedBooks);
     } catch (error: any) {
       console.error('Error loading books:', error);
       toast({
-        title: "Sync Error",
-        description: "Using local books. Cloud sync will retry automatically.",
-        variant: "default",
+        title: "Error Loading Books",
+        description: error.message,
+        variant: "destructive",
       });
     } finally {
       setLoading(false);
@@ -127,38 +111,12 @@ export const useBooks = () => {
 
   // Add a new book
   const addBook = async (newBook: Omit<BookItem, 'id'>) => {
-    // Create book with local ID first for immediate UI update
-    const localBook: BookItem = {
-      id: (globalThis as any).crypto?.randomUUID?.() ?? Date.now().toString(),
-      title: newBook.title,
-      author: newBook.author,
-      progress: newBook.progress || 0,
-      totalPages: newBook.totalPages || 0,
-      coverUrl: newBook.coverUrl,
-      content: newBook.content,
-      fileUrl: newBook.fileUrl,
-      fileType: newBook.fileType,
-      lastRead: newBook.lastRead ?? new Date(),
-    };
-
-    // Update UI immediately
-    setBooks(prev => {
-      const next = [localBook, ...prev];
-      writeLocalBooks(next);
-      return next;
-    });
-
     if (!user) {
-      console.log('No user, saving book locally only');
-      toast({
-        title: 'Book Added Locally',
-        description: 'Sign in to sync your books across devices.',
-        variant: "default",
-      });
-      return localBook;
+      console.error('No user found when trying to add book');
+      return;
     }
 
-    console.log('Syncing book to cloud for user:', user.id, 'Book:', newBook.title);
+    console.log('Adding book for user:', user.id, 'Book:', newBook.title);
 
     try {
       const bookData = {
@@ -174,6 +132,8 @@ export const useBooks = () => {
         last_read: newBook.lastRead?.toISOString() || new Date().toISOString(),
       };
 
+      console.log('Inserting book data:', bookData);
+
       const { data, error } = await supabase
         .from('books')
         .insert([bookData])
@@ -181,80 +141,132 @@ export const useBooks = () => {
         .single();
 
       if (error) {
-        console.error('Supabase sync error:', error);
+        console.error('Supabase error:', error);
         
-        // If table doesn't exist, keep using local book
+        // If table doesn't exist, show a helpful message
         if (
           error.code === 'PGRST116' ||
           error.code === 'PGRST205' ||
           error.message?.includes('does not exist') ||
           error.message?.includes("Could not find the table 'public.books'")
         ) {
+          // Fallback: save locally so the user can keep using the app
+          const localBook: BookItem = {
+            id: (globalThis as any).crypto?.randomUUID?.() ?? Date.now().toString(),
+            title: newBook.title,
+            author: newBook.author,
+            progress: newBook.progress || 0,
+            totalPages: newBook.totalPages || 0,
+            coverUrl: newBook.coverUrl,
+            content: newBook.content,
+            fileUrl: newBook.fileUrl,
+            fileType: newBook.fileType,
+            lastRead: newBook.lastRead ?? new Date(),
+          };
+          setBooks((prev) => {
+            const next = [localBook, ...prev];
+            writeLocalBooks(next);
+            return next;
+          });
           toast({
             title: 'Saved Locally',
-            description: 'Book saved on this device. Cloud sync will work once database is set up.',
-            variant: "default",
+            description: 'Your book was saved on this device. The cloud will sync once the database is ready.',
           });
-          return localBook;
+          toast({
+            title: "Database Setup Required",
+            description: "Please run the SQL migration in your Supabase dashboard first. Check the console for instructions.",
+            variant: "destructive",
+          });
+          console.error(`
+🚨 DATABASE SETUP REQUIRED 🚨
+
+The 'books' table doesn't exist in your Supabase database yet.
+
+STEPS TO FIX:
+1. Go to https://supabase.com/dashboard
+2. Select your project: liqdfaxmmqpovjptmaxe  
+3. Go to "SQL Editor" 
+4. Run this SQL:
+
+CREATE TABLE IF NOT EXISTS public.books (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  title TEXT NOT NULL,
+  author TEXT NOT NULL,
+  progress INTEGER DEFAULT 0,
+  total_pages INTEGER DEFAULT 0,
+  cover_url TEXT,
+  content TEXT,
+  file_url TEXT,
+  file_type TEXT,
+  last_read TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.books ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own books" ON public.books
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own books" ON public.books
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own books" ON public.books
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own books" ON public.books
+  FOR DELETE USING (auth.uid() = user_id);
+          `);
+          return;
         }
         
-        // For other errors, show warning but keep local book
-        toast({
-          title: 'Saved Locally',
-          description: 'Book saved on this device. Cloud sync will retry automatically.',
-          variant: "default",
-        });
-        return localBook;
+        throw error;
       }
 
-      // Update local book with cloud ID
-      const cloudBook: BookItem = {
-        ...localBook,
+      const formattedBook: BookItem = {
         id: data.id,
+        title: data.title,
+        author: data.author,
+        progress: data.progress,
+        totalPages: data.total_pages,
+        coverUrl: data.cover_url,
+        content: data.content,
+        fileUrl: data.file_url,
+        fileType: data.file_type,
+        lastRead: data.last_read ? new Date(data.last_read) : undefined,
       };
 
       setBooks(prev => {
-        const next = prev.map(book => book.id === localBook.id ? cloudBook : book);
+        const next = [formattedBook, ...prev];
         writeLocalBooks(next);
         return next;
       });
-
-      toast({
-        title: 'Book Synced',
-        description: 'Your book has been saved to the cloud.',
-      });
-      
-      return cloudBook;
+      return formattedBook;
     } catch (error: any) {
-      console.error('Error syncing book to cloud:', error);
+      console.error('Error adding book:', error);
+      
+      // More detailed error message
+      let errorMessage = error.message || 'Unknown error occurred';
+      if (error.code) {
+        errorMessage = `${error.code}: ${errorMessage}`;
+      }
+      if (error.hint) {
+        errorMessage += ` (Hint: ${error.hint})`;
+      }
       
       toast({
-        title: 'Saved Locally',
-        description: 'Book saved on this device. Cloud sync will retry automatically.',
-        variant: "default",
+        title: "Error Adding Book",
+        description: errorMessage,
+        variant: "destructive",
       });
-      
-      return localBook;
+      throw error;
     }
   };
 
   // Update book progress
   const updateBookProgress = async (bookId: string, progress: number) => {
-    // Always update local state first
-    setBooks(prev => {
-      const next = prev.map(book => 
-        book.id === bookId 
-          ? { ...book, progress, lastRead: new Date() }
-          : book
-      );
-      writeLocalBooks(next);
-      return next;
-    });
-
-    if (!user) {
-      console.log('No user, updating progress locally only');
-      return;
-    }
+    if (!user) return;
 
     try {
       const { error } = await supabase
@@ -267,41 +279,45 @@ export const useBooks = () => {
         .eq('user_id', user.id);
 
       if (error) {
-        console.error('Error syncing progress to cloud:', error);
-        // Progress is already updated locally, so just show a warning
-        toast({
-          title: "Progress Saved Locally",
-          description: "Progress saved on this device. Cloud sync will retry automatically.",
-          variant: "default",
+        // Update local cache if cloud update fails
+        setBooks((prev) => {
+          const next = prev.map((b) => (b.id === bookId ? { ...b, progress, lastRead: new Date() } : b));
+          writeLocalBooks(next);
+          return next;
         });
-        return;
+        throw error;
       }
 
-      // Success - progress synced to cloud
-      console.log('Progress synced to cloud successfully');
+      setBooks(prev => {
+        const next = prev.map(book => 
+          book.id === bookId 
+            ? { ...book, progress, lastRead: new Date() }
+            : book
+        );
+        writeLocalBooks(next);
+        return next;
+      });
     } catch (error: any) {
-      console.error('Error syncing progress to cloud:', error);
+      console.error('Error updating book progress:', error);
       toast({
-        title: "Progress Saved Locally",
-        description: "Progress saved on this device. Cloud sync will retry automatically.",
-        variant: "default",
+        title: "Error Updating Progress",
+        description: error.message,
+        variant: "destructive",
       });
     }
   };
 
   // Remove a book
   const removeBook = async (bookId: string) => {
-    // Always remove from local state first
-    setBooks((prev) => {
-      const next = prev.filter((b) => b.id !== bookId);
-      writeLocalBooks(next);
-      return next;
-    });
-
     if (!user) {
-      console.log('No user, removing book locally only');
+      // Fallback: remove from local cache only
+      setBooks((prev) => {
+        const next = prev.filter((b) => b.id !== bookId);
+        writeLocalBooks(next);
+        return next;
+      });
       toast({
-        title: 'Book Removed',
+        title: 'Removed from device',
         description: 'The book was removed from your local library.',
       });
       return;
@@ -315,27 +331,39 @@ export const useBooks = () => {
         .eq('user_id', user.id);
 
       if (error) {
-        console.error('Error syncing book removal to cloud:', error);
-        // Book is already removed locally, so just show a warning
-        toast({
-          title: 'Book Removed Locally',
-          description: 'Book removed from this device. Cloud sync will retry automatically.',
-          variant: "default",
-        });
-        return;
+        // If table missing or server-side issue, remove locally so user can proceed
+        if (
+          error.code === 'PGRST116' ||
+          error.code === 'PGRST205' ||
+          error.message?.includes('does not exist') ||
+          error.message?.includes("Could not find the table 'public.books'")
+        ) {
+          setBooks((prev) => {
+            const next = prev.filter((b) => b.id !== bookId);
+            writeLocalBooks(next);
+            return next;
+          });
+          toast({
+            title: 'Removed locally',
+            description: 'Book removed on this device. Cloud will sync when available.',
+          });
+          return;
+        }
+        throw error;
       }
 
-      // Success - book removed from cloud
-      toast({ 
-        title: 'Book Removed',
-        description: 'Book removed from all devices.'
+      setBooks((prev) => {
+        const next = prev.filter((b) => b.id !== bookId);
+        writeLocalBooks(next);
+        return next;
       });
+      toast({ title: 'Book removed' });
     } catch (error: any) {
-      console.error('Error syncing book removal to cloud:', error);
+      console.error('Error removing book:', error);
       toast({
-        title: 'Book Removed Locally',
-        description: 'Book removed from this device. Cloud sync will retry automatically.',
-        variant: "default",
+        title: 'Error Removing Book',
+        description: error.message || 'Unknown error',
+        variant: 'destructive',
       });
     }
   };

@@ -37,28 +37,41 @@ export function getDefaultModel(provider: AiProvider): string {
 
 export async function chat(req: ChatRequest): Promise<string> {
   const { provider, messages } = req;
-  const apiKey = getEnvKey(provider);
-  if (!apiKey) throw new Error('Missing API key for provider');
 
   if (provider === 'gemini') {
-    // Google Generative Language API (Gemini)
+    // Use Supabase Edge Function for secure API calls
+    const { supabase } = await import('@/integrations/supabase/client');
     const model = req.model || getDefaultModel(provider);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-    const contents = messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
-    const body = { contents } as any;
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-goog-api-key': apiKey }, body: JSON.stringify(body) });
-    if (!res.ok) throw new Error(`Gemini error: ${res.status}`);
-    const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return text;
+    
+    const { data, error } = await supabase.functions.invoke('ai-chat', {
+      body: { messages, model }
+    });
+
+    if (error) {
+      console.error('Edge function error:', error);
+      throw new Error(`AI Chat error: ${error.message}`);
+    }
+
+    return data?.reply || 'No response generated';
   }
 
   if (provider === 'deepseek') {
-    // DeepSeek (OpenAI-compatible API)
+    // Fallback to client-side for DeepSeek (less secure but functional)
+    const apiKey = getEnvKey(provider);
+    if (!apiKey) throw new Error('Missing API key for provider');
+    
     const model = req.model || getDefaultModel(provider);
     const url = 'https://api.deepseek.com/v1/chat/completions';
     const body = { model, messages };
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }, body: JSON.stringify(body) });
+    const res = await fetch(url, { 
+      method: 'POST', 
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${apiKey}` 
+      }, 
+      body: JSON.stringify(body) 
+    });
+    
     if (!res.ok) throw new Error(`DeepSeek error: ${res.status}`);
     const data = await res.json();
     const text = data?.choices?.[0]?.message?.content || '';
