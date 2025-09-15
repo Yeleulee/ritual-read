@@ -119,36 +119,24 @@ export const RitualModeButton = () => {
   };
 
   if (isRitualActive) {
-    const pct = ritualTime > 0 ? Math.max(0, Math.min(1, 1 - timeRemaining / (ritualTime * 60))) : 0;
-    const size = 36;
-    const stroke = 4;
-    const radius = (size - stroke) / 2;
-    const circumference = 2 * Math.PI * radius;
-    const offset = circumference * (1 - pct);
     return (
       <Card className="focus-glow">
-        <CardContent className="p-3">
-          <div className="flex items-center gap-3">
-            <svg width={size} height={size} className="shrink-0">
-              <circle cx={size/2} cy={size/2} r={radius} stroke="hsl(var(--muted-foreground)/0.2)" strokeWidth={stroke} fill="none" />
-              <circle
-                cx={size/2}
-                cy={size/2}
-                r={radius}
-                stroke="hsl(var(--focus))"
-                strokeWidth={stroke}
-                fill="none"
-                strokeDasharray={`${circumference} ${circumference}`}
-                strokeDashoffset={offset}
-                strokeLinecap="round"
-              />
-            </svg>
-            <div className="min-w-[90px]">
+        <CardContent className="p-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-3 h-3 bg-focus rounded-full animate-pulse"></div>
+            <div>
               <div className="text-sm font-medium">Ritual Mode</div>
-              <div className="text-xs text-muted-foreground">{formatTime(timeRemaining)} remaining</div>
+              <div className="text-xs text-muted-foreground">
+                {formatTime(timeRemaining)} remaining
+              </div>
             </div>
-            <Button size="sm" variant="destructive" onClick={stopRitual}>
-              <Pause className="w-3 h-3 mr-1" /> End
+            <Button 
+              size="sm" 
+              variant="destructive"
+              onClick={stopRitual}
+            >
+              <Pause className="w-3 h-3 mr-1" />
+              End
             </Button>
           </div>
         </CardContent>
@@ -175,19 +163,6 @@ export const RitualModeButton = () => {
         </DialogHeader>
         
         <div className="space-y-6">
-          {/* Presets */}
-          <div className="grid grid-cols-3 gap-2">
-            {[15, 25, 45].map((m) => (
-              <Button
-                key={m}
-                variant={ritualTime === m ? 'ritual' : 'outline'}
-                onClick={() => setRitualTime(m)}
-                className="w-full"
-              >
-                {m} min
-              </Button>
-            ))}
-          </div>
           {/* Timer Settings */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">Focus Duration</Label>

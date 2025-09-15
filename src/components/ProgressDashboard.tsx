@@ -10,8 +10,6 @@ import {
   Award,
   BarChart3
 } from "lucide-react";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { BarChart as ReBarChart, Bar, XAxis, CartesianGrid } from "recharts";
 
 interface BookItem {
   id: string;
@@ -172,25 +170,22 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto -mx-2 px-2">
-          <ChartContainer
-            config={{
-              minutes: { label: "Minutes", color: "hsl(var(--primary))" },
-              pages: { label: "Pages", color: "hsl(var(--secondary))" },
-            }}
-            className="min-w-[520px] w-full h-[260px]"
-          >
-            <ReBarChart data={weeklyStats} margin={{ left: 8, right: 8 }}>
-              <CartesianGrid vertical={false} strokeOpacity={0.3} />
-              <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="minutes" fill="var(--color-minutes)" radius={[6,6,0,0]} />
-              <Bar dataKey="pages" fill="var(--color-pages)" radius={[6,6,0,0]} />
-            </ReBarChart>
-          </ChartContainer>
-          </div>
-          <div className="text-center text-sm text-muted-foreground mt-3">
-            Total this week: {weeklyStats.reduce((sum, day) => sum + day.minutes, 0)} minutes · {weeklyStats.reduce((sum, day) => sum + day.pages, 0)} pages
+          <div className="space-y-4">
+            <div className="grid grid-cols-7 gap-4">
+              {weeklyStats.map((day, index) => (
+                <div key={index} className="text-center">
+                  <div className="text-xs text-muted-foreground mb-2">{day.day}</div>
+                  <div className="h-16 bg-muted rounded-lg p-2 flex flex-col justify-between">
+                    <div className="text-xs font-medium">{day.minutes}m</div>
+                    <div className="text-xs text-muted-foreground">{day.pages}p</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="text-center text-sm text-muted-foreground">
+              Total this week: {weeklyStats.reduce((sum, day) => sum + day.minutes, 0)} minutes, {' '}
+              {weeklyStats.reduce((sum, day) => sum + day.pages, 0)} pages
+            </div>
           </div>
         </CardContent>
       </Card>

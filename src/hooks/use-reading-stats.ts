@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "./use-auth";
 
 export interface DailyEntry {
   date: string; // YYYY-MM-DD
@@ -48,8 +46,6 @@ function save(state: ReadingStatsState) {
 export function useReadingStats() {
   const [state, setState] = useState<ReadingStatsState>(() => load());
   const saveRef = useRef<number | null>(null);
-  const { user } = useAuth();
-  const syncRef = useRef<number | null>(null);
 
   // Debounced save
   useEffect(() => {
@@ -59,42 +55,6 @@ export function useReadingStats() {
       if (saveRef.current) window.clearTimeout(saveRef.current);
     };
   }, [state]);
-
-  // Background sync to Supabase (best-effort)
-  const syncToSupabase = useCallback(async (snapshot: ReadingStatsState) => {
-    if (!user) return;
-    try {
-      // Upsert last 14 days for resilience
-      const last14 = [...snapshot.daily]
-        .sort((a,b) => a.date.localeCompare(b.date))
-        .slice(-14);
-      if (last14.length === 0) return;
-      const payload = last14.map(d => ({
-        user_id: user.id,
-        date: d.date,
-        seconds: d.seconds,
-        pages: d.pages ?? 0,
-      }));
-      const { error } = await supabase
-        .from('reading_stats')
-        .upsert(payload, { onConflict: 'user_id,date' });
-      if (error) {
-        // swallow errors; local is still authoritative
-        // console.warn('Reading stats sync error:', error);
-      }
-    } catch (e) {
-      // ignore
-    }
-  }, [user]);
-
-  // Debounced cloud sync when state changes
-  useEffect(() => {
-    if (!user) return;
-    if (syncRef.current) window.clearTimeout(syncRef.current);
-    const snapshot = state;
-    syncRef.current = window.setTimeout(() => { syncToSupabase(snapshot); }, 1000);
-    return () => { if (syncRef.current) window.clearTimeout(syncRef.current); };
-  }, [state, user, syncToSupabase]);
 
   const addSeconds = useCallback((sec: number) => {
     if (sec <= 0) return;

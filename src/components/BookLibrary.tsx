@@ -135,6 +135,12 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
       } else if (fileExtension === 'epub') {
         // Handle EPUB files
         const arrayBuffer = await file.arrayBuffer();
+        
+        // Create blob URL for the EPUB file
+        const blob = new Blob([arrayBuffer], { type: 'application/epub+zip' });
+        fileUrl = URL.createObjectURL(blob);
+        fileType = 'epub';
+        
         try {
           const ePub = await import('epubjs');
           const book = ePub.default(arrayBuffer);
@@ -295,7 +301,7 @@ This EPUB file has been imported but could not be fully parsed. You can still re
       </div>
 
       {/* Books Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {books.map((book) => (
           <Card 
             key={book.id} 

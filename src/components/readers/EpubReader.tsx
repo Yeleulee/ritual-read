@@ -24,6 +24,7 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      console.log('EpubReader: Initializing with fileUrl:', fileUrl);
       const ePub = (await import("epubjs")).default;
       setLoading(true);
       setError(null);
@@ -32,20 +33,27 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
       let resource: any = fileUrl;
       try {
         if (fileUrl.startsWith('blob:')) {
+          console.log('EpubReader: Fetching blob URL as ArrayBuffer');
           const resp = await fetch(fileUrl);
           const ab = await resp.arrayBuffer();
           resource = ab;
+          console.log('EpubReader: Successfully converted blob to ArrayBuffer');
         }
       } catch (e) {
-        console.warn('Falling back to direct URL for EPUB load');
+        console.warn('EpubReader: Falling back to direct URL for EPUB load:', e);
       }
 
+      console.log('EpubReader: Creating ePub book instance');
       const book = ePub(resource);
       bookRef.current = book;
+      console.log('EpubReader: Rendering to container');
       const rendition = book.renderTo(containerRef.current!, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
       renditionRef.current = rendition;
 
+      console.log('EpubReader: Waiting for book.ready');
       await book.ready;
+      console.log('EpubReader: Book is ready');
+      
       // TOC
       try {
         const toc = (book as any).navigation?.toc || [];
@@ -54,9 +62,12 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
           setTocReady(true);
         }
       } catch {}
+      
       try {
+        console.log('EpubReader: Displaying rendition');
         await rendition.display();
         if (!cancelled) {
+          console.log('EpubReader: Rendition displayed successfully');
           setReady(true);
           setLoading(false);
         }
@@ -99,7 +110,7 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
       try { renditionRef.current?.destroy?.(); } catch {}
       try { bookRef.current?.destroy?.(); } catch {}
     };
-  }, [fileUrl, onPageCount]);
+  }, [fileUrl, onPageCount, onToc, onRenderedText]);
 
   // Respond to parent page changes (support both incremental and direct jumps)
   useEffect(() => {
