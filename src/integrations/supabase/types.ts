@@ -62,36 +62,6 @@ export type Database = {
         }
         Relationships: []
       }
-      reading_stats: {
-        Row: {
-          id: string
-          user_id: string
-          date: string
-          seconds: number
-          pages: number
-          created_at: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          date: string
-          seconds?: number
-          pages?: number
-          created_at?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          date?: string
-          seconds?: number
-          pages?: number
-          created_at?: string | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
     }
     Views: {
       [_ in never]: never

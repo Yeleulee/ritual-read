@@ -18,11 +18,8 @@ import {
   Bookmark,
   Star
 } from "lucide-react";
-<<<<<<< HEAD
-=======
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart as ReBarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell } from "recharts";
->>>>>>> bd3d55faa0377c15143394d49eeae270162b2d9a
 
 interface BookItem {
   id: string;
@@ -232,32 +229,6 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
         </CardContent>
       </Card>
 
-<<<<<<< HEAD
-      {/* Weekly Activity */}
-      <Card className="animate-page-fade">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-primary" />
-            This Week's Activity
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="grid grid-cols-7 gap-4">
-              {weeklyStats.map((day, index) => (
-                <div key={index} className="text-center">
-                  <div className="text-xs text-muted-foreground mb-2">{day.day}</div>
-                  <div className="h-16 bg-muted rounded-lg p-2 flex flex-col justify-between">
-                    <div className="text-xs font-medium">{day.minutes}m</div>
-                    <div className="text-xs text-muted-foreground">{day.pages}p</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="text-center text-sm text-muted-foreground">
-              Total this week: {weeklyStats.reduce((sum, day) => sum + day.minutes, 0)} minutes, {' '}
-              {weeklyStats.reduce((sum, day) => sum + day.pages, 0)} pages
-=======
       {/* Weekly Activity Analytics */}
       <Card className="animate-page-fade border-0 bg-card/50 backdrop-blur-sm">
         <CardHeader className="pb-4">
@@ -349,7 +320,6 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                 {weeklyStats.filter(day => day.minutes > 0).length}
               </div>
               <div className="text-xs text-muted-foreground font-medium">Active Days</div>
->>>>>>> bd3d55faa0377c15143394d49eeae270162b2d9a
             </div>
           </div>
         </CardContent>

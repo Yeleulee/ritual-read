@@ -28,16 +28,22 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
       setLoading(true);
       setError(null);
 
-      // If using a blob: URL, load as ArrayBuffer to avoid fetch/CORS quirks
+      // Handle different URL types
       let resource: any = fileUrl;
       try {
-        if (fileUrl.startsWith('blob:')) {
+        if (fileUrl.startsWith('blob:') || fileUrl.startsWith('https://')) {
           const resp = await fetch(fileUrl);
+          if (!resp.ok) {
+            throw new Error(`Failed to fetch file: ${resp.status}`);
+          }
           const ab = await resp.arrayBuffer();
           resource = ab;
         }
       } catch (e) {
-        console.warn('Falling back to direct URL for EPUB load');
+        console.error('Failed to fetch file for EPUB:', e);
+        setError('Failed to load EPUB file. Please try re-uploading the book.');
+        setLoading(false);
+        return;
       }
 
       const book = ePub(resource);
@@ -64,7 +70,7 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
           rendition.on('rendered', async (_section: any) => {
             try {
               const currentLoc = rendition.currentLocation();
-              const cfi = currentLoc?.start?.cfi;
+              const cfi = (currentLoc as any)?.start?.cfi;
               if (cfi && book.getRange) {
                 const range = await (book as any).getRange(cfi);
                 const text = range?.toString?.() || '';

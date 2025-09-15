@@ -27,7 +27,15 @@ export const PdfReader = ({ fileUrl, page, onPageCount, onOutline, gotoPage, onP
       setLoading(true);
       setError(null);
       try {
-        const loadingTask = pdfjsLib.getDocument({ url: fileUrl, withCredentials: false });
+        // Handle both blob URLs and Supabase storage URLs
+        const loadingTask = pdfjsLib.getDocument({ 
+          url: fileUrl, 
+          withCredentials: false,
+          // Add CORS headers for Supabase storage
+          httpHeaders: fileUrl.startsWith('https://') ? {
+            'Access-Control-Allow-Origin': '*'
+          } : undefined
+        });
         const doc = await loadingTask.promise;
         if (cancelled) return;
         setPdfDoc(doc);
@@ -51,7 +59,13 @@ export const PdfReader = ({ fileUrl, page, onPageCount, onOutline, gotoPage, onP
         } catch {}
       } catch (e: any) {
         console.error("PDF load error:", e);
-        setError("Failed to load PDF. Try re-importing the book.");
+        if (e.name === 'InvalidPDFException') {
+          setError("Invalid PDF file. Please check the file and try again.");
+        } else if (e.message?.includes('Failed to fetch')) {
+          setError("Failed to load PDF file. The file may have been moved or deleted.");
+        } else {
+          setError("Failed to load PDF. Try re-importing the book.");
+        }
       } finally {
         setLoading(false);
       }

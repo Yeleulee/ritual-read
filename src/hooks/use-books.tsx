@@ -89,7 +89,7 @@ export const useBooks = () => {
         totalPages: book.total_pages,
         coverUrl: book.cover_url,
         content: book.content,
-        fileUrl: book.file_url,
+        fileUrl: book.file_url, // This will now be a Supabase storage URL
         fileType: book.file_type,
         lastRead: book.last_read ? new Date(book.last_read) : undefined,
       }));
@@ -119,15 +119,31 @@ export const useBooks = () => {
     console.log('Adding book for user:', user.id, 'Book:', newBook.title);
 
     try {
+      let fileUrl = newBook.fileUrl;
+      let coverUrl = newBook.coverUrl;
+
+      // For now, keep using blob URLs until storage is properly set up
+      // This ensures ebooks work immediately
+      if (newBook.fileUrl && newBook.fileUrl.startsWith('blob:')) {
+        fileUrl = newBook.fileUrl; // Keep the blob URL for now
+        console.log('Using blob URL for file:', fileUrl);
+      }
+
+      // Keep cover as data URL for now
+      if (newBook.coverUrl && newBook.coverUrl.startsWith('data:')) {
+        coverUrl = newBook.coverUrl; // Keep the data URL
+        console.log('Using data URL for cover:', coverUrl);
+      }
+
       const bookData = {
         user_id: user.id,
         title: newBook.title,
         author: newBook.author,
         progress: newBook.progress || 0,
         total_pages: newBook.totalPages || 0,
-        cover_url: newBook.coverUrl || null,
+        cover_url: coverUrl || null,
         content: newBook.content || null,
-        file_url: newBook.fileUrl || null,
+        file_url: fileUrl || null,
         file_type: newBook.fileType || null,
         last_read: newBook.lastRead?.toISOString() || new Date().toISOString(),
       };
