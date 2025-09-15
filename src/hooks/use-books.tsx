@@ -48,14 +48,16 @@ export const useBooks = () => {
   // Load books from Supabase (fallback to local storage if needed)
   const loadBooks = async () => {
     if (!user) {
-      console.log('No user, skipping book load');
-      setBooks([]);
+      console.log('No user, loading local library only');
+      const local = readLocalBooks();
+      setBooks(local);
       setLoading(false);
       return;
     }
 
     console.log('Loading books for user:', user.id);
-
+    // Show local cache instantly, then sync from cloud
+    setBooks(readLocalBooks());
     try {
       const { data, error } = await supabase
         .from('books')

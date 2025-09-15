@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { useResolvedFileUrl } from "@/hooks/use-resolved-file-url";
+
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -80,6 +82,8 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
   const [gotoEpub, setGotoEpub] = useState<{ cfi?: string; href?: string } | null>(null);
   const [gotoPdfPage, setGotoPdfPage] = useState<number | null>(null);
   const [pageText, setPageText] = useState<string>("");
+  const { url: resolvedUrl, resolving: resolvingFile, error: resolveError } = useResolvedFileUrl(book.fileUrl);
+
 
   // Reset pagination and counters when switching books
   useEffect(() => {
@@ -152,16 +156,22 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
 
   const renderPageContent = (pageNumber: number) => {
     if (book.fileType === 'pdf' && book.fileUrl) {
+      if (resolvingFile) return <div className="h-full flex items-center justify-center text-sm text-muted-foreground">Loading book file…</div>;
+      if (resolveError) return <div className="h-full flex items-center justify-center text-sm text-destructive">{resolveError}</div>;
+      const src = resolvedUrl || book.fileUrl;
       return (
         <div className="h-full">
-          <PdfReader fileUrl={book.fileUrl} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onOutline={setPdfOutline} gotoPage={gotoPdfPage} onPageText={setPageText} />
+          <PdfReader fileUrl={src} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onOutline={setPdfOutline} gotoPage={gotoPdfPage} onPageText={setPageText} />
         </div>
       );
     }
     if (book.fileType === 'epub' && book.fileUrl) {
+      if (resolvingFile) return <div className="h-full flex items-center justify-center text-sm text-muted-foreground">Loading book file…</div>;
+      if (resolveError) return <div className="h-full flex items-center justify-center text-sm text-destructive">{resolveError}</div>;
+      const src = resolvedUrl || book.fileUrl;
       return (
         <div className="h-full">
-          <EpubReader fileUrl={book.fileUrl} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onToc={setEpubToc} goto={gotoEpub} onRenderedText={setPageText} />
+          <EpubReader fileUrl={src} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onToc={setEpubToc} goto={gotoEpub} onRenderedText={setPageText} />
         </div>
       );
     }

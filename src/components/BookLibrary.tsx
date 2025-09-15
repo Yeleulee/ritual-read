@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { saveBookFile } from "@/lib/fileCache";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -76,6 +78,8 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
     let fileUrl: string | undefined;
     let fileType: string | undefined;
     let coverUrl: string | undefined;
+    let processingUrl: string | undefined;
+
 
     try {
       const blobUrlToDataUrl = async (blobUrl: string): Promise<string> => {
@@ -112,11 +116,12 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
         return canvas.toDataURL('image/png');
       };
 
-      // Generate an object URL for supported binary formats so the readers can open them later
+      // Prepare an object URL for processing binary formats (non-persistent)
       if (fileExtension && ['pdf', 'epub', 'mobi', 'azw', 'azw3'].includes(fileExtension)) {
-        fileUrl = URL.createObjectURL(file);
+        processingUrl = URL.createObjectURL(file);
         fileType = fileExtension;
       }
+
 
       if (fileExtension === 'txt') {
         // Handle text files
@@ -131,7 +136,7 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
           // @ts-ignore - version prop available at runtime
           pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
           
-          const pdf = await pdfjsLib.getDocument(fileUrl).promise;
+          const pdf = await pdfjsLib.getDocument(processingUrl).promise;
           estimatedPages = pdf.numPages;
           content = `PDF: ${newBook.title || file.name}\n\nOpen to render.`;
 
@@ -224,8 +229,14 @@ Start reading to view the content.`;
       if (!coverUrl) {
         coverUrl = generatePlaceholderCover(newBook.title || file.name.replace(/\.[^/.]+$/, ""));
       }
+      // Persist binary files to IndexedDB and store a stable URL
+      if (fileExtension && ['pdf', 'epub', 'mobi', 'azw', 'azw3'].includes(fileExtension)) {
+        const key = await saveBookFile(file);
+        fileUrl = `idb://${key}`;
+      }
 
       await onAddBook({
+
         title: newBook.title || file.name.replace(/\.[^/.]+$/, ""),
         author: newBook.author || "Unknown Author",
         progress: 0,
@@ -236,10 +247,10 @@ Start reading to view the content.`;
         coverUrl,
         lastRead: new Date(),
       });
-
-
+      if (processingUrl) { try { URL.revokeObjectURL(processingUrl); } catch {} }
       setNewBook({ title: "", author: "", totalPages: 0 });
       setIsAddDialogOpen(false);
+
     } catch (error) {
       console.error('Error processing file:', error);
       toast({
