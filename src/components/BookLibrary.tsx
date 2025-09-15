@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { saveBookFile } from "@/lib/fileCache";
+import { useAuth } from "@/hooks/use-auth";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,10 +51,20 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
     totalPages: 0,
   });
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to upload books to your library.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Validate file size (50MB limit)
     const maxSize = 50 * 1024 * 1024; // 50MB
@@ -229,10 +240,19 @@ Start reading to view the content.`;
       if (!coverUrl) {
         coverUrl = generatePlaceholderCover(newBook.title || file.name.replace(/\.[^/.]+$/, ""));
       }
-      // Persist binary files to IndexedDB and store a stable URL
+      // Persist binary files to Supabase Storage and store a stable URL
       if (fileExtension && ['pdf', 'epub', 'mobi', 'azw', 'azw3'].includes(fileExtension)) {
-        const key = await saveBookFile(file);
-        fileUrl = `idb://${key}`;
+        try {
+          fileUrl = await saveBookFile(file, user.id);
+        } catch (error) {
+          console.error('File upload failed:', error);
+          toast({
+            title: "Upload Failed",
+            description: "Could not save the file. Using local cache instead.",
+            variant: "destructive",
+          });
+          fileUrl = processingUrl; // Fallback to blob URL
+        }
       }
 
       await onAddBook({

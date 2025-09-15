@@ -29,20 +29,24 @@ export function useResolvedFileUrl(fileUrl?: string): UseResolvedFileUrlResult {
         return;
       }
 
-      // Resolve from IndexedDB
-      if (fileUrl.startsWith('idb://')) {
+      // Resolve from Supabase Storage
+      if (fileUrl.startsWith('supabase://books/')) {
         setResolving(true);
         try {
-          const blob = await getBookFile(fileUrl);
-          if (!blob) throw new Error('Stored file not found on this device.');
-          const obj = URL.createObjectURL(blob);
-          revoked = obj;
-          if (!cancelled) setUrl(obj);
+          const signedUrl = await getBookFile(fileUrl);
+          if (!signedUrl) throw new Error('Stored file not found or access denied.');
+          if (!cancelled) setUrl(signedUrl);
         } catch (e: any) {
           if (!cancelled) setError(e?.message || 'Failed to load stored file');
         } finally {
           if (!cancelled) setResolving(false);
         }
+        return;
+      }
+
+      // Legacy IndexedDB support (migrate to Supabase)
+      if (fileUrl.startsWith('idb://')) {
+        setError('Please re-import this book to use cloud storage.');
         return;
       }
 

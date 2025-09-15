@@ -16,59 +16,51 @@ export type Database = {
     Tables: {
       books: {
         Row: {
-          id: string
-          user_id: string
-          title: string
           author: string
-          progress: number
-          total_pages: number
-          cover_url: string | null
           content: string | null
-          file_url: string | null
+          cover_url: string | null
+          created_at: string | null
           file_type: string | null
+          file_url: string | null
+          id: string
           last_read: string | null
-          created_at: string
-          updated_at: string
+          progress: number | null
+          title: string
+          total_pages: number | null
+          updated_at: string | null
+          user_id: string
         }
         Insert: {
-          id?: string
-          user_id: string
-          title: string
           author: string
-          progress?: number
-          total_pages?: number
-          cover_url?: string | null
           content?: string | null
-          file_url?: string | null
+          cover_url?: string | null
+          created_at?: string | null
           file_type?: string | null
+          file_url?: string | null
+          id?: string
           last_read?: string | null
-          created_at?: string
-          updated_at?: string
+          progress?: number | null
+          title: string
+          total_pages?: number | null
+          updated_at?: string | null
+          user_id: string
         }
         Update: {
-          id?: string
-          user_id?: string
-          title?: string
           author?: string
-          progress?: number
-          total_pages?: number
-          cover_url?: string | null
           content?: string | null
-          file_url?: string | null
+          cover_url?: string | null
+          created_at?: string | null
           file_type?: string | null
+          file_url?: string | null
+          id?: string
           last_read?: string | null
-          created_at?: string
-          updated_at?: string
+          progress?: number | null
+          title?: string
+          total_pages?: number | null
+          updated_at?: string | null
+          user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "books_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          }
-        ]
+        Relationships: []
       }
     }
     Views: {

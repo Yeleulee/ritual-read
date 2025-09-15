@@ -1,25 +1,50 @@
-import { get, set, del } from 'idb-keyval';
+import { supabase } from '@/integrations/supabase/client';
 
-const KEY_PREFIX = 'bookfile:';
-
-export async function saveBookFile(file: Blob | ArrayBuffer): Promise<string> {
-  const key = KEY_PREFIX + (globalThis.crypto?.randomUUID?.() ?? Date.now().toString());
-  const blob = file instanceof Blob ? file : new Blob([file]);
-  await set(key, blob);
-  return key;
+export async function saveBookFile(file: Blob | File, userId: string): Promise<string> {
+  try {
+    const fileExt = file instanceof File ? file.name.split('.').pop() : 'bin';
+    const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+    
+    const { data, error } = await supabase.storage
+      .from('books')
+      .upload(fileName, file);
+    
+    if (error) throw error;
+    
+    return `supabase://books/${data.path}`;
+  } catch (error) {
+    console.error('Failed to upload to Supabase storage:', error);
+    // Fallback to blob URL for immediate use
+    return URL.createObjectURL(file instanceof File ? file : new Blob([file]));
+  }
 }
 
-export async function getBookFile(keyOrUrl: string): Promise<Blob | undefined> {
-  const key = keyOrUrl.startsWith('idb://') ? keyOrUrl.slice('idb://'.length) : keyOrUrl;
+export async function getBookFile(keyOrUrl: string): Promise<string | undefined> {
   try {
-    const blob = await get<Blob>(key);
-    return blob ?? undefined;
-  } catch {
+    if (keyOrUrl.startsWith('supabase://books/')) {
+      const path = keyOrUrl.replace('supabase://books/', '');
+      const { data } = await supabase.storage
+        .from('books')
+        .createSignedUrl(path, 3600); // 1 hour expiry
+      
+      return data?.signedUrl;
+    }
+    
+    // Return as-is for other URLs
+    return keyOrUrl;
+  } catch (error) {
+    console.error('Failed to get signed URL:', error);
     return undefined;
   }
 }
 
 export async function removeBookFile(keyOrUrl: string): Promise<void> {
-  const key = keyOrUrl.startsWith('idb://') ? keyOrUrl.slice('idb://'.length) : keyOrUrl;
-  try { await del(key); } catch {}
+  try {
+    if (keyOrUrl.startsWith('supabase://books/')) {
+      const path = keyOrUrl.replace('supabase://books/', '');
+      await supabase.storage.from('books').remove([path]);
+    }
+  } catch (error) {
+    console.error('Failed to remove file:', error);
+  }
 }
