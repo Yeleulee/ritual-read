@@ -20,6 +20,7 @@ export const PdfReader = ({ fileUrl, page, onPageCount, onOutline, gotoPage, onP
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      console.log('PdfReader: Starting to load PDF from URL:', fileUrl);
       const pdfjsLib = await import("pdfjs-dist");
       // Use CDN worker to avoid bundler worker config
       // @ts-ignore

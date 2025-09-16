@@ -24,6 +24,7 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      console.log('EpubReader: Starting to load EPUB from URL:', fileUrl);
       const ePub = (await import("epubjs")).default;
       setLoading(true);
       setError(null);

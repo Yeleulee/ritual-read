@@ -48,14 +48,24 @@ export const useBooks = () => {
   // Load books from Supabase (fallback to local storage if needed)
   const loadBooks = async () => {
     if (!user) {
-      console.log('No user, skipping book load');
-      setBooks([]);
+      console.log('No user, loading local books');
+      const local = readLocalBooks();
+      setBooks(local);
       setLoading(false);
       return;
     }
 
     try {
       console.log('Loading books for user:', user.id);
+      console.log('Supabase client:', supabase);
+      
+      // Test if we can connect to Supabase at all
+      const { data: testData, error: testError } = await supabase
+        .from('books')
+        .select('count')
+        .limit(1);
+      
+      console.log('Supabase connection test:', { testData, testError });
       
       const { data, error } = await supabase
         .from('books')
@@ -106,17 +116,41 @@ export const useBooks = () => {
   // Add a new book
   const addBook = async (newBook: Omit<BookItem, 'id'>) => {
     if (!user) {
-      console.error('No user found when trying to add book');
-      toast({
-        title: "Authentication Error",
-        description: "Please sign in to add books.",
-        variant: "destructive",
+      console.log('No user, saving book locally');
+      const localBook: BookItem = {
+        id: (globalThis as any).crypto?.randomUUID?.() ?? Date.now().toString(),
+        title: newBook.title,
+        author: newBook.author,
+        progress: newBook.progress || 0,
+        totalPages: newBook.totalPages || 0,
+        coverUrl: newBook.coverUrl,
+        content: newBook.content,
+        fileUrl: newBook.fileUrl,
+        fileType: newBook.fileType,
+        lastRead: newBook.lastRead ?? new Date(),
+      };
+      
+      setBooks((prev) => {
+        const next = [localBook, ...prev];
+        writeLocalBooks(next);
+        return next;
       });
-      return;
+      
+      toast({
+        title: 'Book Saved Locally',
+        description: 'Your book was saved on this device.',
+      });
+      
+      return localBook;
     }
 
     console.log('Adding book for user:', user.id, 'Book:', newBook.title);
     console.log('User object:', user);
+    console.log('Supabase client available:', !!supabase);
+    
+    // Test authentication
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    console.log('Auth test:', { authData, authError });
 
     try {
       let fileUrl = newBook.fileUrl;
@@ -337,6 +371,7 @@ export const useBooks = () => {
 
   // Load books when user changes
   useEffect(() => {
+    console.log('useBooks: User changed, loading books. User:', user);
     loadBooks();
   }, [user]);
 

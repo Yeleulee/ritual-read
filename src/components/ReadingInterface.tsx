@@ -151,7 +151,15 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
   const clampPage = (n: number) => Math.min(Math.max(1, n), effectiveTotalPages);
 
   const renderPageContent = (pageNumber: number) => {
+    console.log('ReadingInterface: Rendering page content for book:', {
+      title: book.title,
+      fileType: book.fileType,
+      fileUrl: book.fileUrl,
+      hasFileUrl: !!book.fileUrl
+    });
+    
     if (book.fileType === 'pdf' && book.fileUrl) {
+      console.log('ReadingInterface: Rendering PDF reader with URL:', book.fileUrl);
       return (
         <div className="h-full">
           <PdfReader fileUrl={book.fileUrl} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onOutline={setPdfOutline} gotoPage={gotoPdfPage} onPageText={setPageText} />
@@ -159,6 +167,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       );
     }
     if (book.fileType === 'epub' && book.fileUrl) {
+      console.log('ReadingInterface: Rendering EPUB reader with URL:', book.fileUrl);
       return (
         <div className="h-full">
           <EpubReader fileUrl={book.fileUrl} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onToc={setEpubToc} goto={gotoEpub} onRenderedText={setPageText} />
