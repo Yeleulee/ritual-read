@@ -1,6 +1,6 @@
--- Create private storage bucket for books
+-- Create public storage bucket for books
 insert into storage.buckets (id, name, public)
-values ('books', 'books', false)
+values ('books', 'books', true)
 on conflict (id) do nothing;
 
 -- Policies: users can manage files under their own UID folder

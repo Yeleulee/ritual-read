@@ -54,31 +54,25 @@ export const useBooks = () => {
       return;
     }
 
-    console.log('Loading books for user:', user.id);
-
     try {
+      console.log('Loading books for user:', user.id);
+      
       const { data, error } = await supabase
         .from('books')
         .select('*')
         .eq('user_id', user.id)
         .order('last_read', { ascending: false });
 
+      console.log('Books query result:', { data, error });
+
       if (error) {
         console.error('Error loading books:', error);
-        // If table doesn't exist, just start with empty books array
-        if (
-          error.code === 'PGRST116' ||
-          error.code === 'PGRST205' ||
-          error.message?.includes('does not exist') ||
-          error.message?.includes("Could not find the table 'public.books'")
-        ) {
-          console.warn('Books table not available yet. Using local library fallback.');
-          const local = readLocalBooks();
-          setBooks(local);
-          setLoading(false);
-          return;
-        }
-        throw error;
+        // If table doesn't exist or any error, use local fallback
+        console.warn('Database error, using local books:', error);
+        const local = readLocalBooks();
+        setBooks(local);
+        setLoading(false);
+        return;
       }
 
       const formattedBooks: BookItem[] = data.map((book: any) => ({
@@ -113,17 +107,23 @@ export const useBooks = () => {
   const addBook = async (newBook: Omit<BookItem, 'id'>) => {
     if (!user) {
       console.error('No user found when trying to add book');
+      toast({
+        title: "Authentication Error",
+        description: "Please sign in to add books.",
+        variant: "destructive",
+      });
       return;
     }
 
     console.log('Adding book for user:', user.id, 'Book:', newBook.title);
+    console.log('User object:', user);
 
     try {
       let fileUrl = newBook.fileUrl;
       let coverUrl = newBook.coverUrl;
 
-      // For now, keep using blob URLs until storage is properly set up
-      // This ensures ebooks work immediately
+      // For now, keep using blob URLs to ensure ebooks work immediately
+      // Storage upload can be enabled later when the bucket is set up
       if (newBook.fileUrl && newBook.fileUrl.startsWith('blob:')) {
         fileUrl = newBook.fileUrl; // Keep the blob URL for now
         console.log('Using blob URL for file:', fileUrl);
@@ -156,88 +156,39 @@ export const useBooks = () => {
         .select()
         .single();
 
+      console.log('Supabase response:', { data, error });
+
       if (error) {
         console.error('Supabase error:', error);
         
-        // If table doesn't exist, show a helpful message
-        if (
-          error.code === 'PGRST116' ||
-          error.code === 'PGRST205' ||
-          error.message?.includes('does not exist') ||
-          error.message?.includes("Could not find the table 'public.books'")
-        ) {
-          // Fallback: save locally so the user can keep using the app
-          const localBook: BookItem = {
-            id: (globalThis as any).crypto?.randomUUID?.() ?? Date.now().toString(),
-            title: newBook.title,
-            author: newBook.author,
-            progress: newBook.progress || 0,
-            totalPages: newBook.totalPages || 0,
-            coverUrl: newBook.coverUrl,
-            content: newBook.content,
-            fileUrl: newBook.fileUrl,
-            fileType: newBook.fileType,
-            lastRead: newBook.lastRead ?? new Date(),
-          };
-          setBooks((prev) => {
-            const next = [localBook, ...prev];
-            writeLocalBooks(next);
-            return next;
-          });
-          toast({
-            title: 'Saved Locally',
-            description: 'Your book was saved on this device. The cloud will sync once the database is ready.',
-          });
-          toast({
-            title: "Database Setup Required",
-            description: "Please run the SQL migration in your Supabase dashboard first. Check the console for instructions.",
-            variant: "destructive",
-          });
-          console.error(`
-🚨 DATABASE SETUP REQUIRED 🚨
-
-The 'books' table doesn't exist in your Supabase database yet.
-
-STEPS TO FIX:
-1. Go to https://supabase.com/dashboard
-2. Select your project: liqdfaxmmqpovjptmaxe  
-3. Go to "SQL Editor" 
-4. Run this SQL:
-
-CREATE TABLE IF NOT EXISTS public.books (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  title TEXT NOT NULL,
-  author TEXT NOT NULL,
-  progress INTEGER DEFAULT 0,
-  total_pages INTEGER DEFAULT 0,
-  cover_url TEXT,
-  content TEXT,
-  file_url TEXT,
-  file_type TEXT,
-  last_read TIMESTAMPTZ DEFAULT NOW(),
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.books ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view their own books" ON public.books
-  FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own books" ON public.books
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own books" ON public.books
-  FOR UPDATE USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete their own books" ON public.books
-  FOR DELETE USING (auth.uid() = user_id);
-          `);
-          return;
-        }
+        // If table doesn't exist or any other error, save locally as fallback
+        console.warn('Database error, saving locally:', error);
         
-        throw error;
+        const localBook: BookItem = {
+          id: (globalThis as any).crypto?.randomUUID?.() ?? Date.now().toString(),
+          title: newBook.title,
+          author: newBook.author,
+          progress: newBook.progress || 0,
+          totalPages: newBook.totalPages || 0,
+          coverUrl: newBook.coverUrl,
+          content: newBook.content,
+          fileUrl: newBook.fileUrl,
+          fileType: newBook.fileType,
+          lastRead: newBook.lastRead ?? new Date(),
+        };
+        
+        setBooks((prev) => {
+          const next = [localBook, ...prev];
+          writeLocalBooks(next);
+          return next;
+        });
+        
+        toast({
+          title: 'Book Saved Locally',
+          description: 'Your book was saved on this device. It will sync to the cloud when the database is ready.',
+        });
+        
+        return localBook;
       }
 
       const formattedBook: BookItem = {

@@ -59,13 +59,7 @@ export const PdfReader = ({ fileUrl, page, onPageCount, onOutline, gotoPage, onP
         } catch {}
       } catch (e: any) {
         console.error("PDF load error:", e);
-        if (e.name === 'InvalidPDFException') {
-          setError("Invalid PDF file. Please check the file and try again.");
-        } else if (e.message?.includes('Failed to fetch')) {
-          setError("Failed to load PDF file. The file may have been moved or deleted.");
-        } else {
-          setError("Failed to load PDF. Try re-importing the book.");
-        }
+        setError("Failed to load PDF. Try re-importing the book.");
       } finally {
         setLoading(false);
       }

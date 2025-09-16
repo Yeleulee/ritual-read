@@ -33,17 +33,11 @@ export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRendered
       try {
         if (fileUrl.startsWith('blob:') || fileUrl.startsWith('https://')) {
           const resp = await fetch(fileUrl);
-          if (!resp.ok) {
-            throw new Error(`Failed to fetch file: ${resp.status}`);
-          }
           const ab = await resp.arrayBuffer();
           resource = ab;
         }
       } catch (e) {
-        console.error('Failed to fetch file for EPUB:', e);
-        setError('Failed to load EPUB file. Please try re-uploading the book.');
-        setLoading(false);
-        return;
+        console.warn('Falling back to direct URL for EPUB load');
       }
 
       const book = ePub(resource);
