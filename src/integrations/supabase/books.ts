@@ -77,7 +77,8 @@ export async function createBookRow(params: {
     .insert({
       user_id: params.userId,
       title: params.title,
-      author: params.author ?? null,
+      // Ensure non-null author to satisfy NOT NULL schema
+      author: (params.author ?? '').trim() || 'Unknown Author',
       // New columns (ensure migration added them in DB)
       bucket: params.bucket,
       storage_path: params.storagePath,

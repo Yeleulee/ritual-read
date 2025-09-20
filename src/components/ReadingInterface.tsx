@@ -20,6 +20,7 @@ import { EpubReader } from "@/components/readers/EpubReader";
 import { AiChat } from "@/components/AiChat";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useResolvedFileUrl } from "@/hooks/use-resolved-file-url";
  
 
 interface BookItem {
@@ -80,6 +81,9 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
   const [gotoEpub, setGotoEpub] = useState<{ cfi?: string; href?: string } | null>(null);
   const [gotoPdfPage, setGotoPdfPage] = useState<number | null>(null);
   const [pageText, setPageText] = useState<string>("");
+
+  // Resolve Supabase storage URLs to signed HTTP URLs when needed
+  const { url: resolvedUrl, resolving: resolvingFile, error: resolveError } = useResolvedFileUrl(book.fileUrl);
 
   // Reset pagination and counters when switching books
   useEffect(() => {
@@ -158,19 +162,34 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       hasFileUrl: !!book.fileUrl
     });
     
-    if (book.fileType === 'pdf' && book.fileUrl) {
-      console.log('ReadingInterface: Rendering PDF reader with URL:', book.fileUrl);
+    // Prefer resolved URL when available
+    const displayUrl = resolvedUrl || book.fileUrl;
+
+    if (resolveError) {
+      return (
+        <div className="text-sm text-destructive px-4">{resolveError}</div>
+      );
+    }
+
+    if (resolvingFile && book.fileType) {
+      return (
+        <div className="text-sm text-muted-foreground px-4">Preparing file…</div>
+      );
+    }
+
+    if (book.fileType === 'pdf' && displayUrl) {
+      console.log('ReadingInterface: Rendering PDF reader with URL:', displayUrl);
       return (
         <div className="h-full">
-          <PdfReader fileUrl={book.fileUrl} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onOutline={setPdfOutline} gotoPage={gotoPdfPage} onPageText={setPageText} />
+          <PdfReader fileUrl={displayUrl} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onOutline={setPdfOutline} gotoPage={gotoPdfPage} onPageText={setPageText} />
         </div>
       );
     }
-    if (book.fileType === 'epub' && book.fileUrl) {
-      console.log('ReadingInterface: Rendering EPUB reader with URL:', book.fileUrl);
+    if (book.fileType === 'epub' && displayUrl) {
+      console.log('ReadingInterface: Rendering EPUB reader with URL:', displayUrl);
       return (
         <div className="h-full">
-          <EpubReader fileUrl={book.fileUrl} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onToc={setEpubToc} goto={gotoEpub} onRenderedText={setPageText} />
+          <EpubReader fileUrl={displayUrl} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onToc={setEpubToc} goto={gotoEpub} onRenderedText={setPageText} />
         </div>
       );
     }
