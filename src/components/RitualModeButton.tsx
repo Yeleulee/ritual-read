@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useReadingStats } from "@/hooks/use-reading-stats";
+import { Separator } from "@/components/ui/separator";
+import { RitualMusicSearch } from "@/components/RitualMusicSearch";
 
 export const RitualModeButton = () => {
   const [isRitualActive, setIsRitualActive] = useState(false);
@@ -267,6 +269,14 @@ export const RitualModeButton = () => {
               </div>
             </CardContent>
           </Card>
+
+          <Separator className="my-2" />
+
+          {/* Music Search (YouTube) */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Ritual Music</Label>
+            <RitualMusicSearch />
+          </div>
         </div>
       </DialogContent>
     </Dialog>

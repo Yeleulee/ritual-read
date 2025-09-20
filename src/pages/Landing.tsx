@@ -18,7 +18,7 @@ const Landing = () => {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Link to="/app">
-            <Button variant="outline">Open App</Button>
+            <Button variant="outline">Log In</Button>
           </Link>
           <a href="#features">
             <Button variant="ghost">Features</Button>
@@ -51,9 +51,9 @@ const Landing = () => {
       <section className="container mx-auto px-4 py-10 md:py-12">
         <div className="rounded-3xl border bg-card/60 backdrop-blur p-8 text-center">
           <h3 className="text-2xl md:text-3xl font-semibold text-balance">Ready to build your reading ritual?</h3>
-          <p className="text-muted-foreground mt-2">Open the app and add your first book.</p>
+          <p className="text-muted-foreground mt-2">Sign in to start building your streak.</p>
           <Link to="/app">
-            <Button className="mt-5 gap-2">Open App <ArrowRight className="w-4 h-4" /></Button>
+            <Button className="mt-5 gap-2">Log In <ArrowRight className="w-4 h-4" /></Button>
           </Link>
         </div>
       </section>
@@ -63,7 +63,7 @@ const Landing = () => {
         <div className="whitespace-nowrap">© {new Date().getFullYear()} Ritual Reader</div>
         <div className="flex items-center gap-3 flex-wrap">
           <a href="#features" className="hover:underline">Features</a>
-          <Link to="/app" className="hover:underline">App</Link>
+          <Link to="/app" className="hover:underline">Log In</Link>
         </div>
       </footer>
     </div>

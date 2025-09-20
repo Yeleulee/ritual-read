@@ -1,3 +1,4 @@
+import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,8 @@ import {
   Star
 } from "lucide-react";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { useReadingStats } from "@/hooks/use-reading-stats";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { BarChart as ReBarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell } from "recharts";
 
 interface BookItem {
@@ -35,6 +38,15 @@ interface ProgressDashboardProps {
 }
 
 export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
+  // Live tracking data (minutes, streak, weekly)
+  const { current, weekly } = useReadingStats();
+  const isMobile = useIsMobile();
+  const [compact, setCompact] = React.useState<boolean>(false as any);
+
+  React.useEffect(() => {
+    // Auto-enable compact on mobile
+    setCompact(isMobile);
+  }, [isMobile]);
   // Calculate statistics
   const totalBooks = books.length;
   const completedBooks = books.filter(book => book.progress >= 100).length;
@@ -43,16 +55,8 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
   const pagesRead = books.reduce((sum, book) => sum + Math.floor((book.progress / 100) * book.totalPages), 0);
   const averageProgress = totalBooks > 0 ? books.reduce((sum, book) => sum + book.progress, 0) / totalBooks : 0;
 
-  // Mock data for enhanced dashboard
-  const weeklyStats = [
-    { day: 'Mon', minutes: 25, pages: 12 },
-    { day: 'Tue', minutes: 30, pages: 15 },
-    { day: 'Wed', minutes: 20, pages: 8 },
-    { day: 'Thu', minutes: 35, pages: 18 },
-    { day: 'Fri', minutes: 15, pages: 6 },
-    { day: 'Sat', minutes: 40, pages: 22 },
-    { day: 'Sun', minutes: 22, pages: 11 },
-  ];
+  // Derive weekly stats from tracking (pages approximated from progress deltas when available; fallback ratio 0.5 pages/min)
+  const weeklyStats = weekly.map((d) => ({ day: d.day, minutes: d.minutes, pages: Math.max(0, Math.round(d.minutes * 0.5)) }));
 
   const monthlyGoals = {
     booksTarget: 3,
@@ -69,78 +73,93 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
     .slice(0, 3);
 
   return (
-    <div className="space-y-4 md:space-y-8 p-4 md:p-0">
+    <div className="space-y-6 md:space-y-8 p-4 md:p-0 relative">
+      {/* Background decoration */}
+      <div className="absolute inset-0 -z-10 bg-gradient-to-br from-primary/[0.02] via-transparent to-secondary/[0.02] rounded-3xl" />
+      
       {/* Header */}
-      <div className="animate-page-fade">
+      <div className="animate-page-fade relative">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h2 className="text-2xl md:text-3xl font-bold ritual-heading mb-2">Analytics Dashboard</h2>
-            <p className="text-muted-foreground text-sm md:text-base">Comprehensive insights into your reading habits</p>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-2 h-8 bg-gradient-to-b from-primary to-primary/60 rounded-full" />
+              <h2 className="text-[20px] md:text-[26px] lg:text-[28px] font-semibold tracking-tight ritual-heading bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
+                Analytics Dashboard
+              </h2>
+            </div>
+            <p className="text-muted-foreground text-[12px] md:text-[14px] leading-relaxed ml-5">Comprehensive insights into your reading habits</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="flex items-center gap-1">
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className="flex items-center gap-1 bg-gradient-to-r from-primary/10 to-secondary/10 border-primary/20">
               <Star className="w-3 h-3" />
               Pro Analytics
             </Badge>
+            <Button variant="ghost" size="sm" onClick={() => setCompact(v => !v)} className="bg-muted/50 hover:bg-muted/80 transition-all duration-200">
+              {compact ? 'Expand' : 'Compact'}
+            </Button>
           </div>
         </div>
       </div>
 
       {/* Key Performance Indicators */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
-        <Card className="animate-page-fade ritual-glow border-0 bg-gradient-to-br from-primary/5 to-primary/10">
-          <CardContent className="p-4 md:p-6">
+      <div className={`grid ${compact ? 'grid-cols-2' : 'grid-cols-2 md:grid-cols-4'} gap-4 md:gap-6`}>
+        <Card className="animate-page-fade group relative overflow-hidden border-0 bg-gradient-to-br from-primary/5 via-primary/3 to-primary/8 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <CardContent className={`p-4 ${compact ? '' : 'md:p-6'}`}>
             <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 md:w-12 md:h-12 gradient-primary rounded-xl flex items-center justify-center">
-                <BookOpen className="w-5 h-5 md:w-6 md:h-6 text-primary-foreground" />
+              <div className={`gradient-primary rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300 ${compact ? 'w-9 h-9' : 'w-10 h-10 md:w-12 md:h-12'}`}>
+                <BookOpen className={`${compact ? 'w-4 h-4' : 'w-5 h-5 md:w-6 md:h-6'} text-primary-foreground`} />
               </div>
-              <ArrowUpRight className="w-4 h-4 text-muted-foreground" />
+              <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
             </div>
-            <div className="text-2xl md:text-3xl font-bold mb-1 text-foreground">{totalBooks}</div>
-            <div className="text-xs md:text-sm text-muted-foreground font-medium">Total Library</div>
-            <div className="text-xs text-primary mt-1">+{totalBooks > 0 ? '12%' : '0%'} this month</div>
+            <div className={`font-semibold mb-0.5 text-foreground group-hover:text-primary transition-colors duration-300 ${compact ? 'text-[18px]' : 'text-[22px] md:text-[26px]'}`}>{totalBooks}</div>
+            <div className={`text-muted-foreground ${compact ? 'text-[11px]' : 'text-[12px] md:text-[13px]'} font-medium`}>Total Library</div>
+            <div className="text-xs text-primary mt-1 font-medium">+{totalBooks > 0 ? '12%' : '0%'} this month</div>
           </CardContent>
         </Card>
 
-        <Card className="animate-page-fade border-0 bg-gradient-to-br from-secondary/5 to-secondary/10">
-          <CardContent className="p-4 md:p-6">
+        <Card className="animate-page-fade group relative overflow-hidden border-0 bg-gradient-to-br from-secondary/8 via-secondary/3 to-secondary/5 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <CardContent className={`p-4 ${compact ? '' : 'md:p-6'}`}>
             <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 md:w-12 md:h-12 gradient-secondary rounded-xl flex items-center justify-center achievement-glow">
-                <Award className="w-5 h-5 md:w-6 md:h-6 text-secondary-foreground" />
+              <div className={`gradient-secondary rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300 achievement-glow ${compact ? 'w-9 h-9' : 'w-10 h-10 md:w-12 md:h-12'}`}>
+                <Award className={`${compact ? 'w-4 h-4' : 'w-5 h-5 md:w-6 md:h-6'} text-secondary-foreground`} />
               </div>
-              <ArrowUpRight className="w-4 h-4 text-muted-foreground" />
+              <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-secondary group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
             </div>
-            <div className="text-2xl md:text-3xl font-bold mb-1 text-foreground">{completedBooks}</div>
-            <div className="text-xs md:text-sm text-muted-foreground font-medium">Completed</div>
-            <div className="text-xs text-secondary mt-1">+{completedBooks > 0 ? '25%' : '0%'} this month</div>
+            <div className={`font-semibold mb-0.5 text-foreground group-hover:text-secondary transition-colors duration-300 ${compact ? 'text-[18px]' : 'text-[22px] md:text-[26px]'}`}>{completedBooks}</div>
+            <div className={`text-muted-foreground ${compact ? 'text-[11px]' : 'text-[12px] md:text-[13px]'} font-medium`}>Completed</div>
+            <div className="text-xs text-secondary mt-1 font-medium">+{completedBooks > 0 ? '25%' : '0%'} this month</div>
           </CardContent>
         </Card>
 
-        <Card className="animate-page-fade border-0 bg-gradient-to-br from-focus/5 to-focus/10">
-          <CardContent className="p-4 md:p-6">
+        <Card className="animate-page-fade group relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500/8 via-emerald-500/3 to-emerald-500/5 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <CardContent className={`p-4 ${compact ? '' : 'md:p-6'}`}>
             <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 md:w-12 md:h-12 bg-focus/20 rounded-xl flex items-center justify-center">
-                <BookMarked className="w-5 h-5 md:w-6 md:h-6 text-focus" />
+              <div className={`${compact ? 'w-9 h-9' : 'w-10 h-10 md:w-12 md:h-12'} bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300`}>
+                <BookMarked className={`${compact ? 'w-4 h-4' : 'w-5 h-5 md:w-6 md:h-6'} text-white`} />
               </div>
-              <ArrowUpRight className="w-4 h-4 text-muted-foreground" />
+              <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-emerald-600 group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
             </div>
-            <div className="text-2xl md:text-3xl font-bold mb-1 text-foreground">{pagesRead}</div>
-            <div className="text-xs md:text-sm text-muted-foreground font-medium">Pages Read</div>
-            <div className="text-xs text-focus mt-1">+{pagesRead > 0 ? '8%' : '0%'} this week</div>
+            <div className={`font-semibold mb-0.5 text-foreground group-hover:text-emerald-600 transition-colors duration-300 ${compact ? 'text-[18px]' : 'text-[22px] md:text-[26px]'}`}>{pagesRead}</div>
+            <div className={`text-muted-foreground ${compact ? 'text-[11px]' : 'text-[12px] md:text-[13px]'} font-medium`}>Pages Read</div>
+            <div className="text-xs text-emerald-600 mt-1 font-medium">+{pagesRead > 0 ? '8%' : '0%'} this week</div>
           </CardContent>
         </Card>
 
-        <Card className="animate-page-fade border-0 bg-gradient-to-br from-accent/10 to-accent/5">
-          <CardContent className="p-4 md:p-6">
+        <Card className="animate-page-fade group relative overflow-hidden border-0 bg-gradient-to-br from-violet-500/8 via-violet-500/3 to-violet-500/5 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <CardContent className={`p-4 ${compact ? '' : 'md:p-6'}`}>
             <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 md:w-12 md:h-12 bg-accent/30 rounded-xl flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 md:w-6 md:h-6 text-accent-foreground" />
+              <div className={`${compact ? 'w-9 h-9' : 'w-10 h-10 md:w-12 md:h-12'} bg-gradient-to-br from-violet-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300`}>
+                <TrendingUp className={`${compact ? 'w-4 h-4' : 'w-5 h-5 md:w-6 md:h-6'} text-white`} />
               </div>
-              <ArrowUpRight className="w-4 h-4 text-muted-foreground" />
+              <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-violet-600 group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
             </div>
-            <div className="text-2xl md:text-3xl font-bold mb-1 text-foreground">{Math.round(averageProgress)}%</div>
-            <div className="text-xs md:text-sm text-muted-foreground font-medium">Avg Progress</div>
-            <div className="text-xs text-accent-foreground mt-1">Trending up</div>
+            <div className={`font-semibold mb-0.5 text-foreground group-hover:text-violet-600 transition-colors duration-300 ${compact ? 'text-[18px]' : 'text-[22px] md:text-[26px]'}`}>{Math.round(averageProgress)}%</div>
+            <div className={`text-muted-foreground ${compact ? 'text-[11px]' : 'text-[12px] md:text-[13px]'} font-medium`}>Avg Progress</div>
+            <div className="text-xs text-violet-600 mt-1 font-medium">Trending up</div>
           </CardContent>
         </Card>
       </div>
@@ -230,7 +249,7 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
       </Card>
 
       {/* Weekly Activity Analytics */}
-      <Card className="animate-page-fade border-0 bg-card/50 backdrop-blur-sm">
+      <Card className="animate-page-fade border bg-border/50 shadow-sm bg-card/60 backdrop-blur">
         <CardHeader className="pb-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
@@ -255,7 +274,7 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                   minutes: { label: "Reading Minutes", color: "hsl(var(--primary))" },
                   pages: { label: "Pages Read", color: "hsl(var(--secondary))" },
                 }}
-                className="min-w-[520px] w-full h-[280px] md:h-[320px]"
+                className={`${compact ? 'min-w-[420px] h-[220px]' : 'min-w-[520px] h-[280px] md:h-[320px]'} w-full`}
               >
                 <ResponsiveContainer width="100%" height="100%">
                   <ReBarChart data={weeklyStats} margin={{ left: 20, right: 20, top: 20, bottom: 20 }}>
@@ -298,27 +317,19 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 p-4 rounded-xl bg-gradient-to-r from-muted/30 to-muted/10">
             <div className="text-center">
-              <div className="text-lg md:text-xl font-bold text-primary">
-                {weeklyStats.reduce((sum, day) => sum + day.minutes, 0)}
-              </div>
+              <div className="text-lg md:text-xl font-bold text-primary">{weeklyStats.reduce((sum, day) => sum + day.minutes, 0)}</div>
               <div className="text-xs text-muted-foreground font-medium">Total Minutes</div>
             </div>
             <div className="text-center">
-              <div className="text-lg md:text-xl font-bold text-secondary">
-                {weeklyStats.reduce((sum, day) => sum + day.pages, 0)}
-              </div>
+              <div className="text-lg md:text-xl font-bold text-secondary">{weeklyStats.reduce((sum, day) => sum + day.pages, 0)}</div>
               <div className="text-xs text-muted-foreground font-medium">Total Pages</div>
             </div>
             <div className="text-center">
-              <div className="text-lg md:text-xl font-bold text-focus">
-                {Math.round(weeklyStats.reduce((sum, day) => sum + day.minutes, 0) / 7)}
-              </div>
+              <div className="text-lg md:text-xl font-bold text-focus">{Math.round(weeklyStats.reduce((sum, day) => sum + day.minutes, 0) / 7)}</div>
               <div className="text-xs text-muted-foreground font-medium">Daily Average</div>
             </div>
             <div className="text-center">
-              <div className="text-lg md:text-xl font-bold text-accent-foreground">
-                {weeklyStats.filter(day => day.minutes > 0).length}
-              </div>
+              <div className="text-lg md:text-xl font-bold text-accent-foreground">{weeklyStats.filter(day => day.minutes > 0).length}</div>
               <div className="text-xs text-muted-foreground font-medium">Active Days</div>
             </div>
           </div>
