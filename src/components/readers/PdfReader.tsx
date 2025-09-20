@@ -49,7 +49,7 @@ export const PdfReader = ({ fileUrl, page, onPageCount, onOutline, gotoPage, onP
             const items: Array<{ title: string; pageNumber: number }> = [];
             for (const item of outline) {
               try {
-                const dest = await doc.getDestination(item.dest);
+                const dest = await doc.getDestination(typeof item.dest === 'string' ? item.dest : item.dest?.[0]);
                 const ref = Array.isArray(dest) ? dest[0] : dest?.[0];
                 const pageIndex = await doc.getPageIndex(ref);
                 items.push({ title: item.title || 'Untitled', pageNumber: pageIndex + 1 });
