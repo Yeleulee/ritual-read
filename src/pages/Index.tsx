@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { BookLibrary } from "@/components/BookLibrary";
+import { CloudLibrary } from "@/components/CloudLibrary";
+import { CloudBookReader } from "@/components/CloudBookReader";
 import { ReadingInterface } from "@/components/ReadingInterface";
 import { StreakTracker } from "@/components/StreakTracker";
 import { ProgressDashboard } from "@/components/ProgressDashboard";
@@ -20,6 +22,7 @@ const Index = () => {
   const { books, loading: booksLoading, addBook, updateBookProgress, removeBook } = useBooks();
   const [currentBook, setCurrentBook] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("library");
+  const [cloudBookId, setCloudBookId] = useState<string | null>(null);
 
   // Show loading screen while checking auth
   if (authLoading) {
@@ -153,6 +156,10 @@ const Index = () => {
               <BookOpen className="w-4 h-4" />
               Reader
             </TabsTrigger>
+            <TabsTrigger value="cloud" className="flex items-center gap-2 h-8 flex-none px-3">
+              <BookOpen className="w-4 h-4" />
+              Cloud
+            </TabsTrigger>
             <TabsTrigger value="progress" className="flex items-center gap-2 h-8 flex-none px-3">
               <TrendingUp className="w-4 h-4" />
               Progress
@@ -190,6 +197,21 @@ const Index = () => {
                 </h3>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="cloud" className="animate-page-fade">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <CloudLibrary onOpen={(id) => { setCloudBookId(id); }} />
+              </div>
+              <div>
+                {cloudBookId ? (
+                  <CloudBookReader id={cloudBookId} onBack={() => setCloudBookId(null)} />
+                ) : (
+                  <div className="text-sm text-muted-foreground">Select a cloud book to preview</div>
+                )}
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="progress" className="animate-page-fade">
