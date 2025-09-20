@@ -48,26 +48,19 @@ export const useBooks = () => {
 
   // Load books from Supabase (fallback to local storage if needed)
   const loadBooks = async () => {
-    if (!user) {
-      console.log('No user, loading local books');
-      const local = readLocalBooks();
-      setBooks(local);
-      setLoading(false);
-      return;
-    }
-
     try {
+      // Always try to load local books first for instant display
+      const localBooks = readLocalBooks();
+      setBooks(localBooks);
+      setLoading(false);
+
+      if (!user) {
+        console.log('No user, using local books only');
+        return;
+      }
+
       console.log('Loading books for user:', user.id);
-      console.log('Supabase client:', supabase);
-      
-      // Test if we can connect to Supabase at all
-      const { data: testData, error: testError } = await supabase
-        .from('books')
-        .select('count')
-        .limit(1);
-      
-      console.log('Supabase connection test:', { testData, testError });
-      
+
       const { data, error } = await supabase
         .from('books')
         .select('*')
@@ -78,11 +71,7 @@ export const useBooks = () => {
 
       if (error) {
         console.error('Error loading books:', error);
-        // If table doesn't exist or any error, use local fallback
-        console.warn('Database error, using local books:', error);
-        const local = readLocalBooks();
-        setBooks(local);
-        setLoading(false);
+        // Keep local books on error
         return;
       }
 
@@ -94,23 +83,18 @@ export const useBooks = () => {
         totalPages: book.total_pages,
         coverUrl: book.cover_url,
         content: book.content,
-        fileUrl: book.file_url, // This will now be a Supabase storage URL
+        fileUrl: book.file_url,
         fileType: book.file_type,
         lastRead: book.last_read ? new Date(book.last_read) : undefined,
       }));
 
+      // Update with server data
       setBooks(formattedBooks);
-      // Keep a mirrored local cache for instant loads
+      // Keep local cache in sync
       writeLocalBooks(formattedBooks);
     } catch (error: any) {
       console.error('Error loading books:', error);
-      toast({
-        title: "Error Loading Books",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
+      // Keep any local books on error
     }
   };
 
@@ -164,8 +148,14 @@ export const useBooks = () => {
           const response = await fetch(newBook.fileUrl);
           const blob = await response.blob();
           const uploadedUrl = await saveBookFile(blob, user.id);
-          fileUrl = uploadedUrl;
-          console.log('File uploaded to storage:', fileUrl);
+          
+          if (uploadedUrl.startsWith('supabase://')) {
+            fileUrl = uploadedUrl;
+            console.log('File uploaded to storage:', fileUrl);
+          } else {
+            console.warn('Storage upload failed, using blob URL as fallback');
+            fileUrl = newBook.fileUrl;
+          }
         } catch (uploadError) {
           console.warn('Failed to upload file to storage, using blob URL:', uploadError);
           fileUrl = newBook.fileUrl; // Fallback to blob URL
@@ -234,6 +224,7 @@ export const useBooks = () => {
         return localBook;
       }
 
+      // Immediately update UI for better UX
       const formattedBook: BookItem = {
         id: data.id,
         title: data.title,
@@ -252,6 +243,12 @@ export const useBooks = () => {
         writeLocalBooks(next);
         return next;
       });
+      
+      toast({
+        title: 'Book Added',
+        description: 'Your book has been saved successfully.',
+      });
+      
       return formattedBook;
     } catch (error: any) {
       console.error('Error adding book:', error);
