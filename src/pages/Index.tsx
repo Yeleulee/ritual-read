@@ -78,42 +78,69 @@ const Index = () => {
   return (
     <div className="min-h-screen gradient-ethereal">
       <div className="container mx-auto px-4 py-4">
-        {/* Header */}
-        <header className="flex items-center justify-between mb-6 animate-page-fade gap-3 flex-wrap">
-          <Link to="/" className="flex items-center space-x-3 hover:opacity-90 transition-ritual">
-            <div className="w-14 h-14 md:w-20 md:h-20 rounded-full overflow-hidden bg-white/95 ring-1 ring-border shadow-sm flex items-center justify-center">
-              <img src="/logo.png" alt="Ritual Reader logo" className="w-full h-full object-contain p-1" />
-            </div>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold ritual-heading">Ritual Reader</h1>
-              <p className="text-muted-foreground text-sm md:text-base">Transform reading into a mindful ritual</p>
-            </div>
-          </Link>
-          
-          <div className="flex items-center space-x-4 flex-wrap">
-            <StreakTracker />
-            <RitualModeButton />
-            <button
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border bg-background hover:bg-muted h-9 w-9"
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              title="Toggle theme"
-            >
-              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-            <Link to="/" className="hidden md:inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border bg-background hover:bg-muted h-9 px-3">
-              <Home className="w-4 h-4 mr-1" /> Home
+        {/* Professional Header */}
+        <header className="backdrop-blur-md bg-background/80 border-b border-border/40 rounded-xl mb-6 animate-page-fade">
+          <div className="flex items-center justify-between px-6 py-4 gap-4">
+            <Link to="/" className="flex items-center space-x-4 hover:opacity-90 transition-all duration-300 group">
+              <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-primary/20 to-primary/10 ring-1 ring-primary/20 shadow-lg flex items-center justify-center group-hover:scale-105 transition-transform">
+                <img src="/logo.png" alt="Ritual Reader" className="w-8 h-8 object-contain" />
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+              <div className="hidden sm:block">
+                <h1 className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+                  Ritual Reader
+                </h1>
+                <p className="text-xs text-muted-foreground font-medium">
+                  Mindful Reading Experience
+                </p>
+              </div>
             </Link>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={signOut}
-              className="hidden md:inline-flex"
-              title="Sign Out"
-            >
-              <LogOut className="w-4 h-4 mr-1" /> Sign Out
-            </Button>
-            <div className="text-xs text-muted-foreground hidden md:block">
-              {user?.email}
+            
+            <div className="flex items-center gap-2">
+              <div className="hidden lg:flex items-center gap-2">
+                <StreakTracker />
+              </div>
+              
+              <div className="flex items-center gap-1">
+                <RitualModeButton />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                  className="h-9 w-9 rounded-lg hover:bg-muted/80"
+                >
+                  {theme === 'dark' ? (
+                    <Sun className="w-4 h-4 transition-transform hover:rotate-180 duration-300" />
+                  ) : (
+                    <Moon className="w-4 h-4 transition-transform hover:rotate-12 duration-300" />
+                  )}
+                </Button>
+                
+                <div className="hidden md:flex items-center gap-1 ml-2 pl-2 border-l border-border/40">
+                  <Button variant="ghost" size="sm" asChild className="h-9 rounded-lg">
+                    <Link to="/" className="flex items-center gap-2">
+                      <Home className="w-4 h-4" />
+                      <span className="hidden lg:inline">Home</span>
+                    </Link>
+                  </Button>
+                  
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={signOut}
+                    className="h-9 rounded-lg text-muted-foreground hover:text-destructive"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span className="hidden lg:inline ml-2">Sign Out</span>
+                  </Button>
+                </div>
+                
+                <div className="hidden xl:flex items-center ml-3 pl-3 border-l border-border/40">
+                  <div className="text-xs text-muted-foreground font-mono bg-muted/30 px-2 py-1 rounded">
+                    {user?.email?.split('@')[0]}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </header>

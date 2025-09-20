@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './use-auth';
 import { useToast } from './use-toast';
+import { saveBookFile } from '@/lib/fileCache';
 
 export interface BookItem {
   id: string;
@@ -156,11 +157,19 @@ export const useBooks = () => {
       let fileUrl = newBook.fileUrl;
       let coverUrl = newBook.coverUrl;
 
-      // For now, keep using blob URLs to ensure ebooks work immediately
-      // Storage upload can be enabled later when the bucket is set up
+      // Upload file to Supabase Storage for permanent storage
       if (newBook.fileUrl && newBook.fileUrl.startsWith('blob:')) {
-        fileUrl = newBook.fileUrl; // Keep the blob URL for now
-        console.log('Using blob URL for file:', fileUrl);
+        try {
+          // Convert blob URL to actual file for upload
+          const response = await fetch(newBook.fileUrl);
+          const blob = await response.blob();
+          const uploadedUrl = await saveBookFile(blob, user.id);
+          fileUrl = uploadedUrl;
+          console.log('File uploaded to storage:', fileUrl);
+        } catch (uploadError) {
+          console.warn('Failed to upload file to storage, using blob URL:', uploadError);
+          fileUrl = newBook.fileUrl; // Fallback to blob URL
+        }
       }
 
       // Keep cover as data URL for now

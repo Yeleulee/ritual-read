@@ -126,7 +126,7 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
           if (ctx) {
             canvas.width = viewport.width;
             canvas.height = viewport.height;
-            await page1.render({ canvasContext: ctx, viewport }).promise;
+            await page1.render({ canvasContext: ctx, viewport, canvas }).promise;
             coverUrl = canvas.toDataURL('image/png');
           }
         } catch (err) {
