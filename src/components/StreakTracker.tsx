@@ -21,16 +21,23 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
   ]), [current.currentStreak]);
 
   if (!detailed) {
+    const minutesRead = Math.floor((current.todayProgress / 100) * state.goalMinutesPerDay);
+    const minutesLeft = Math.max(0, state.goalMinutesPerDay - minutesRead);
     return (
-      <Card className="w-fit">
+      <Card className="w-fit border-border/60">
         <CardContent className="p-4">
-          <div className="flex items-center space-x-3">
-            <div className="relative">
-              <Flame className="w-6 h-6 text-streak animate-streak-pulse" />
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-500/20 to-yellow-400/20 flex items-center justify-center">
+              <Flame className="w-5 h-5 text-streak" />
             </div>
-            <div>
-              <div className="text-lg font-bold">{current.currentStreak}</div>
-              <div className="text-xs text-muted-foreground">day streak</div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold leading-none">{current.currentStreak} day streak</div>
+              <div className="mt-1 w-28">
+                <Progress value={current.todayProgress} className="h-1" />
+              </div>
+              <div className="mt-1 text-[11px] text-muted-foreground truncate">
+                {minutesLeft > 0 ? `Read ${minutesLeft} min today to keep it 🔥` : 'Goal met — keep going!'}
+              </div>
             </div>
           </div>
         </CardContent>

@@ -21,7 +21,6 @@ import { AiChat } from "@/components/AiChat";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useResolvedFileUrl } from "@/hooks/use-resolved-file-url";
-import { TextPageCurlOverlay } from "@/components/readers/TextPageCurlOverlay";
  
 
 interface BookItem {
@@ -381,17 +380,6 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
                 {renderPageContent(currentPage)}
           </CardContent>
         </Card>
-        {/* Text-mode curl overlay */}
-        {!book.fileType && (
-          <TextPageCurlOverlay
-            width={readingAreaRef.current?.clientWidth || 800}
-            height={readingAreaRef.current?.clientHeight || 600}
-            frontText={getTextPageContent(currentPage)}
-            nextText={getTextPageContent(clampPage(currentPage + 1))}
-            fontSize={fontSize}
-            onCommit={() => handlePageChange(clampPage(currentPage + 1), 'next')}
-          />
-        )}
         
             {/* Click/Tap zones */}
             <button aria-label="Previous page" className="absolute inset-y-0 left-0 w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} />

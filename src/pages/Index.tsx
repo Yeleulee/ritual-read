@@ -15,6 +15,9 @@ import { Book, BookOpen, TrendingUp, Flame, Moon, Sun, Home, LogOut } from "luci
 import { Link } from "react-router-dom";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/Logo";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useReadingStats } from "@/hooks/use-reading-stats";
 
 const Index = () => {
   const { theme, setTheme } = useTheme();
@@ -23,14 +26,20 @@ const Index = () => {
   const [currentBook, setCurrentBook] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("library");
   const [cloudBookId, setCloudBookId] = useState<string | null>(null);
+  const { current, state } = useReadingStats();
 
   // Show loading screen while checking auth
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="w-16 h-16 rounded-full overflow-hidden bg-white ring-1 ring-border shadow-sm flex items-center justify-center mx-auto mb-4">
-            <img src="/logo.png" alt="Ritual Reader" className="w-full h-full object-contain p-2" />
+          <div className="w-16 h-16 flex items-center justify-center mx-auto mb-4">
+            <img
+              src="/image.png"
+              alt="Ritual Reader"
+              className="w-16 h-16 object-contain"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/logo.png"; }}
+            />
           </div>
           <p className="text-muted-foreground">Loading...</p>
         </div>
@@ -84,20 +93,20 @@ const Index = () => {
         {/* Professional Header */}
         <header className="backdrop-blur-md bg-background/80 border-b border-border/40 rounded-xl mb-6 animate-page-fade">
           <div className="flex items-center justify-between px-6 py-4 gap-4">
-            <Link to="/" className="flex items-center space-x-4 hover:opacity-90 transition-all duration-300 group">
-              <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-gradient-to-br from-primary/20 to-primary/10 ring-1 ring-primary/20 shadow-lg flex items-center justify-center group-hover:scale-105 transition-transform">
-                <img src="/logo.png" alt="Ritual Reader" className="w-8 h-8 object-contain" />
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
-              <div className="hidden sm:block">
-                <h1 className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                  Ritual Reader
-                </h1>
-                <p className="text-xs text-muted-foreground font-medium">
-                  Mindful Reading Experience
-                </p>
-              </div>
-            </Link>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link to="/" className="flex items-center space-x-4 group" aria-label="Ritual Reader Home">
+              <div className="relative group-hover:scale-105 transition-transform">
+                <Logo className="w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20" />
+                  </div>
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="start" className="text-xs">
+                {Math.max(0, state.goalMinutesPerDay - Math.floor((current.todayProgress / 100) * state.goalMinutesPerDay)) > 0
+                  ? `Read ${Math.max(0, state.goalMinutesPerDay - Math.floor((current.todayProgress / 100) * state.goalMinutesPerDay))} min today to keep your streak!`
+                  : 'Daily goal met — amazing consistency!'}
+              </TooltipContent>
+            </Tooltip>
             
             <div className="flex items-center gap-2">
               <div className="hidden lg:flex items-center gap-2">

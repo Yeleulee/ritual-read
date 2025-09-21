@@ -104,7 +104,7 @@ export const RitualMusicPlayer = () => {
 
   const Full = (
     <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-[420px] z-50">
-      <Card className="shadow-2xl border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <Card className="shadow-2xl border-border/60 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="p-4 flex gap-4">
           <div className="w-20 h-20 md:w-24 md:h-24 rounded overflow-hidden bg-muted flex items-center justify-center">
             {currentTrack ? (
@@ -117,7 +117,7 @@ export const RitualMusicPlayer = () => {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="text-sm font-semibold truncate">{currentTrack?.title || "Nothing playing"}</div>
-                <div className="text-xs text-muted-foreground truncate">{currentTrack?.channelTitle || ""}</div>
+                <div className="text-[11px] text-muted-foreground truncate">{currentTrack?.channelTitle || ""}</div>
               </div>
               <Button variant="ghost" size="icon" onClick={() => setViewMode("mini")}>
                 <Minimize2 className="w-4 h-4" />
@@ -137,6 +137,10 @@ export const RitualMusicPlayer = () => {
                 }}
               >
                 <Progress value={duration > 0 ? (currentTime / duration) * 100 : 0} className="h-1 w-full cursor-pointer" />
+              </div>
+              <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
               </div>
             </div>
 
@@ -162,6 +166,13 @@ export const RitualMusicPlayer = () => {
       </Card>
     </div>
   );
+
+function formatTime(seconds?: number) {
+  const s = Math.max(0, Math.floor(seconds || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, '0')}`;
+}
 
   return (
     <>

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/Logo";
 import { Card, CardContent } from "@/components/ui/card";
 import { BookOpen, Sparkles, Timer, Shield, Brain, ArrowRight } from "lucide-react";
 import { SplineSceneBasic } from "@/components/ui/spline-demo";
@@ -10,12 +11,9 @@ const Landing = () => {
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
       <header className="container mx-auto px-4 py-4 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full overflow-hidden bg-white ring-1 ring-border shadow-sm flex items-center justify-center">
-            <img src="/logo.png" alt="Ritual Reader" className="w-full h-full object-contain p-1" />
-          </div>
-          <div className="text-lg font-semibold">Ritual Reader</div>
-        </div>
+        <Link to="/app" className="flex items-center gap-3 group">
+          <Logo className="w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20" />
+        </Link>
         <div className="flex items-center gap-2 flex-wrap">
           <Link to="/app">
             <Button variant="outline">Log In</Button>

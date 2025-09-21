@@ -10,9 +10,9 @@ export const InlineRitualAudioControls = () => {
   const currentTrack = useMusicPlayer(getCurrentTrack);
 
   return (
-    <Card className="p-3">
+    <Card className="p-3 border-border/60">
       <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded overflow-hidden bg-muted flex items-center justify-center">
+        <div className="w-12 h-12 rounded-md overflow-hidden bg-muted flex items-center justify-center shadow-sm">
           {currentTrack ? (
             <img src={currentTrack.thumbnailUrl} alt={currentTrack.title} className="w-full h-full object-cover" />
           ) : (
@@ -20,10 +20,10 @@ export const InlineRitualAudioControls = () => {
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium truncate">
+          <div className="text-sm font-semibold truncate">
             {currentTrack?.title || "No track selected"}
           </div>
-          <div className="text-xs text-muted-foreground truncate">
+          <div className="text-[11px] text-muted-foreground truncate">
             {currentTrack?.channelTitle || (queue.length ? "Ready" : "Use search to pick a track")}
           </div>
           <div className="mt-2">
@@ -38,6 +38,10 @@ export const InlineRitualAudioControls = () => {
               }}
             >
               <Progress value={duration > 0 ? (currentTime / duration) * 100 : 0} className="h-1 w-full cursor-pointer" />
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
             </div>
           </div>
         </div>
@@ -71,5 +75,12 @@ export const InlineRitualAudioControls = () => {
     </Card>
   );
 };
+
+function formatTime(seconds?: number) {
+  const s = Math.max(0, Math.floor(seconds || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, '0')}`;
+}
 
 
