@@ -87,10 +87,13 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen gradient-ethereal">
+    <div className="min-h-screen gradient-ethereal bg-grid">
       <div className="container mx-auto px-4 py-4">
         {/* Professional Header */}
-        <header className="backdrop-blur-md bg-background/80 border-b border-border/40 rounded-xl mb-6 animate-page-fade">
+        <header className="relative overflow-hidden backdrop-blur-md bg-background/80 border-b border-border/40 rounded-xl mb-6 animate-page-fade">
+          <div className="absolute inset-0 pointer-events-none opacity-60">
+            <div className="h-1.5 w-full bg-gradient-to-r from-primary/40 via-secondary/50 to-primary/40" />
+          </div>
           <div className="flex items-center justify-between px-6 py-4 gap-4">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -160,7 +163,7 @@ const Index = () => {
         </header>
 
         {/* Hero */}
-        <div className="rounded-2xl border bg-card/50 backdrop-blur p-4 md:p-6 mb-4 shadow-sm">
+        <div className="rounded-2xl border bg-card/60 backdrop-blur p-4 md:p-6 mb-2 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h2 className="text-xl md:text-2xl font-semibold tracking-tight">Transform reading into a mindful ritual</h2>
@@ -182,31 +185,32 @@ const Index = () => {
             </div>
           </div>
         </div>
+        <div className="divider-shimmer mb-4" />
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="flex w-full max-w-full mx-auto rounded-full bg-muted/40 p-1 overflow-x-auto gap-1">
-            <TabsTrigger value="library" className="flex items-center gap-2 h-8 flex-none px-3">
+          <TabsList className="flex w-full max-w-full mx-auto rounded-full bg-muted/60 backdrop-blur p-1 overflow-x-auto gap-1 shadow-sm">
+            <TabsTrigger value="library" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3">
               <Book className="w-4 h-4" />
               Library
             </TabsTrigger>
-            <TabsTrigger value="reader" className="flex items-center gap-2 h-8 flex-none px-3" disabled={!currentBook}>
+            <TabsTrigger value="reader" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3" disabled={!currentBook}>
               <BookOpen className="w-4 h-4" />
               Reader
             </TabsTrigger>
-            <TabsTrigger value="cloud" className="flex items-center gap-2 h-8 flex-none px-3">
+            <TabsTrigger value="cloud" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3">
               <BookOpen className="w-4 h-4" />
               Cloud
             </TabsTrigger>
-            <TabsTrigger value="progress" className="flex items-center gap-2 h-8 flex-none px-3">
+            <TabsTrigger value="progress" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3">
               <TrendingUp className="w-4 h-4" />
               Progress
             </TabsTrigger>
-            <TabsTrigger value="streaks" className="flex items-center gap-2 h-8 flex-none px-3">
+            <TabsTrigger value="streaks" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3">
               <Flame className="w-4 h-4" />
               Streaks
             </TabsTrigger>
-            <TabsTrigger value="assistant" className="flex items-center gap-2 h-8 flex-none px-3">
+            <TabsTrigger value="assistant" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3">
               <BookOpen className="w-4 h-4" />
               Assistant
             </TabsTrigger>

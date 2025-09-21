@@ -12,11 +12,17 @@ import {
   BookOpen,
   Clock,
   Eye,
-  MessageSquare
+  MessageSquare,
+  ChevronLeft,
+  ChevronRight,
+  List,
+  Maximize2,
+  Minimize2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PdfReader } from "@/components/readers/PdfReader";
 import { EpubReader } from "@/components/readers/EpubReader";
+import { TextFlipBook } from "@/components/readers/TextFlipBook";
 import { AiChat } from "@/components/AiChat";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -51,6 +57,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
   const { addSeconds } = useReadingStats();
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [chaptersOpen, setChaptersOpen] = useState(false);
+  const [mobileFullscreen, setMobileFullscreen] = useState(false);
 
   // Sample content for demonstration
   const sampleContent = book.content || `
@@ -101,6 +108,15 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       } catch {}
     }, 0);
   }, [book.id]);
+
+  // Lock body scroll when mobile fullscreen is active
+  useEffect(() => {
+    if (mobileFullscreen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [mobileFullscreen]);
 
   // Reading session timer
   useEffect(() => {
@@ -194,17 +210,12 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       );
     }
     return (
-      <div 
-        className="reading-text transition-ritual leading-relaxed"
-        style={{ 
-          fontSize: `${fontSize}px`,
-          textAlign: 'justify',
-          columnCount: typeof window !== 'undefined' && window.innerWidth > 768 ? 2 : 1,
-          columnGap: '2rem'
-        }}
-      >
-        {getTextPageContent(pageNumber)}
-      </div>
+      <TextFlipBook
+        content={sampleContent}
+        wordsPerPage={wordsPerPage}
+        currentPage={clampPage(pageNumber)}
+        onPageChange={(p) => setCurrentPage(clampPage(p))}
+      />
     );
   };
 
@@ -299,12 +310,12 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
             Library
           </Button>
           <div>
-            <h1 className="text-2xl font-bold ritual-heading">{book.title}</h1>
+            <h1 className="text-2xl font-bold ritual-heading" style={{ WebkitTextFillColor: 'unset' }}>{book.title}</h1>
             <p className="text-muted-foreground">by {book.author}</p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
+        <div className="hidden md:flex items-center space-x-4">
           <Badge variant="outline" className="flex items-center gap-2">
             <Clock className="w-3 h-3" />
             {formatTime(readingTime)}
@@ -370,20 +381,18 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
         {/* Reading Content (fixed span to avoid layout shifts) */}
       <div 
         ref={readingAreaRef}
-          className={`md:col-span-4 lg:col-span-4 relative md:h-[600px] h-[70vh] animate-page-fade cursor-pointer select-none z-[1]`}
+          className={`md:col-span-4 lg:col-span-4 relative md:h-[600px] h-[70vh] pb-24 md:pb-0 animate-page-fade cursor-pointer select-none z-[1]`}
           tabIndex={-1}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-            <Card className={`${isReading ? 'focus-glow' : ''} h-full`}>
-              <CardContent className="p-4 md:p-8 h-full flex flex-col justify-center">
-                {renderPageContent(currentPage)}
-          </CardContent>
-        </Card>
+            <div className={`${isReading ? 'focus-glow' : ''} h-full rounded-lg overflow-hidden border` }>
+              {renderPageContent(currentPage)}
+            </div>
         
             {/* Click/Tap zones */}
-            <button aria-label="Previous page" className="absolute inset-y-0 left-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} />
-            <button aria-label="Next page" className="absolute inset-y-0 right-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} />
+            <button aria-label="Previous page" className="absolute top-0 left-0 bottom-24 md:bottom-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} />
+            <button aria-label="Next page" className="absolute top-0 right-0 bottom-24 md:bottom-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} />
           </div>
 
           {/* Side Assistant (visible on large screens when opened) */}
@@ -411,8 +420,46 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
         </SheetContent>
       </Sheet>
 
-      {/* Page Navigation */}
-      <div className="flex items-center justify-between animate-page-fade">
+      {/* Mobile fullscreen overlay */}
+      {mobileFullscreen && (
+        <div className="fixed inset-0 z-50 bg-background">
+          <div className="relative h-full pb-20">
+            <div className="h-full rounded-none overflow-hidden border-0">
+              {renderPageContent(currentPage)}
+            </div>
+            {/* Tap zones */}
+            <button aria-label="Previous page" className="absolute top-0 left-0 bottom-20 w-1/2 z-10 opacity-0" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} />
+            <button aria-label="Next page" className="absolute top-0 right-0 bottom-20 w-1/2 z-10 opacity-0" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} />
+          </div>
+          {/* Toolbar inside fullscreen */}
+          <div className="fixed bottom-0 inset-x-0 z-50 bg-background/95 backdrop-blur border-t">
+            <div className="px-3 py-2 flex items-center justify-between gap-3">
+              <Button size="sm" variant="ghost" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} className="h-11 w-11 p-0">
+                <ChevronLeft className="w-6 h-6" />
+              </Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" className="h-10" onClick={() => setChaptersOpen(true)}>
+                  <List className="w-5 h-5 mr-1" />Chapters
+                </Button>
+                <Button size="sm" variant={assistantOpen ? 'destructive' : 'outline'} className="h-10" onClick={() => setAssistantOpen(true)}>
+                  <MessageSquare className="w-5 h-5 mr-1" />Ask AI
+                </Button>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} className="h-11 w-11 p-0">
+                <ChevronRight className="w-6 h-6" />
+              </Button>
+            </div>
+            <div className="px-3 pb-2 flex items-center justify-center">
+              <Button size="sm" variant="secondary" onClick={() => setMobileFullscreen(false)} className="h-8">
+                <Minimize2 className="w-4 h-4 mr-1" /> Exit Fullscreen
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Page Navigation (desktop) */}
+      <div className="hidden md:flex items-center justify-between animate-page-fade">
         <Button variant="outline" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} className="transition-ritual">Previous Page</Button>
         <div className="flex items-center space-x-2">
           {Array.from({ length: Math.min(5, effectiveTotalPages) }, (_, i) => {
@@ -430,6 +477,29 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
           )}
         </div>
         <Button variant="outline" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} className="transition-ritual">Next Page</Button>
+      </div>
+
+      {/* Mobile bottom toolbar */}
+      <div className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-background/95 backdrop-blur border-t">
+        <div className="container mx-auto px-3 py-2 flex items-center justify-between gap-3">
+          <Button size="sm" variant="ghost" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} className="h-11 w-11 p-0">
+            <ChevronLeft className="w-6 h-6" />
+          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" className="h-10" onClick={() => setChaptersOpen(true)}>
+              <List className="w-5 h-5 mr-1" />Chapters
+            </Button>
+            <Button size="sm" variant={assistantOpen ? 'destructive' : 'outline'} className="h-10" onClick={() => setAssistantOpen(true)}>
+              <MessageSquare className="w-5 h-5 mr-1" />Ask AI
+            </Button>
+            <Button size="sm" variant={mobileFullscreen ? 'destructive' : 'ritual'} className="h-10" onClick={() => setMobileFullscreen(v => !v)}>
+              {mobileFullscreen ? (<><Minimize2 className="w-4 h-4 mr-1" />Exit</>) : (<><Maximize2 className="w-4 h-4 mr-1" />Fullscreen</>)}
+            </Button>
+          </div>
+          <Button size="sm" variant="ghost" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} className="h-11 w-11 p-0">
+            <ChevronRight className="w-6 h-6" />
+          </Button>
+        </div>
       </div>
     </div>
   );

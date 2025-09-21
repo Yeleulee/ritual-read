@@ -83,9 +83,9 @@ export const AiChat = ({ context = "", compact = false }: AiChatProps) => {
     <div className="max-w-4xl mx-auto space-y-4">
       {/* Controls removed per request */}
 
-      <Card className="h-[60vh] md:h-[520px]">
+      <Card className="h-[55vh] md:h-[520px]">
         <CardContent className="p-0 h-full flex flex-col">
-          <div ref={scrollRef} className="flex-1 overflow-auto p-4 space-y-3 bg-background">
+          <div ref={scrollRef} className="flex-1 overflow-auto p-3 md:p-4 space-y-3 bg-background">
             {messages.length === 0 && (
               <div className="flex items-center gap-3 text-sm text-muted-foreground">
                 <div className="w-10 h-10 rounded-full overflow-hidden bg-white ring-1 ring-primary/30 flex items-center justify-center">
@@ -115,7 +115,7 @@ export const AiChat = ({ context = "", compact = false }: AiChatProps) => {
               </div>
             )}
           </div>
-          <div className="p-3 border-t">
+          <div className="p-2 md:p-3 border-t">
             <div className="flex gap-2 items-end">
               <Textarea 
                 value={input}

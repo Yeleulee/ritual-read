@@ -44,26 +44,34 @@ export const TextFlipBook = ({ content, wordsPerPage, currentPage, onPageChange 
         maxWidth={1100}
         minHeight={300}
         maxHeight={900}
-        maxShadowOpacity={0.5}
+        maxShadowOpacity={0.8}
+        flippingTime={900}
+        usePortrait={true}
+        showPageCorners={true}
+        drawShadow={true}
         showCover={false}
         mobileScrollSupport={true}
-        className="shadow-sm"
+        className="shadow-xl"
+        style={{ perspective: '2000px' }}
         ref={flipRef}
         onFlip={(e: any) => {
           const pageIdx = e?.data || 0;
           onPageChange(pageIdx + 1);
         }}
       >
-        {pages.map((p, i) => (
-          <div className="bg-background p-8" key={i} data-density="hard">
-            <div
-              className="leading-relaxed"
-              style={{ textAlign: 'justify' }}
-            >
-              {p}
+        {pages.map((p, i) => {
+          const isLeft = i % 2 === 0;
+          return (
+            <div className={`bg-card p-6 md:p-8 border border-border ${isLeft ? 'book-page-left' : 'book-page-right'}`} key={i}>
+              <div
+                className="leading-relaxed reading-text"
+                style={{ textAlign: 'justify' }}
+              >
+                {p}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </AnyFlipBook>
     </div>
   );
