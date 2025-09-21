@@ -10,15 +10,21 @@ export const RitualMusicSearch = () => {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any[]>([]);
+  const [error, setError] = useState<string>("");
   const { playTrack, setViewMode } = useMusicPlayer();
 
   const doSearch = async (q?: string) => {
     const search = (q ?? query).trim();
     if (!search) return;
     setLoading(true);
+    setError("");
     try {
       const items = await searchYouTube(search);
       setResults(items);
+      if (items.length === 0) setError("No results. Try a different query.");
+    } catch (e: any) {
+      setResults([]);
+      setError(e?.message || "Search failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -41,6 +47,7 @@ export const RitualMusicSearch = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-3 max-h-72 overflow-auto pr-1">
+        {error && <div className="text-xs text-destructive">{error}</div>}
         {results.map((r) => (
           <Card key={r.id} className="p-2 flex gap-3 items-center">
             <div className="w-16 h-10 rounded overflow-hidden bg-muted">

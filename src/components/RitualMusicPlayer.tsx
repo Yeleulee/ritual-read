@@ -9,11 +9,9 @@ import { Pause, Play, SkipBack, SkipForward, Volume2, Minimize2, Maximize2, Musi
 import { getCurrentTrack, useMusicPlayer } from "@/hooks/use-music-player";
 
 export const RitualMusicPlayer = () => {
-  const { queue, currentIndex, isPlaying, volume, viewMode, next, prev, togglePlay, setVolume, setViewMode } = useMusicPlayer();
+  const { queue, isPlaying, volume, viewMode, next, prev, togglePlay, setVolume, setViewMode, currentTime, duration, setPlayback, requestedSeekSeconds, clearSeek } = useMusicPlayer();
   const currentTrack = useMusicPlayer(getCurrentTrack);
   const [player, setPlayer] = useState<YouTubePlayer | null>(null);
-  const [progress, setProgress] = useState(0);
-  const durationRef = useRef<number>(0);
   const intervalRef = useRef<number | null>(null);
 
   const videoId = currentTrack?.id;
@@ -43,11 +41,20 @@ export const RitualMusicPlayer = () => {
       try {
         const d = player.getDuration?.() || 0;
         const t = player.getCurrentTime?.() || 0;
-        durationRef.current = d;
-        setProgress(d > 0 ? (t / d) * 100 : 0);
+        setPlayback(t, d);
       } catch {}
     }, 500);
-  }, [player, videoId]);
+  }, [player, videoId, setPlayback]);
+
+  // Apply requested seek from store
+  useEffect(() => {
+    if (!player) return;
+    if (requestedSeekSeconds == null) return;
+    try {
+      player.seekTo(requestedSeekSeconds, true);
+    } catch {}
+    clearSeek();
+  }, [requestedSeekSeconds, player, clearSeek]);
 
   const onReady = (e: YouTubeEvent) => {
     const p = e.target as unknown as YouTubePlayer;
@@ -62,7 +69,7 @@ export const RitualMusicPlayer = () => {
   if (viewMode === "hidden") return null;
 
   const Mini = (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 z-50">
       <Card className="shadow-xl border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="p-3 flex items-center gap-3">
           <div className="w-10 h-10 rounded bg-muted flex items-center justify-center overflow-hidden">
@@ -96,10 +103,10 @@ export const RitualMusicPlayer = () => {
   );
 
   const Full = (
-    <div className="fixed bottom-4 right-4 left-4 md:left-auto md:w-[420px] z-50">
+    <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-[420px] z-50">
       <Card className="shadow-2xl border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="p-4 flex gap-4">
-          <div className="w-24 h-24 rounded overflow-hidden bg-muted flex items-center justify-center">
+          <div className="w-20 h-20 md:w-24 md:h-24 rounded overflow-hidden bg-muted flex items-center justify-center">
             {currentTrack ? (
               <img src={currentTrack.thumbnailUrl} alt={currentTrack.title} className="w-full h-full object-cover" />
             ) : (
@@ -117,11 +124,23 @@ export const RitualMusicPlayer = () => {
               </Button>
             </div>
 
-            <div className="mt-3">
-              <Progress value={progress} className="h-1" />
+            <div className="mt-3 group">
+              <div
+                className="h-3 flex items-center"
+                onClick={(e) => {
+                  const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const ratio = Math.max(0, Math.min(1, x / rect.width));
+                  const target = (duration || 0) * ratio;
+                  setPlayback(target, duration || 0);
+                  try { player?.seekTo(target, true); } catch {}
+                }}
+              >
+                <Progress value={duration > 0 ? (currentTime / duration) * 100 : 0} className="h-1 w-full cursor-pointer" />
+              </div>
             </div>
 
-            <div className="mt-3 flex items-center gap-2">
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
               <Button variant="secondary" size="icon" onClick={() => prev()} disabled={!queue.length}>
                 <SkipBack className="w-4 h-4" />
               </Button>
@@ -133,7 +152,7 @@ export const RitualMusicPlayer = () => {
               </Button>
               <div className="flex items-center gap-2 ml-2">
                 <Volume2 className="w-4 h-4 text-muted-foreground" />
-                <div className="w-32">
+                <div className="w-24 md:w-32">
                   <Slider value={[volume]} onValueChange={(v) => setVolume(v[0])} min={0} max={100} step={1} />
                 </div>
               </div>
