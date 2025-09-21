@@ -20,6 +20,24 @@ npm i
 npm run dev
 ```
 
+## Environment setup
+
+Create a `.env.local` file (not committed) and fill in secrets:
+
+```bash
+# .env.local
+VITE_YOUTUBE_API_KEY=your_youtube_key
+# or
+NEXT_PUBLIC_YOUTUBE_API_KEY=your_youtube_key
+
+# Optional: if using Supabase Edge Functions proxy
+VITE_SUPABASE_FUNCTIONS_URL=https://<project-ref>.functions.supabase.co
+```
+
+Security:
+- `.env`, `.env.*`, and `.env.local` are ignored by git via `.gitignore`.
+- Do not commit real API keys. Use `.env.local` locally and deployment env vars in your hosting.
+
 **Edit a file directly in GitHub**
 
 - Navigate to the desired file(s).
