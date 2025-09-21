@@ -60,6 +60,23 @@ export const RitualMusicPlayer = () => {
     const p = e.target as unknown as YouTubePlayer;
     setPlayer(p);
     try { p.setVolume(volume); } catch {}
+    // Prevent browser Picture-in-Picture/miniplayer UI by removing permission from the iframe
+    try {
+      // @ts-ignore
+      const iframe: HTMLIFrameElement | null = (e?.target as any)?.getIframe ? (e.target as any).getIframe() : null;
+      if (iframe) {
+        iframe.setAttribute('allow', 'autoplay; encrypted-media');
+        iframe.setAttribute('disablepictureinpicture', 'true');
+        iframe.setAttribute('controlslist', 'nodownload noplaybackrate nofullscreen');
+        iframe.style.position = 'fixed';
+        iframe.style.top = '-10000px';
+        iframe.style.left = '-10000px';
+        iframe.style.width = '1px';
+        iframe.style.height = '1px';
+        iframe.style.opacity = '0';
+        iframe.style.pointerEvents = 'none';
+      }
+    } catch {}
   };
 
   const onEnd = () => {
@@ -176,12 +193,31 @@ function formatTime(seconds?: number) {
 
   return (
     <>
-      {/* Hidden YouTube player to keep playback persistent */}
-      <div className="fixed -left-[9999px] -top-[9999px]">
+      {/* Hidden YouTube player to keep audio persistent (never visible) */}
+      <div
+        aria-hidden
+        style={{ position: 'fixed', top: -10000, left: -10000, width: 1, height: 1, opacity: 0, pointerEvents: 'none', zIndex: -1 }}
+      >
         {videoId ? (
           <YouTube
             videoId={videoId}
-            opts={{ playerVars: { autoplay: 1 } }}
+            className="w-[1px] h-[1px] opacity-0 pointer-events-none"
+            iframeClassName="w-[1px] h-[1px] opacity-0 pointer-events-none"
+            opts={{
+              height: '1',
+              width: '1',
+              playerVars: {
+                autoplay: 1,
+                controls: 0,
+                modestbranding: 1,
+                rel: 0,
+                playsinline: 1,
+                disablekb: 1,
+                iv_load_policy: 3,
+                // Attempt to prevent PiP/miniplayer UI
+                fs: 0,
+              },
+            }}
             onReady={onReady}
             onEnd={onEnd}
           />

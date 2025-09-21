@@ -11,8 +11,13 @@ const Landing = () => {
     <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
       <header className="container mx-auto px-4 py-4 flex items-center justify-between gap-3 flex-wrap">
-        <Link to="/app" className="flex items-center gap-3 group">
-          <Logo className="w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20" />
+        <Link to="/app" className="flex items-center group">
+          <span
+            className="text-2xl sm:text-3xl font-medium bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent"
+            style={{ fontFamily: 'Great Vibes, cursive' }}
+          >
+            Ritual
+          </span>
         </Link>
         <div className="flex items-center gap-2 flex-wrap">
           <Link to="/app">
@@ -34,7 +39,42 @@ const Landing = () => {
         <GlowingEffectDemo />
       </section>
 
-      {/* Features section removed - now using the glowing grid above */}
+      {/* Key Features */}
+      <section id="features" className="container mx-auto px-4 py-10 md:py-12">
+        <div className="text-center mb-6 md:mb-8">
+          <h2 className="text-2xl md:text-3xl font-semibold">Why Ritual</h2>
+          <p className="text-sm md:text-base text-muted-foreground mt-2">Focused reading, gentle motivation, and tools that stay out of your way.</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+          <Card className="p-5 md:p-6">
+            <div className="flex items-start gap-3">
+              <BookOpen className="w-5 h-5 text-primary shrink-0" />
+              <div>
+                <div className="font-medium">Beautiful Reader</div>
+                <p className="text-sm text-muted-foreground mt-1">EPUB/PDF support, adjustable typography, and distraction-free paging with large tap targets on phones.</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-5 md:p-6">
+            <div className="flex items-start gap-3">
+              <Timer className="w-5 h-5 text-primary shrink-0" />
+              <div>
+                <div className="font-medium">Streaks & Ritual Music</div>
+                <p className="text-sm text-muted-foreground mt-1">Stay consistent with daily goals and play background audio via YouTube while you read.</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-5 md:p-6">
+            <div className="flex items-start gap-3">
+              <Brain className="w-5 h-5 text-primary shrink-0" />
+              <div>
+                <div className="font-medium">Built‑in Assistant</div>
+                <p className="text-sm text-muted-foreground mt-1">Summaries and Q&A in a phone‑friendly sheet on mobile and a side panel on desktop.</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </section>
 
       {/* Trust strip */}
       <section className="container mx-auto px-4 py-8">

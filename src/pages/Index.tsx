@@ -15,7 +15,6 @@ import { Book, BookOpen, TrendingUp, Flame, Moon, Sun, Home, LogOut } from "luci
 import { Link } from "react-router-dom";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { Logo } from "@/components/Logo";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 
@@ -95,10 +94,13 @@ const Index = () => {
           <div className="flex items-center justify-between px-6 py-4 gap-4">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Link to="/" className="flex items-center space-x-4 group" aria-label="Ritual Reader Home">
-              <div className="relative group-hover:scale-105 transition-transform">
-                <Logo className="w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20" />
-                  </div>
+                <Link to="/" className="flex items-center group" aria-label="Ritual Reader Home">
+                  <span
+                    className="text-2xl sm:text-3xl font-medium bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent"
+                    style={{ fontFamily: 'Great Vibes, cursive' }}
+                  >
+                    Ritual
+                  </span>
                 </Link>
               </TooltipTrigger>
               <TooltipContent side="bottom" align="start" className="text-xs">

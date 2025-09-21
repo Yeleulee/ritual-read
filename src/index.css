@@ -151,6 +151,11 @@ All colors MUST be HSL for proper theming.
   }
 }
 
+/* Hint browsers to keep animation smooth */
+.will-change-transform {
+  will-change: transform;
+}
+
 @layer components {
   /* Ritual-specific component styles */
   .ritual-glow {

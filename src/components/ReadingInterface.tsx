@@ -376,25 +376,40 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
         onTouchEnd={handleTouchEnd}
       >
             <Card className={`${isReading ? 'focus-glow' : ''} h-full`}>
-              <CardContent className="p-6 md:p-8 h-full flex flex-col justify-center">
+              <CardContent className="p-4 md:p-8 h-full flex flex-col justify-center">
                 {renderPageContent(currentPage)}
           </CardContent>
         </Card>
         
             {/* Click/Tap zones */}
-            <button aria-label="Previous page" className="absolute inset-y-0 left-0 w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} />
-            <button aria-label="Next page" className="absolute inset-y-0 right-0 w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} />
+            <button aria-label="Previous page" className="absolute inset-y-0 left-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} />
+            <button aria-label="Next page" className="absolute inset-y-0 right-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} />
           </div>
 
           {/* Side Assistant (visible on large screens when opened) */}
           {assistantOpen && (
-            <Card className="lg:col-span-2 h-[600px] overflow-hidden hidden lg:flex">
-              <CardContent className="p-0 h-full w-full">
-                <AiChat context={pageText} compact />
-              </CardContent>
-            </Card>
+            <>
+              {/* Desktop side panel */}
+              <Card className="lg:col-span-2 h-[600px] overflow-hidden hidden lg:flex">
+                <CardContent className="p-0 h-full w-full">
+                  <AiChat context={pageText} compact />
+                </CardContent>
+              </Card>
+            </>
           )}
       </div>
+
+      {/* Assistant mobile bottom sheet */}
+      <Sheet open={assistantOpen} onOpenChange={setAssistantOpen}>
+        <SheetContent side="bottom" className="lg:hidden h-[70vh] p-0">
+          <SheetHeader className="px-4 py-2">
+            <SheetTitle>Assistant</SheetTitle>
+          </SheetHeader>
+          <div className="h-[calc(70vh-48px)]">
+            <AiChat context={pageText} compact />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Page Navigation */}
       <div className="flex items-center justify-between animate-page-fade">

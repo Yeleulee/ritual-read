@@ -15,7 +15,7 @@ export function SplineSceneBasic() {
         fill="white"
       />
       
-      <div className="flex flex-col md:flex-row h-full">
+      <div className="flex flex-col-reverse md:flex-row h-full">
         {/* Left content */}
         <div className="flex-1 p-6 md:p-8 relative z-10 flex flex-col justify-center">
           <h1 className="text-3xl md:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400">
@@ -38,10 +38,10 @@ export function SplineSceneBasic() {
         </div>
 
         {/* Right content */}
-        <div className="flex-1 relative min-h-[240px] md:min-h-0">
+        <div className="flex-1 relative min-h-[280px] md:min-h-0">
           <SplineScene 
             scene="https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode"
-            className="w-full h-full"
+            className="w-full h-full will-change-transform"
           />
         </div>
       </div>
