@@ -2,10 +2,9 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { Card, CardContent } from "@/components/ui/card";
-import { BookOpen, Sparkles, Timer, Shield, Brain, ArrowRight, Flame, Headphones } from "lucide-react";
+import { BookOpen, Sparkles, Timer, Shield, Brain, ArrowRight } from "lucide-react";
 import { SplineSceneBasic } from "@/components/ui/spline-demo";
 import { GlowingEffectDemo } from "@/components/ui/glowing-effect-demo";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 const Landing = () => {
   return (
@@ -74,54 +73,6 @@ const Landing = () => {
               </div>
             </div>
           </Card>
-        </div>
-      </section>
-
-      {/* Stats strip */}
-      <section className="container mx-auto px-4 pb-6">
-        <div className="rounded-2xl border bg-card/60 backdrop-blur p-5 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
-          <div>
-            <div className="text-2xl font-semibold">5,000+</div>
-            <div className="text-sm text-muted-foreground mt-1">Books imported</div>
-          </div>
-          <div>
-            <div className="text-2xl font-semibold">32 min</div>
-            <div className="text-sm text-muted-foreground mt-1">Average session</div>
-          </div>
-          <div>
-            <div className="text-2xl font-semibold">12‑day</div>
-            <div className="text-sm text-muted-foreground mt-1">Median streak</div>
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="container mx-auto px-4 py-10 md:py-12">
-        <div className="text-center mb-6 md:mb-8">
-          <h2 className="text-2xl md:text-3xl font-semibold">FAQs</h2>
-          <p className="text-sm md:text-base text-muted-foreground mt-2">Quick answers about importing, music, and the assistant.</p>
-        </div>
-        <div className="max-w-3xl mx-auto">
-          <Accordion type="single" collapsible className="w-full">
-            <AccordionItem value="item-1">
-              <AccordionTrigger>Can I listen to music in the background?</AccordionTrigger>
-              <AccordionContent>
-                Yes. Use the Ritual Music button to search YouTube and play audio while you read. The mini player persists across tabs and supports play/pause, next/prev, and volume.
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="item-2">
-              <AccordionTrigger>How do I import EPUB or PDF?</AccordionTrigger>
-              <AccordionContent>
-                Open the Library and click Add Book. You can upload TXT, EPUB, or PDF. Covers are generated automatically; PDFs render natively and EPUBs use a dedicated viewer.
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="item-3">
-              <AccordionTrigger>Does the assistant work offline?</AccordionTrigger>
-              <AccordionContent>
-                The assistant uses online models. On mobile, it opens in a bottom sheet so it never blocks your reading. You can pass the current page text as context.
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
         </div>
       </section>
 
