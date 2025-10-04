@@ -12,8 +12,8 @@ export const AuthForm = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn, signUp, signInWithGoogle } = useAuth();
   const [googleLoading, setGoogleLoading] = useState(false);
+  const { signIn, signUp, signInWithGoogle } = useAuth();
   const { toast } = useToast();
 
   const handleSignIn = async (e: React.FormEvent) => {
@@ -62,35 +62,25 @@ export const AuthForm = () => {
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
+    
     try {
       const { error } = await signInWithGoogle();
+      
       if (error) {
-        let errorMessage = error.message || "Failed to authenticate with Google.";
-        
-        // Provide more user-friendly error messages
-        if (error.code === 'auth/popup-closed-by-user') {
-          errorMessage = "Sign-in popup was closed. Please try again.";
-        } else if (error.code === 'auth/unauthorized-domain') {
-          errorMessage = "This domain is not authorized for Google sign-in. Please contact support.";
-        } else if (error.code === 'auth/operation-not-allowed') {
-          errorMessage = "Google sign-in is not enabled. Please contact support.";
-        } else if (error.code === 'auth/network-request-failed') {
-          errorMessage = "Network error. Please check your internet connection.";
-        }
-        
+        console.error('Google sign in error:', error);
         toast({
           title: "Google Sign In Failed",
-          description: errorMessage,
+          description: error.message || "Failed to authenticate with Google. Please try again.",
           variant: "destructive",
         });
         setGoogleLoading(false);
       }
-      // On success, auth state change will be handled by the AuthProvider
-    } catch (err: any) {
-      console.error('Unexpected Google sign-in error:', err);
+      // If successful, user will be redirected to Google OAuth
+    } catch (err) {
+      console.error('Google sign in exception:', err);
       toast({
         title: "Google Sign In Error",
-        description: err?.message || "Unexpected error during Google sign-in.",
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
       setGoogleLoading(false);
@@ -128,14 +118,14 @@ export const AuthForm = () => {
                   {!googleLoading && <Mail className="mr-2 h-4 w-4" />}
                   Continue with Google
                 </Button>
-
+                
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
                     <span className="bg-background px-2 text-muted-foreground">
-                      Or continue with email
+                      Or continue with
                     </span>
                   </div>
                 </div>
@@ -181,14 +171,14 @@ export const AuthForm = () => {
                   {!googleLoading && <Mail className="mr-2 h-4 w-4" />}
                   Continue with Google
                 </Button>
-
+                
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
                     <span className="bg-background px-2 text-muted-foreground">
-                      Or continue with email
+                      Or continue with
                     </span>
                   </div>
                 </div>
