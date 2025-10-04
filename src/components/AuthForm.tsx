@@ -74,13 +74,8 @@ export const AuthForm = () => {
           variant: "destructive",
         });
         setGoogleLoading(false);
-      } else {
-        toast({
-          title: "Welcome!",
-          description: "You've successfully signed in with Google.",
-        });
       }
-      // If successful, user state will be updated and component will unmount
+      // If successful, user will be redirected to Google OAuth
     } catch (err) {
       console.error('Google sign in exception:', err);
       toast({
@@ -130,7 +125,7 @@ export const AuthForm = () => {
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
                     <span className="bg-background px-2 text-muted-foreground">
-                      Or continue with email
+                      Or continue with
                     </span>
                   </div>
                 </div>
@@ -183,7 +178,7 @@ export const AuthForm = () => {
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
                     <span className="bg-background px-2 text-muted-foreground">
-                      Or continue with email
+                      Or continue with
                     </span>
                   </div>
                 </div>

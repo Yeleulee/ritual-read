@@ -2,14 +2,8 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// Load Supabase configuration from environment variables for security
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-
-// Validate configuration
-if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  console.error('Missing Supabase configuration. Please check your .env file.');
-}
+const SUPABASE_URL = "https://liqdfaxmmqpovjptmaxe.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpcWRmYXhtbXFwb3ZqcHRtYXhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc3MDA1NzIsImV4cCI6MjA3MzI3NjU3Mn0.z8M6IHHaueOl_ZLfkvd_r_Hd_OAmmLZ9B7L3aGQv_XE";
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
