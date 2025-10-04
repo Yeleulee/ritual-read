@@ -65,15 +65,29 @@ export const AuthForm = () => {
     try {
       const { error } = await signInWithGoogle();
       if (error) {
+        let errorMessage = error.message || "Failed to authenticate with Google.";
+        
+        // Provide more user-friendly error messages
+        if (error.code === 'auth/popup-closed-by-user') {
+          errorMessage = "Sign-in popup was closed. Please try again.";
+        } else if (error.code === 'auth/unauthorized-domain') {
+          errorMessage = "This domain is not authorized for Google sign-in. Please contact support.";
+        } else if (error.code === 'auth/operation-not-allowed') {
+          errorMessage = "Google sign-in is not enabled. Please contact support.";
+        } else if (error.code === 'auth/network-request-failed') {
+          errorMessage = "Network error. Please check your internet connection.";
+        }
+        
         toast({
           title: "Google Sign In Failed",
-          description: error.message || "Failed to authenticate with Google.",
+          description: errorMessage,
           variant: "destructive",
         });
         setGoogleLoading(false);
       }
-      // On success, Supabase will redirect to Google; no need to set loading false here
+      // On success, auth state change will be handled by the AuthProvider
     } catch (err: any) {
+      console.error('Unexpected Google sign-in error:', err);
       toast({
         title: "Google Sign In Error",
         description: err?.message || "Unexpected error during Google sign-in.",

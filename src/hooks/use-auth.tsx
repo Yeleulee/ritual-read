@@ -7,6 +7,7 @@ import {
   firebaseSignOut,
   onAuthStateChange,
   getCurrentUser,
+  getRedirectResult,
 } from '@/lib/firebase-auth-helpers';
 
 interface AuthContextType {
@@ -25,8 +26,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setUser(getCurrentUser());
-    setLoading(false);
+    // Check for redirect result first (for Google redirect flow)
+    const checkRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult();
+        if (result) {
+          // User successfully signed in via redirect
+          setUser(result.user);
+        } else {
+          // No redirect result, check current user
+          setUser(getCurrentUser());
+        }
+      } catch (error) {
+        console.error('Error handling redirect result:', error);
+        setUser(getCurrentUser());
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkRedirectResult();
 
     const unsubscribe = onAuthStateChange((firebaseUser) => {
       setUser(firebaseUser);
