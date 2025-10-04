@@ -6,13 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Mail } from 'lucide-react';
 
 export const AuthForm = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, signInWithGoogle } = useAuth();
+  const [googleLoading, setGoogleLoading] = useState(false);
   const { toast } = useToast();
 
   const handleSignIn = async (e: React.FormEvent) => {
@@ -59,6 +60,29 @@ export const AuthForm = () => {
     setLoading(false);
   };
 
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    try {
+      const { error } = await signInWithGoogle();
+      if (error) {
+        toast({
+          title: "Google Sign In Failed",
+          description: error.message || "Failed to authenticate with Google.",
+          variant: "destructive",
+        });
+        setGoogleLoading(false);
+      }
+      // On success, Supabase will redirect to Google; no need to set loading false here
+    } catch (err: any) {
+      toast({
+        title: "Google Sign In Error",
+        description: err?.message || "Unexpected error during Google sign-in.",
+        variant: "destructive",
+      });
+      setGoogleLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
@@ -79,7 +103,30 @@ export const AuthForm = () => {
             </TabsList>
             
             <TabsContent value="signin">
-              <form onSubmit={handleSignIn} className="space-y-4">
+              <div className="space-y-4">
+                <Button
+                  onClick={handleGoogleSignIn}
+                  variant="outline"
+                  className="w-full"
+                  disabled={googleLoading || loading}
+                >
+                  {googleLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {!googleLoading && <Mail className="mr-2 h-4 w-4" />}
+                  Continue with Google
+                </Button>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Or continue with email
+                    </span>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSignIn} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="signin-email">Email</Label>
                     <Input
@@ -100,15 +147,39 @@ export const AuthForm = () => {
                       required
                     />
                   </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
+                  <Button type="submit" className="w-full" disabled={loading || googleLoading}>
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Sign In
                   </Button>
                 </form>
+              </div>
             </TabsContent>
             
             <TabsContent value="signup">
-              <form onSubmit={handleSignUp} className="space-y-4">
+              <div className="space-y-4">
+                <Button
+                  onClick={handleGoogleSignIn}
+                  variant="outline"
+                  className="w-full"
+                  disabled={googleLoading || loading}
+                >
+                  {googleLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {!googleLoading && <Mail className="mr-2 h-4 w-4" />}
+                  Continue with Google
+                </Button>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Or continue with email
+                    </span>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSignUp} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">Email</Label>
                     <Input
@@ -130,11 +201,12 @@ export const AuthForm = () => {
                       minLength={6}
                     />
                   </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
+                  <Button type="submit" className="w-full" disabled={loading || googleLoading}>
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Sign Up
                   </Button>
                 </form>
+              </div>
             </TabsContent>
           </Tabs>
         </CardContent>
