@@ -1,98 +1,135 @@
 # Google Authentication Setup Guide
 
-## Issue Fixed
-The Google login functionality has been updated with:
-- ✅ Better error handling and logging
-- ✅ Improved popup/redirect flow
-- ✅ Redirect result handling after authentication
+## ✅ Implementation Complete
+The Google login functionality has been implemented with:
+- ✅ Google OAuth sign-in button
+- ✅ Error handling and user feedback
+- ✅ Seamless redirect flow
+- ✅ Session persistence
 - ✅ User-friendly error messages
-- ✅ Google Provider configuration for better UX
 
-## Firebase Console Configuration
+## Supabase Configuration
 
-To ensure Google authentication works properly, verify these settings in your Firebase Console:
+Your app uses **Supabase** for authentication. Follow these steps to configure Google OAuth:
 
-### 1. Enable Google Sign-In Provider
+### 1. Configure Google OAuth in Supabase Dashboard
 
-1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Select your project: **ritual-5141b**
-3. Navigate to **Authentication** → **Sign-in method**
+1. Go to [Supabase Dashboard](https://app.supabase.com/)
+2. Select your project: **liqdfaxmmqpovjptmaxe**
+3. Navigate to **Authentication** → **Providers**
 4. Find **Google** in the list of providers
-5. Click **Enable** if not already enabled
-6. Set your **Project support email**
-7. Click **Save**
+5. Click to enable it and configure:
+   - **Enable Google provider**: Toggle ON
+   - **Client ID**: Paste your Google OAuth Client ID
+   - **Client Secret**: Paste your Google OAuth Client Secret
+6. Click **Save**
 
-### 2. Configure Authorized Domains
-
-1. In **Authentication** → **Settings** → **Authorized domains**
-2. Ensure these domains are added:
-   - `localhost` (for local development)
-   - Your production domain (e.g., `your-app.com`)
-   - Your deployment domain (if using services like Vercel, Netlify, etc.)
-
-### 3. OAuth Consent Screen (Google Cloud Console)
-
-If you encounter "unauthorized_client" errors:
+### 2. Get Google OAuth Credentials
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Select your project
-3. Navigate to **APIs & Services** → **OAuth consent screen**
-4. Configure the consent screen:
-   - Add your app name
-   - Add support email
-   - Add authorized domains
-5. Go to **Credentials**
-6. Find your OAuth 2.0 Client ID
-7. Add authorized redirect URIs:
-   - `https://ritual-5141b.firebaseapp.com/__/auth/handler`
-   - `http://localhost` (for local development)
-   - Your production domain callback URLs
+2. Create a new project or select existing project
+3. Navigate to **APIs & Services** → **Credentials**
+4. Click **+ CREATE CREDENTIALS** → **OAuth client ID**
+5. Select **Web application**
+6. Configure:
+   - **Name**: Ritual Reader (or your app name)
+   - **Authorized JavaScript origins**:
+     - `http://localhost:5173` (for local development)
+     - `http://localhost:3000` (alternative local port)
+     - Your production domain (e.g., `https://your-app.com`)
+   - **Authorized redirect URIs**:
+     - `https://liqdfaxmmqpovjptmaxe.supabase.co/auth/v1/callback`
+     - Any additional production redirect URIs
+7. Click **Create**
+8. Copy the **Client ID** and **Client Secret**
 
-## Testing the Fix
+### 3. Configure OAuth Consent Screen
+
+1. In Google Cloud Console, go to **APIs & Services** → **OAuth consent screen**
+2. Select **External** user type (or Internal if using Google Workspace)
+3. Fill in required information:
+   - **App name**: Ritual Reader
+   - **User support email**: Your email
+   - **Developer contact information**: Your email
+4. Add scopes (recommended):
+   - `userinfo.email`
+   - `userinfo.profile`
+5. Save and continue
+
+### 4. Configure Supabase Redirect URLs
+
+1. In Supabase Dashboard → **Authentication** → **URL Configuration**
+2. Add your redirect URLs:
+   - **Site URL**: Your production URL (e.g., `https://your-app.com`)
+   - **Redirect URLs** (one per line):
+     - `http://localhost:5173`
+     - `http://localhost:3000`
+     - Your production domain
+
+## Testing the Implementation
 
 1. **Start the development server:**
    ```bash
    npm run dev
    ```
 
-2. **Open the browser console** (F12) to see authentication logs:
-   - "Attempting Google sign-in with popup..."
-   - "Google sign-in successful!" (on success)
-   - Or specific error messages (on failure)
-
-3. **Try signing in with Google:**
+2. **Test Google Sign-In:**
+   - Navigate to the login page
    - Click "Continue with Google" button
    - Select your Google account
    - Grant permissions if prompted
+   - You should be redirected back and signed in
 
-## Common Error Messages
+3. **Check Browser Console** (F12) for any errors or logs
 
-The app now provides user-friendly error messages:
+## How It Works
 
-- **"Sign-in popup was closed"** → User closed the popup before completing sign-in
-- **"This domain is not authorized"** → Need to add domain to Firebase Authorized Domains
-- **"Google sign-in is not enabled"** → Enable Google provider in Firebase Console
-- **"Network error"** → Check internet connection
+The implementation includes:
 
-## Debug Mode
+1. **AuthForm Component** (`src/components/AuthForm.tsx`):
+   - "Continue with Google" button on both Sign In and Sign Up tabs
+   - Loading states during OAuth flow
+   - Error handling with toast notifications
 
-The authentication flow now includes console logging for debugging:
-- Check browser console (F12) for detailed error messages
-- Look for error codes like `auth/popup-closed-by-user`, `auth/unauthorized-domain`, etc.
+2. **Auth Hook** (`src/hooks/use-auth.tsx`):
+   - `signInWithGoogle()` function that handles OAuth flow
+   - Automatic redirect to Google
+   - Session management after successful authentication
 
-## Support
+3. **Supabase Integration** (`src/integrations/supabase/client.ts`):
+   - Configured with your Supabase URL and key
+   - Persistent session storage
+   - Auto token refresh
 
-If you continue to experience issues:
+## Common Issues & Solutions
 
-1. Check the browser console for specific error codes
-2. Verify Firebase configuration is correct
-3. Ensure all authorized domains are added
-4. Check that Google OAuth client is properly configured in Google Cloud Console
-5. Try in incognito mode to rule out browser extension conflicts
+### "This domain is not authorized"
+- Add your domain to Google Cloud Console authorized origins
+- Add your domain to Supabase redirect URLs
 
-## Files Modified
+### "Invalid redirect URI"
+- Verify the Supabase callback URL in Google Cloud Console
+- Format: `https://[PROJECT_REF].supabase.co/auth/v1/callback`
 
-- `src/lib/firebase-auth-helpers.ts` - Enhanced error handling and logging
-- `src/hooks/use-auth.tsx` - Added redirect result handling
-- `src/components/AuthForm.tsx` - Improved error messages
+### Google popup closes without signing in
+- Check browser console for specific errors
+- Verify Google OAuth credentials are correct in Supabase
+- Try in incognito mode to rule out browser extensions
+
+### "Failed to fetch" or network errors
+- Check internet connection
+- Verify Supabase project is active
+- Check if Google OAuth is enabled in Supabase
+
+## Current Configuration
+
+- **Supabase Project**: liqdfaxmmqpovjptmaxe
+- **Supabase URL**: https://liqdfaxmmqpovjptmaxe.supabase.co
+- **OAuth Redirect URI**: `https://liqdfaxmmqpovjptmaxe.supabase.co/auth/v1/callback`
+
+## Files Implementing Google Login
+
+- `src/components/AuthForm.tsx` - Login UI with Google button
+- `src/hooks/use-auth.tsx` - Authentication logic
+- `src/integrations/supabase/client.ts` - Supabase configuration
 
