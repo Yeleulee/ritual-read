@@ -23,7 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PdfReader } from "@/components/readers/PdfReader";
 import { EpubReader } from "@/components/readers/EpubReader";
 import { TextFlipBook } from "@/components/readers/TextFlipBook";
-import { AiChat } from "@/components/AiChat";
+import { PptReader } from "@/components/readers/PptReader";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useResolvedFileUrl } from "@/hooks/use-resolved-file-url";
@@ -55,7 +55,6 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const { toast } = useToast();
   const { addSeconds } = useReadingStats();
-  const [assistantOpen, setAssistantOpen] = useState(false);
   const [chaptersOpen, setChaptersOpen] = useState(false);
   const [mobileFullscreen, setMobileFullscreen] = useState(false);
 
@@ -209,6 +208,14 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
         </div>
       );
     }
+    if (book.fileType === 'pptx' && displayUrl) {
+      console.log('ReadingInterface: Rendering PowerPoint with URL:', displayUrl);
+      return (
+        <div className="h-full">
+          <PptReader fileUrl={displayUrl} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onPageText={setPageText} />
+        </div>
+      );
+    }
     return (
       <TextFlipBook
         content={sampleContent}
@@ -297,8 +304,8 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-[env(safe-area-inset-bottom)]">
-      {/* Reading Header */}
-      <div className="flex items-center justify-between animate-page-fade gap-3 flex-wrap">
+      {/* Reading Header - Hidden for Immersion */}
+      <div className="hidden items-center justify-between animate-page-fade gap-3 flex-wrap">
         <div className="flex items-center space-x-4">
           <Button 
             variant="ghost" 
@@ -326,16 +333,9 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
           >
             {isReading ? (<><Pause className="w-4 h-4 mr-2" />Pause</>) : (<><Play className="w-4 h-4 mr-2" />Start Reading</>)}
           </Button>
-          <Button variant="outline" size="sm" className="transition-ritual">
-            <Settings className="w-4 h-4" />
-          </Button>
           <Button variant={chaptersOpen ? "destructive" : "outline"} size="sm" className="transition-ritual" onClick={() => setChaptersOpen(true)}>
             <BookOpen className="w-4 h-4 mr-2" />
             Chapters
-          </Button>
-          <Button variant={assistantOpen ? "destructive" : "outline"} size="sm" className="transition-ritual" onClick={() => setAssistantOpen(v => !v)}>
-            <MessageSquare className="w-4 h-4 mr-2" />
-            {assistantOpen ? 'Close Assistant' : 'Ask AI'}
           </Button>
         </div>
       </div>
@@ -376,49 +376,27 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
         </CardContent>
       </Card>
 
-      {/* Layout: Content | Assistant */}
-      <div className={`grid grid-cols-1 md:grid-cols-4 ${assistantOpen ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} gap-4 md:gap-6`}>
-        {/* Reading Content (fixed span to avoid layout shifts) */}
-      <div 
-        ref={readingAreaRef}
-          className={`md:col-span-4 lg:col-span-4 relative md:h-[600px] h-[70vh] pb-24 md:pb-0 animate-page-fade cursor-pointer select-none z-[1]`}
+      {/* Reading Content */}
+      <div className="relative">
+        {/* Main Reading Content */}
+        <div 
+          ref={readingAreaRef}
+          className="relative h-[85vh] md:h-[80vh] lg:h-[75vh] xl:h-[70vh] animate-page-fade cursor-pointer select-none z-[1]"
           tabIndex={-1}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
-            <div className={`${isReading ? 'focus-glow' : ''} h-full rounded-lg overflow-hidden border` }>
-              {renderPageContent(currentPage)}
-            </div>
-        
-            {/* Click/Tap zones */}
-            <button aria-label="Previous page" className="absolute top-0 left-0 bottom-24 md:bottom-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} />
-            <button aria-label="Next page" className="absolute top-0 right-0 bottom-24 md:bottom-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} />
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div className={`${isReading ? 'focus-glow' : ''} h-full rounded-lg overflow-hidden border`}>
+            {renderPageContent(currentPage)}
           </div>
+        
+          {/* Click/Tap zones */}
+          <button aria-label="Previous page" className="absolute top-0 left-0 bottom-24 md:bottom-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} />
+          <button aria-label="Next page" className="absolute top-0 right-0 bottom-24 md:bottom-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} />
+        </div>
 
-          {/* Side Assistant (visible on large screens when opened) */}
-          {assistantOpen && (
-            <>
-              {/* Desktop side panel */}
-              <Card className="lg:col-span-2 h-[600px] overflow-hidden hidden lg:flex">
-                <CardContent className="p-0 h-full w-full">
-                  <AiChat context={pageText} compact />
-                </CardContent>
-              </Card>
-            </>
-          )}
       </div>
 
-      {/* Assistant mobile bottom sheet */}
-      <Sheet open={assistantOpen} onOpenChange={setAssistantOpen}>
-        <SheetContent side="bottom" className="lg:hidden h-[70vh] p-0">
-          <SheetHeader className="px-4 py-2">
-            <SheetTitle>Assistant</SheetTitle>
-          </SheetHeader>
-          <div className="h-[calc(70vh-48px)]">
-            <AiChat context={pageText} compact />
-          </div>
-        </SheetContent>
-      </Sheet>
 
       {/* Mobile fullscreen overlay */}
       {mobileFullscreen && (
@@ -440,9 +418,6 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline" className="h-10" onClick={() => setChaptersOpen(true)}>
                   <List className="w-5 h-5 mr-1" />Chapters
-                </Button>
-                <Button size="sm" variant={assistantOpen ? 'destructive' : 'outline'} className="h-10" onClick={() => setAssistantOpen(true)}>
-                  <MessageSquare className="w-5 h-5 mr-1" />Ask AI
                 </Button>
               </div>
               <Button size="sm" variant="ghost" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} className="h-11 w-11 p-0">
@@ -488,9 +463,6 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" className="h-10" onClick={() => setChaptersOpen(true)}>
               <List className="w-5 h-5 mr-1" />Chapters
-            </Button>
-            <Button size="sm" variant={assistantOpen ? 'destructive' : 'outline'} className="h-10" onClick={() => setAssistantOpen(true)}>
-              <MessageSquare className="w-5 h-5 mr-1" />Ask AI
             </Button>
             <Button size="sm" variant={mobileFullscreen ? 'destructive' : 'ritual'} className="h-10" onClick={() => setMobileFullscreen(v => !v)}>
               {mobileFullscreen ? (<><Minimize2 className="w-4 h-4 mr-1" />Exit</>) : (<><Maximize2 className="w-4 h-4 mr-1" />Fullscreen</>)}

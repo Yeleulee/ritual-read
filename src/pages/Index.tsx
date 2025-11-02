@@ -1,7 +1,5 @@
 import { useState } from "react";
 import { BookLibrary } from "@/components/BookLibrary";
-import { CloudLibrary } from "@/components/CloudLibrary";
-import { CloudBookReader } from "@/components/CloudBookReader";
 import { ReadingInterface } from "@/components/ReadingInterface";
 import { StreakTracker } from "@/components/StreakTracker";
 import { ProgressDashboard } from "@/components/ProgressDashboard";
@@ -24,7 +22,6 @@ const Index = () => {
   const { books, loading: booksLoading, addBook, updateBookProgress, removeBook } = useBooks();
   const [currentBook, setCurrentBook] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("library");
-  const [cloudBookId, setCloudBookId] = useState<string | null>(null);
   const { current, state } = useReadingStats();
 
   // Show loading screen while checking auth
@@ -162,31 +159,6 @@ const Index = () => {
           </div>
         </header>
 
-        {/* Hero */}
-        <div className="rounded-2xl border bg-card/60 backdrop-blur p-4 md:p-6 mb-2 shadow-sm">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h2 className="text-xl md:text-2xl font-semibold tracking-tight">Transform reading into a mindful ritual</h2>
-              <p className="text-muted-foreground mt-1 text-sm">Import books, track streaks, ask AI, and enjoy a distraction-free reader.</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow h-8 px-3"
-                onClick={() => setActiveTab("library")}
-              >
-                Open Library
-              </button>
-              <button
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border bg-background hover:bg-muted h-8 px-3"
-                onClick={() => setActiveTab(currentBook ? "reader" : "assistant")}
-              >
-                {currentBook ? "Continue Reading" : "Ask Assistant"}
-              </button>
-            </div>
-          </div>
-        </div>
-        <div className="divider-shimmer mb-4" />
-
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="flex w-full max-w-full mx-auto rounded-full bg-muted/60 backdrop-blur p-1 overflow-x-auto gap-1 shadow-sm">
@@ -197,10 +169,6 @@ const Index = () => {
             <TabsTrigger value="reader" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3" disabled={!currentBook}>
               <BookOpen className="w-4 h-4" />
               Reader
-            </TabsTrigger>
-            <TabsTrigger value="cloud" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3">
-              <BookOpen className="w-4 h-4" />
-              Cloud
             </TabsTrigger>
             <TabsTrigger value="progress" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3">
               <TrendingUp className="w-4 h-4" />
@@ -239,21 +207,6 @@ const Index = () => {
                 </h3>
               </div>
             )}
-          </TabsContent>
-
-          <TabsContent value="cloud" className="animate-page-fade">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div>
-                <CloudLibrary onOpen={(id) => { setCloudBookId(id); }} />
-              </div>
-              <div>
-                {cloudBookId ? (
-                  <CloudBookReader id={cloudBookId} onBack={() => setCloudBookId(null)} />
-                ) : (
-                  <div className="text-sm text-muted-foreground">Select a cloud book to preview</div>
-                )}
-              </div>
-            </div>
           </TabsContent>
 
           <TabsContent value="progress" className="animate-page-fade">

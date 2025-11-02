@@ -49,6 +49,61 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
   });
   const { toast } = useToast();
 
+  const parseDocxFile = async (file: File) => {
+    const [pizZipModule, xmlModule] = await Promise.all([
+      import("pizzip"),
+      import("xml-js"),
+    ]);
+    const PizZip = pizZipModule.default;
+    const { xml2js } = xmlModule;
+
+    const arrayBuffer = await file.arrayBuffer();
+    const zip = new PizZip(arrayBuffer);
+    const documentFile = zip.file("word/document.xml");
+    if (!documentFile) {
+      throw new Error("Invalid DOCX file structure");
+    }
+
+    const xmlContent = documentFile.asText();
+    const parsed = xml2js(xmlContent, { compact: true, spaces: 0 }) as any;
+    const body = parsed?.["w:document"]?.["w:body"];
+    if (!body) {
+      throw new Error("Unable to read DOCX body");
+    }
+
+    const paragraphsRaw = body["w:p"];
+    const paragraphsArray = Array.isArray(paragraphsRaw) ? paragraphsRaw : [paragraphsRaw];
+    const paragraphs: string[] = [];
+
+    const extractRunsText = (run: any): string => {
+      if (!run) return "";
+      const textNode = run["w:t"];
+      if (!textNode) return "";
+      if (typeof textNode === "string") return textNode;
+      if (typeof textNode._text === "string") return textNode._text;
+      return "";
+    };
+
+    paragraphsArray.filter(Boolean).forEach((paragraph) => {
+      const runs = paragraph?.["w:r"];
+      if (!runs) return;
+      const runArray = Array.isArray(runs) ? runs : [runs];
+      const text = runArray.map(extractRunsText).join("").trim();
+      if (text) {
+        paragraphs.push(text);
+      }
+    });
+
+    const plainText = paragraphs.join("\n\n");
+    const words = plainText.split(/\s+/).filter(Boolean);
+
+    return {
+      text: plainText,
+      wordCount: words.length,
+      preview: plainText.slice(0, 8000),
+    };
+  };
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -96,9 +151,17 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
       };
 
       // Generate an object URL for supported binary formats so the readers can open them later
-      if (fileExtension && ['pdf', 'epub', 'mobi', 'azw', 'azw3'].includes(fileExtension)) {
+      if (fileExtension && ['pdf', 'epub', 'mobi', 'azw', 'azw3', 'ppt', 'pptx', 'doc', 'docx'].includes(fileExtension)) {
         fileUrl = URL.createObjectURL(file);
-        fileType = fileExtension;
+        if (fileExtension === 'pptx' || fileExtension === 'ppt') {
+          fileType = 'pptx';
+        } else if (fileExtension === 'docx') {
+          fileType = 'docx';
+        } else if (fileExtension === 'doc') {
+          fileType = 'doc';
+        } else {
+          fileType = fileExtension;
+        }
       }
 
       if (fileExtension === 'txt') {
@@ -176,6 +239,71 @@ Start reading to view the full content.`;
 
 This EPUB file has been imported but could not be fully parsed. You can still read it in the reader interface.`;
         }
+      } else if (fileExtension === 'pptx' || fileExtension === 'ppt') {
+        // Handle PowerPoint files
+        fileType = 'pptx';
+        estimatedPages = 10; // Default estimate for presentations
+        
+        content = `PowerPoint Presentation: ${newBook.title || file.name}
+
+This is a PowerPoint presentation that has been imported into your library. The slides will be displayed when you open it for viewing.
+
+File: ${file.name}
+Estimated slides: ${estimatedPages}
+
+Start viewing to see the full presentation.`;
+
+        // Generate a presentation-themed cover
+        const canvas = document.createElement('canvas');
+        canvas.width = 240;
+        canvas.height = 320;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+          grad.addColorStop(0, 'hsl(210,85%,47%)');
+          grad.addColorStop(1, 'hsl(180,85%,55%)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Draw presentation icon
+          ctx.fillStyle = 'rgba(255,255,255,0.9)';
+          ctx.font = 'bold 80px Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('📊', canvas.width / 2, canvas.height / 2);
+          
+          coverUrl = canvas.toDataURL('image/png');
+        }
+      } else if (fileExtension === 'docx') {
+        fileType = 'docx';
+        const { text, wordCount, preview } = await parseDocxFile(file);
+        content = preview;
+        estimatedPages = Math.max(1, Math.ceil(wordCount / 250));
+        if (!coverUrl) {
+          const canvas = document.createElement('canvas');
+          canvas.width = 240;
+          canvas.height = 320;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            grad.addColorStop(0, 'hsl(210,70%,50%)');
+            grad.addColorStop(1, 'hsl(280,70%,60%)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'rgba(255,255,255,0.92)';
+            ctx.font = 'bold 72px "Segoe UI", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('📝', canvas.width / 2, canvas.height / 2);
+            coverUrl = canvas.toDataURL('image/png');
+          }
+        }
+      } else if (fileExtension === 'doc') {
+        fileType = 'doc';
+        estimatedPages = newBook.totalPages || 20;
+        content = `Word Document: ${newBook.title || file.name}
+
+This .doc file has been added to your library. Open it to read the full content.`;
       } else {
         // Fallback for other formats - try to read as text
         content = await file.text();
@@ -230,11 +358,7 @@ This EPUB file has been imported but could not be fully parsed. You can still re
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold ritual-heading">Your Library</h2>
-          <p className="text-muted-foreground">Curate your mindful reading collection</p>
-        </div>
+      <div className="flex items-center justify-end">
         
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
@@ -281,12 +405,12 @@ This EPUB file has been imported but could not be fully parsed. You can still re
                 <Input
                   id="file"
                   type="file"
-                  accept=".txt,.epub,.pdf,.mobi,.azw,.azw3,.fb2,.djvu,.rtf,.doc,.docx"
+                  accept=".txt,.epub,.pdf,.mobi,.azw,.azw3,.fb2,.djvu,.rtf,.doc,.docx,.ppt,.pptx"
                   onChange={handleFileUpload}
                   className="cursor-pointer"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Supports TXT, EPUB, PDF, MOBI, AZW, FB2, DJVU, RTF, DOC, DOCX files
+                  Supports TXT, EPUB, PDF, PPT, PPTX, MOBI, AZW, FB2, DJVU, RTF, DOC, DOCX files
                 </p>
               </div>
             </div>

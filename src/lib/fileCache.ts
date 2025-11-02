@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { cacheFile, getCachedFile } from './indexedDBCache';
 
 export async function saveBookFile(file: Blob | File, userId: string): Promise<string> {
   try {
@@ -18,7 +19,11 @@ export async function saveBookFile(file: Blob | File, userId: string): Promise<s
     
     console.log('File uploaded successfully:', data.path);
     
-    return `supabase://books/${data.path}`;
+    // Cache the file locally for faster access
+    const storagePath = `supabase://books/${data.path}`;
+    await cacheFile(storagePath, file, fileExt || 'bin');
+    
+    return storagePath;
   } catch (error) {
     console.error('Failed to upload to Supabase storage:', error);
     // Fallback to blob URL for immediate use (but this won't persist)
@@ -33,6 +38,13 @@ export async function getBookFile(keyOrUrl: string): Promise<string | undefined>
     console.log('Resolving file URL:', keyOrUrl);
     
     if (keyOrUrl.startsWith('supabase://books/')) {
+      // Check IndexedDB cache first for faster access
+      const cachedBlob = await getCachedFile(keyOrUrl);
+      if (cachedBlob) {
+        console.log('Using cached file from IndexedDB');
+        return URL.createObjectURL(cachedBlob);
+      }
+      
       const path = keyOrUrl.replace('supabase://books/', '');
       console.log('Getting signed URL for path:', path);
       
@@ -42,6 +54,17 @@ export async function getBookFile(keyOrUrl: string): Promise<string | undefined>
       
       if (data?.signedUrl) {
         console.log('Successfully created signed URL');
+        
+        // Download and cache the file for faster future access
+        try {
+          const response = await fetch(data.signedUrl);
+          const blob = await response.blob();
+          const fileExt = path.split('.').pop()?.toLowerCase() || 'bin';
+          await cacheFile(keyOrUrl, blob, fileExt);
+          console.log('File cached for future use');
+        } catch (cacheError) {
+          console.warn('Failed to cache file:', cacheError);
+        }
       } else {
         console.warn('No signed URL returned from Supabase');
       }

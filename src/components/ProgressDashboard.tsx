@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -37,15 +37,21 @@ interface ProgressDashboardProps {
   books: BookItem[];
 }
 
+const Shimmer = () => (
+  <div className="animate-pulse bg-gradient-to-r from-transparent via-primary/10 to-transparent h-full w-full" />
+);
+
 export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
   // Live tracking data (minutes, streak, weekly)
   const { current, weekly } = useReadingStats();
   const isMobile = useIsMobile();
   const [compact, setCompact] = React.useState<boolean>(false as any);
+  const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
     // Auto-enable compact on mobile
     setCompact(isMobile);
+    setIsLoading(false);
   }, [isMobile]);
   // Calculate statistics
   const totalBooks = books.length;
@@ -112,7 +118,9 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
               </div>
               <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
             </div>
-            <div className={`font-semibold mb-0.5 text-foreground group-hover:text-primary transition-colors duration-300 ${compact ? 'text-[18px]' : 'text-[22px] md:text-[26px]'}`}>{totalBooks}</div>
+            <div className={`font-semibold mb-0.5 text-foreground group-hover:text-primary transition-colors duration-300 ${compact ? 'text-[18px]' : 'text-[22px] md:text-[26px]'}`}>
+              {isLoading ? <Shimmer /> : totalBooks}
+            </div>
             <div className={`text-muted-foreground ${compact ? 'text-[11px]' : 'text-[12px] md:text-[13px]'} font-medium`}>Total Library</div>
             <div className="text-xs text-primary mt-1 font-medium">+{totalBooks > 0 ? '12%' : '0%'} this month</div>
           </CardContent>
@@ -127,7 +135,9 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
               </div>
               <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-secondary group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
             </div>
-            <div className={`font-semibold mb-0.5 text-foreground group-hover:text-secondary transition-colors duration-300 ${compact ? 'text-[18px]' : 'text-[22px] md:text-[26px]'}`}>{completedBooks}</div>
+            <div className={`font-semibold mb-0.5 text-foreground group-hover:text-secondary transition-colors duration-300 ${compact ? 'text-[18px]' : 'text-[22px] md:text-[26px]'}`}>
+              {isLoading ? <Shimmer /> : completedBooks}
+            </div>
             <div className={`text-muted-foreground ${compact ? 'text-[11px]' : 'text-[12px] md:text-[13px]'} font-medium`}>Completed</div>
             <div className="text-xs text-secondary mt-1 font-medium">+{completedBooks > 0 ? '25%' : '0%'} this month</div>
           </CardContent>
@@ -142,7 +152,9 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
               </div>
               <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-emerald-600 group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
             </div>
-            <div className={`font-semibold mb-0.5 text-foreground group-hover:text-emerald-600 transition-colors duration-300 ${compact ? 'text-[18px]' : 'text-[22px] md:text-[26px]'}`}>{pagesRead}</div>
+            <div className={`font-semibold mb-0.5 text-foreground group-hover:text-emerald-600 transition-colors duration-300 ${compact ? 'text-[18px]' : 'text-[22px] md:text-[26px]'}`}>
+              {isLoading ? <Shimmer /> : pagesRead}
+            </div>
             <div className={`text-muted-foreground ${compact ? 'text-[11px]' : 'text-[12px] md:text-[13px]'} font-medium`}>Pages Read</div>
             <div className="text-xs text-emerald-600 mt-1 font-medium">+{pagesRead > 0 ? '8%' : '0%'} this week</div>
           </CardContent>
@@ -157,7 +169,9 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
               </div>
               <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-violet-600 group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
             </div>
-            <div className={`font-semibold mb-0.5 text-foreground group-hover:text-violet-600 transition-colors duration-300 ${compact ? 'text-[18px]' : 'text-[22px] md:text-[26px]'}`}>{Math.round(averageProgress)}%</div>
+            <div className={`font-semibold mb-0.5 text-foreground group-hover:text-violet-600 transition-colors duration-300 ${compact ? 'text-[18px]' : 'text-[22px] md:text-[26px]'}`}>
+              {isLoading ? <Shimmer /> : Math.round(averageProgress)}%
+            </div>
             <div className={`text-muted-foreground ${compact ? 'text-[11px]' : 'text-[12px] md:text-[13px]'} font-medium`}>Avg Progress</div>
             <div className="text-xs text-violet-600 mt-1 font-medium">Trending up</div>
           </CardContent>
@@ -191,7 +205,7 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                   <span className="font-medium">Books Read</span>
                 </div>
                 <span className="text-sm text-muted-foreground font-mono">
-                  {monthlyGoals.booksRead} / {monthlyGoals.booksTarget}
+                  {isLoading ? <Shimmer /> : `${monthlyGoals.booksRead} / ${monthlyGoals.booksTarget}`}
                 </span>
               </div>
               <Progress 
@@ -199,7 +213,7 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                 className="h-3" 
               />
               <div className="text-xs text-primary font-medium">
-                {Math.round((monthlyGoals.booksRead / monthlyGoals.booksTarget) * 100)}% Complete
+                {isLoading ? <Shimmer /> : `${Math.round((monthlyGoals.booksRead / monthlyGoals.booksTarget) * 100)}% Complete`}
               </div>
             </div>
 
@@ -212,7 +226,7 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                   <span className="font-medium">Pages Read</span>
                 </div>
                 <span className="text-sm text-muted-foreground font-mono">
-                  {monthlyGoals.pagesRead} / {monthlyGoals.pagesTarget}
+                  {isLoading ? <Shimmer /> : `${monthlyGoals.pagesRead} / ${monthlyGoals.pagesTarget}`}
                 </span>
               </div>
               <Progress 
@@ -220,7 +234,7 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                 className="h-3" 
               />
               <div className="text-xs text-focus font-medium">
-                {Math.round((monthlyGoals.pagesRead / monthlyGoals.pagesTarget) * 100)}% Complete
+                {isLoading ? <Shimmer /> : `${Math.round((monthlyGoals.pagesRead / monthlyGoals.pagesTarget) * 100)}% Complete`}
               </div>
             </div>
 
@@ -233,7 +247,7 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                   <span className="font-medium">Reading Time</span>
                 </div>
                 <span className="text-sm text-muted-foreground font-mono">
-                  {monthlyGoals.minutesRead} / {monthlyGoals.minutesTarget}m
+                  {isLoading ? <Shimmer /> : `${monthlyGoals.minutesRead} / ${monthlyGoals.minutesTarget}m`}
                 </span>
               </div>
               <Progress 
@@ -241,7 +255,7 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                 className="h-3" 
               />
               <div className="text-xs text-secondary font-medium">
-                {Math.round((monthlyGoals.minutesRead / monthlyGoals.minutesTarget) * 100)}% Complete
+                {isLoading ? <Shimmer /> : `${Math.round((monthlyGoals.minutesRead / monthlyGoals.minutesTarget) * 100)}% Complete`}
               </div>
             </div>
           </div>
@@ -303,12 +317,14 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                       fill="var(--color-minutes)" 
                       radius={[8, 8, 0, 0]}
                       maxBarSize={60}
+                      className="transition-all duration-500"
                     />
                     <Bar 
                       dataKey="pages" 
                       fill="var(--color-pages)" 
                       radius={[8, 8, 0, 0]}
                       maxBarSize={60}
+                      className="transition-all duration-500"
                     />
                   </ReBarChart>
                 </ResponsiveContainer>
@@ -317,19 +333,19 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 p-4 rounded-xl bg-gradient-to-r from-muted/30 to-muted/10">
             <div className="text-center">
-              <div className="text-lg md:text-xl font-bold text-primary">{weeklyStats.reduce((sum, day) => sum + day.minutes, 0)}</div>
+              <div className="text-lg md:text-xl font-bold text-primary">{isLoading ? <Shimmer /> : weeklyStats.reduce((sum, day) => sum + day.minutes, 0)}</div>
               <div className="text-xs text-muted-foreground font-medium">Total Minutes</div>
             </div>
             <div className="text-center">
-              <div className="text-lg md:text-xl font-bold text-secondary">{weeklyStats.reduce((sum, day) => sum + day.pages, 0)}</div>
+              <div className="text-lg md:text-xl font-bold text-secondary">{isLoading ? <Shimmer /> : weeklyStats.reduce((sum, day) => sum + day.pages, 0)}</div>
               <div className="text-xs text-muted-foreground font-medium">Total Pages</div>
             </div>
             <div className="text-center">
-              <div className="text-lg md:text-xl font-bold text-focus">{Math.round(weeklyStats.reduce((sum, day) => sum + day.minutes, 0) / 7)}</div>
+              <div className="text-lg md:text-xl font-bold text-focus">{isLoading ? <Shimmer /> : Math.round(weeklyStats.reduce((sum, day) => sum + day.minutes, 0) / 7)}</div>
               <div className="text-xs text-muted-foreground font-medium">Daily Average</div>
             </div>
             <div className="text-center">
-              <div className="text-lg md:text-xl font-bold text-accent-foreground">{weeklyStats.filter(day => day.minutes > 0).length}</div>
+              <div className="text-lg md:text-xl font-bold text-accent-foreground">{isLoading ? <Shimmer /> : weeklyStats.filter(day => day.minutes > 0).length}</div>
               <div className="text-xs text-muted-foreground font-medium">Active Days</div>
             </div>
           </div>
@@ -367,7 +383,7 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                       </div>
                       <div className="flex items-center gap-2 ml-3">
                         <Badge variant="secondary" className="text-xs font-mono">
-                          {Math.round(book.progress)}%
+                          {isLoading ? <Shimmer /> : Math.round(book.progress)}%
                         </Badge>
                         <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                       </div>
@@ -375,8 +391,8 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                     <div className="space-y-2">
                       <Progress value={book.progress} className="h-2" />
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>{Math.floor(book.progress / 100 * book.totalPages)} pages read</span>
-                        <span>{book.totalPages - Math.floor(book.progress / 100 * book.totalPages)} remaining</span>
+                        <span>{isLoading ? <Shimmer /> : Math.floor(book.progress / 100 * book.totalPages)} pages read</span>
+                        <span>{isLoading ? <Shimmer /> : book.totalPages - Math.floor(book.progress / 100 * book.totalPages)} remaining</span>
                       </div>
                     </div>
                   </div>
@@ -417,7 +433,7 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                       <div className="flex items-center gap-2 mb-1">
                         <p className="font-semibold truncate text-sm md:text-base">{book.title}</p>
                         {book.progress >= 100 && (
-                          <Badge className="bg-secondary/20 text-secondary-foreground text-xs px-1.5 py-0.5">
+                          <Badge className="bg-secondary/20 text-secondary-foreground border-secondary/30">
                             Completed
                           </Badge>
                         )}
@@ -433,7 +449,7 @@ export const ProgressDashboard = ({ books }: ProgressDashboardProps) => {
                           }) : 'Never'}
                         </div>
                         <div className="text-xs font-mono text-primary">
-                          {Math.round(book.progress)}%
+                          {isLoading ? <Shimmer /> : Math.round(book.progress)}%
                         </div>
                       </div>
                       <div className="w-1 h-8 bg-gradient-to-b from-focus to-focus/30 rounded-full" />
