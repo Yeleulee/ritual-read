@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { extractDocxContent, estimateDocxPages } from "@/lib/docx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -49,61 +50,6 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
   });
   const { toast } = useToast();
 
-  const parseDocxFile = async (file: File) => {
-    const [pizZipModule, xmlModule] = await Promise.all([
-      import("pizzip"),
-      import("xml-js"),
-    ]);
-    const PizZip = pizZipModule.default;
-    const { xml2js } = xmlModule;
-
-    const arrayBuffer = await file.arrayBuffer();
-    const zip = new PizZip(arrayBuffer);
-    const documentFile = zip.file("word/document.xml");
-    if (!documentFile) {
-      throw new Error("Invalid DOCX file structure");
-    }
-
-    const xmlContent = documentFile.asText();
-    const parsed = xml2js(xmlContent, { compact: true, spaces: 0 }) as any;
-    const body = parsed?.["w:document"]?.["w:body"];
-    if (!body) {
-      throw new Error("Unable to read DOCX body");
-    }
-
-    const paragraphsRaw = body["w:p"];
-    const paragraphsArray = Array.isArray(paragraphsRaw) ? paragraphsRaw : [paragraphsRaw];
-    const paragraphs: string[] = [];
-
-    const extractRunsText = (run: any): string => {
-      if (!run) return "";
-      const textNode = run["w:t"];
-      if (!textNode) return "";
-      if (typeof textNode === "string") return textNode;
-      if (typeof textNode._text === "string") return textNode._text;
-      return "";
-    };
-
-    paragraphsArray.filter(Boolean).forEach((paragraph) => {
-      const runs = paragraph?.["w:r"];
-      if (!runs) return;
-      const runArray = Array.isArray(runs) ? runs : [runs];
-      const text = runArray.map(extractRunsText).join("").trim();
-      if (text) {
-        paragraphs.push(text);
-      }
-    });
-
-    const plainText = paragraphs.join("\n\n");
-    const words = plainText.split(/\s+/).filter(Boolean);
-
-    return {
-      text: plainText,
-      wordCount: words.length,
-      preview: plainText.slice(0, 8000),
-    };
-  };
-
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -151,17 +97,9 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
       };
 
       // Generate an object URL for supported binary formats so the readers can open them later
-      if (fileExtension && ['pdf', 'epub', 'mobi', 'azw', 'azw3', 'ppt', 'pptx', 'doc', 'docx'].includes(fileExtension)) {
+      if (fileExtension && ['pdf', 'epub', 'mobi', 'azw', 'azw3', 'ppt', 'pptx'].includes(fileExtension)) {
         fileUrl = URL.createObjectURL(file);
-        if (fileExtension === 'pptx' || fileExtension === 'ppt') {
-          fileType = 'pptx';
-        } else if (fileExtension === 'docx') {
-          fileType = 'docx';
-        } else if (fileExtension === 'doc') {
-          fileType = 'doc';
-        } else {
-          fileType = fileExtension;
-        }
+        fileType = fileExtension === 'pptx' || fileExtension === 'ppt' ? 'pptx' : fileExtension;
       }
 
       if (fileExtension === 'txt') {
@@ -239,6 +177,35 @@ Start reading to view the full content.`;
 
 This EPUB file has been imported but could not be fully parsed. You can still read it in the reader interface.`;
         }
+      } else if (fileExtension === 'docx' || fileExtension === 'doc') {
+        // Handle Word documents
+        const buffer = await file.arrayBuffer();
+        const { text } = await extractDocxContent(buffer);
+        content = text;
+        estimatedPages = estimateDocxPages(text);
+        fileType = 'docx';
+        fileUrl = URL.createObjectURL(file);
+
+        // Generate a simple document cover
+        const canvas = document.createElement('canvas');
+        canvas.width = 240;
+        canvas.height = 320;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+          grad.addColorStop(0, 'hsl(220, 90%, 55%)');
+          grad.addColorStop(1, 'hsl(260, 80%, 60%)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          ctx.font = 'bold 90px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('DOC', canvas.width / 2, canvas.height / 2);
+
+          coverUrl = canvas.toDataURL('image/png');
+        }
       } else if (fileExtension === 'pptx' || fileExtension === 'ppt') {
         // Handle PowerPoint files
         fileType = 'pptx';
@@ -264,46 +231,16 @@ Start viewing to see the full presentation.`;
           grad.addColorStop(1, 'hsl(180,85%,55%)');
           ctx.fillStyle = grad;
           ctx.fillRect(0, 0, canvas.width, canvas.height);
-          
+
           // Draw presentation icon
           ctx.fillStyle = 'rgba(255,255,255,0.9)';
           ctx.font = 'bold 80px Arial, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText('📊', canvas.width / 2, canvas.height / 2);
-          
+
           coverUrl = canvas.toDataURL('image/png');
         }
-      } else if (fileExtension === 'docx') {
-        fileType = 'docx';
-        const { text, wordCount, preview } = await parseDocxFile(file);
-        content = preview;
-        estimatedPages = Math.max(1, Math.ceil(wordCount / 250));
-        if (!coverUrl) {
-          const canvas = document.createElement('canvas');
-          canvas.width = 240;
-          canvas.height = 320;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-            grad.addColorStop(0, 'hsl(210,70%,50%)');
-            grad.addColorStop(1, 'hsl(280,70%,60%)');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = 'rgba(255,255,255,0.92)';
-            ctx.font = 'bold 72px "Segoe UI", sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('📝', canvas.width / 2, canvas.height / 2);
-            coverUrl = canvas.toDataURL('image/png');
-          }
-        }
-      } else if (fileExtension === 'doc') {
-        fileType = 'doc';
-        estimatedPages = newBook.totalPages || 20;
-        content = `Word Document: ${newBook.title || file.name}
-
-This .doc file has been added to your library. Open it to read the full content.`;
       } else {
         // Fallback for other formats - try to read as text
         content = await file.text();

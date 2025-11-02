@@ -24,6 +24,7 @@ import { PdfReader } from "@/components/readers/PdfReader";
 import { EpubReader } from "@/components/readers/EpubReader";
 import { TextFlipBook } from "@/components/readers/TextFlipBook";
 import { PptReader } from "@/components/readers/PptReader";
+import { DocxReader } from "@/components/readers/DocxReader";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useResolvedFileUrl } from "@/hooks/use-resolved-file-url";
@@ -213,6 +214,14 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       return (
         <div className="h-full">
           <PptReader fileUrl={displayUrl} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onPageText={setPageText} />
+        </div>
+      );
+    }
+    if (book.fileType === 'docx') {
+      console.log('ReadingInterface: Rendering DOCX content');
+      return (
+        <div className="h-full">
+          <DocxReader content={book.content || ''} page={clampPage(pageNumber)} onPageCount={setDocPageCount} onPageText={setPageText} />
         </div>
       );
     }
