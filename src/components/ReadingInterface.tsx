@@ -1,14 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { 
-  ArrowLeft, 
-  Settings, 
-  Play, 
-  Pause, 
+import {
+  ArrowLeft,
+  Settings,
+  Play,
+  Pause,
   BookOpen,
   Clock,
   Eye,
@@ -17,18 +17,41 @@ import {
   ChevronRight,
   List,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Sun,
+  Moon,
+  Type
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useReadingStats } from "@/hooks/use-reading-stats";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useResolvedFileUrl } from "@/hooks/use-resolved-file-url";
+import { useTheme } from "next-themes";
 import { PdfReader } from "@/components/readers/PdfReader";
 import { EpubReader } from "@/components/readers/EpubReader";
 import { TextFlipBook } from "@/components/readers/TextFlipBook";
 import { PptReader } from "@/components/readers/PptReader";
 import { DocxReader } from "@/components/readers/DocxReader";
-import { useReadingStats } from "@/hooks/use-reading-stats";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useResolvedFileUrl } from "@/hooks/use-resolved-file-url";
- 
+
+// Loading skeleton component
+const ReaderSkeleton = () => (
+  <div className="w-full h-full flex items-center justify-center glass-card rounded-lg">
+    <div className="space-y-4 w-full max-w-2xl px-8">
+      <div className="h-8 bg-muted/50 rounded-lg animate-pulse" />
+      <div className="h-8 bg-muted/40 rounded-lg animate-pulse" />
+      <div className="h-8 bg-muted/30 rounded-lg animate-pulse" />
+      <div className="h-8 bg-muted/40 rounded-lg animate-pulse" />
+      <div className="h-8 bg-muted/50 rounded-lg animate-pulse" />
+      <div className="flex items-center justify-center gap-2 mt-8">
+        <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" />
+        <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+        <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+      </div>
+      <p className="text-center text-sm text-muted-foreground mt-4">Loading your book...</p>
+    </div>
+  </div>
+);
+
 
 interface BookItem {
   id: string;
@@ -51,6 +74,8 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
   const [readingTime, setReadingTime] = useState(0);
   const [fontSize, setFontSize] = useState(18);
   const [currentPage, setCurrentPage] = useState(1);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
   // Simplified: remove flip animations
   const readingAreaRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -105,7 +130,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       try {
         readingAreaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         readingAreaRef.current?.focus?.();
-      } catch {}
+      } catch { }
     }, 0);
   }, [book.id]);
 
@@ -135,7 +160,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
     if (!book.fileType) {
       try {
         setPageText(getTextPageContent(currentPage));
-      } catch {}
+      } catch { }
     }
   }, [book.fileType, currentPage, sampleContent, wordsPerPage]);
 
@@ -177,7 +202,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       fileUrl: book.fileUrl,
       hasFileUrl: !!book.fileUrl
     });
-    
+
     // Prefer resolved URL when available
     const displayUrl = resolvedUrl || book.fileUrl;
 
@@ -237,7 +262,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
 
   const handlePageChange = (newPage: number, _direction: 'next' | 'prev') => {
     if (newPage < 1 || newPage > effectiveTotalPages) return;
-      setCurrentPage(newPage);
+    setCurrentPage(newPage);
     // clear goto for pdf/epub so manual nav resumes normal
     setGotoPdfPage(null);
     setGotoEpub(null);
@@ -316,8 +341,8 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       {/* Reading Header - Hidden for Immersion */}
       <div className="hidden items-center justify-between animate-page-fade gap-3 flex-wrap">
         <div className="flex items-center space-x-4">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             size="sm"
             onClick={onBackToLibrary}
             className="transition-ritual hover:bg-muted"
@@ -388,7 +413,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       {/* Reading Content */}
       <div className="relative">
         {/* Main Reading Content */}
-        <div 
+        <div
           ref={readingAreaRef}
           className="relative h-[85vh] md:h-[80vh] lg:h-[75vh] xl:h-[70vh] animate-page-fade cursor-pointer select-none z-[1]"
           tabIndex={-1}
@@ -398,7 +423,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
           <div className={`${isReading ? 'focus-glow' : ''} h-full rounded-lg overflow-hidden border`}>
             {renderPageContent(currentPage)}
           </div>
-        
+
           {/* Click/Tap zones */}
           <button aria-label="Previous page" className="absolute top-0 left-0 bottom-24 md:bottom-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} />
           <button aria-label="Next page" className="absolute top-0 right-0 bottom-24 md:bottom-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} />

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ritual Reader - Visual Effects Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            /* E-reader cream background */
+            background: hsl(42, 15%, 95%);
+            color: hsl(0, 0%, 15%);
+            padding: 2rem;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: hsl(0, 0%, 40%);
+            margin-bottom: 3rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        /* Glassmorphism Cards */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .icon {
+            width: 50px;
+            height: 50px;
+            background: hsl(25, 35%, 45%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-center;
+            margin-bottom: 1rem;
+            color: white;
+            font-size: 1.5rem;
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .card-text {
+            color: hsl(0, 0%, 40%);
+            line-height: 1.6;
+        }
+
+        /* Buttons */
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 2rem 0;
+        }
+
+        .button {
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .button-glass {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: hsl(0, 0%, 15%);
+        }
+
+        .button-glass:hover {
+            background: rgba(255, 255, 255, 0.35);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        .button-glass:active {
+            transform: translateY(0);
+        }
+
+        .button-primary {
+            background: hsl(0, 0%, 20%);
+            color: hsl(42, 15%, 95%);
+        }
+
+        .button-primary:hover {
+            background: hsl(0, 0%, 30%);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            transform: translateY(-2px);
+        }
+
+        /* Animation Demo */
+        .animation-demo {
+            background: rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(12px);
+            border-radius: 20px;
+            padding: 3rem;
+            text-align: center;
+            margin: 2rem 0;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        .color-showcase {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+
+        .color-box {
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+            font-size: 0.875rem;
+        }
+
+        .cream {
+            background: hsl(42, 15%, 95%);
+            color: hsl(0, 0%, 15%);
+            border: 2px solid hsl(40, 12%, 85%);
+        }
+
+        .charcoal {
+            background: hsl(0, 0%, 20%);
+            color: hsl(42, 15%, 95%);
+        }
+
+        .accent {
+            background: hsl(25, 35%, 45%);
+            color: hsl(42, 15%, 95%);
+        }
+
+        .dark-mode {
+            background: hsl(0, 0%, 12%);
+            color: hsl(40, 15%, 92%);
+            padding: 3rem;
+            border-radius: 20px;
+            margin: 2rem 0;
+        }
+
+        .dark-mode h2 {
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container fade-in">
+        <h1>✨ Ritual Reader - Visual Effects Demo</h1>
+        <p class="subtitle">Testing E-Reader Colors & Glassmorphism</p>
+
+        <!-- Color Showcase -->
+        <h2 style="margin-bottom: 1rem;">🎨 E-Reader Color Palette</h2>
+        <div class="color-showcase">
+            <div class="color-box cream">
+                <strong>Cream</strong><br>
+                Background<br>
+                #F5F3EF
+            </div>
+            <div class="color-box charcoal">
+                <strong>Charcoal</strong><br>
+                Text<br>
+                #333333
+            </div>
+            <div class="color-box accent">
+                <strong>Accent</strong><br>
+                Highlights<br>
+                #9A7B5E
+            </div>
+        </div>
+
+        <!-- Glassmorphism Cards -->
+        <h2 style="margin: 3rem 0 1rem;">🪟 Glassmorphism Effects</h2>
+        <div class="grid">
+            <div class="glass-card">
+                <div class="icon">📚</div>
+                <h3 class="card-title">Beautiful Reader</h3>
+                <p class="card-text">
+                    EPUB/PDF support with adjustable typography and distraction-free reading experience.
+                </p>
+            </div>
+
+            <div class="glass-card">
+                <div class="icon">⏱️</div>
+                <h3 class="card-title">Reading Streaks</h3>
+                <p class="card-text">
+                    Track your daily reading goals and build consistent habits over time.
+                </p>
+            </div>
+
+            <div class="glass-card">
+                <div class="icon">🧠</div>
+                <h3 class="card-title">AI Assistant</h3>
+                <p class="card-text">
+                    Get summaries, explanations, and recommendations powered by AI.
+                </p>
+            </div>
+        </div>
+
+        <!-- Buttons -->
+        <h2 style="margin: 2rem 0 1rem;">🎯 Button Styles</h2>
+        <div class="button-group">
+            <button class="button button-glass">Glass Button</button>
+            <button class="button button-primary">Primary Button</button>
+            <button class="button button-glass">Settings</button>
+        </div>
+
+        <!-- Animation Demo -->
+        <div class="animation-demo">
+            <h2 style="margin-bottom: 1rem;">🎬 Smooth Animations</h2>
+            <p>Hover over cards to see scale and shadow effects</p>
+            <p style="margin-top: 1rem; color: hsl(0, 0%, 40%);">
+                All animations run at 60fps with smooth transitions
+            </p>
+        </div>
+
+        <!-- Dark Mode Preview -->
+        <div class="dark-mode">
+            <h2>🌙 Dark Mode Preview</h2>
+            <p>Soft dark gray instead of pure black for comfortable night reading</p>
+            <div class="button-group" style="margin-top: 1.5rem;">
+                <button class="button button-glass">Glass in Dark</button>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="text-align: center; margin-top: 3rem; color: hsl(0, 0%, 40%); font-size: 0.875rem;">
+            <p>✅ E-Reader Optimized Colors Applied</p>
+            <p>✅ Glassmorphism Effects Active</p>
+            <p>✅ Smooth 60fps Animations</p>
+            <p style="margin-top: 1rem;">Ritual Reader - Professional Reading Experience</p>
+        </div>
+    </div>
+</body>
+</html>

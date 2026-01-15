@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -42,7 +43,7 @@ export const AuthForm = () => {
     setLoading(true);
 
     const { error } = await signIn(email, password);
-    
+
     if (error) {
       toast({
         title: "Sign In Failed",
@@ -55,7 +56,7 @@ export const AuthForm = () => {
         description: "You've successfully signed in.",
       });
     }
-    
+
     setLoading(false);
   };
 
@@ -64,7 +65,7 @@ export const AuthForm = () => {
     setLoading(true);
 
     const { error } = await signUp(email, password);
-    
+
     if (error) {
       toast({
         title: "Sign Up Failed",
@@ -77,16 +78,16 @@ export const AuthForm = () => {
         description: "Please check your email to verify your account.",
       });
     }
-    
+
     setLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
-    
+
     try {
       const { error } = await signInWithGoogle();
-      
+
       if (error) {
         console.error('Google sign in error:', error);
         toast({
@@ -109,131 +110,178 @@ export const AuthForm = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="w-16 h-16 rounded-full overflow-hidden bg-white ring-1 ring-border shadow-sm flex items-center justify-center mx-auto mb-4">
-            <img src="/logo.png" alt="Ritual Reader" className="w-full h-full object-contain p-2" />
+    <div className="min-h-screen bg-background">
+      {/* Back to Home Button */}
+      <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-50">
+        <Link to="/">
+          <Button
+            variant="ghost"
+            className="glass-button group hover:scale-105 transition-all duration-300"
+          >
+            <svg
+              className="w-4 h-4 mr-2 transition-transform group-hover:-translate-x-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span className="hidden sm:inline">Back to Home</span>
+            <span className="sm:hidden">Back</span>
+          </Button>
+        </Link>
+      </div>
+
+      {/* Hero Section with Cursive Branding */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-background via-muted/30 to-background py-12 md:py-16">
+        {/* Animated background elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-primary/5 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+        </div>
+
+        {/* Branding Display */}
+        <div className="relative z-10 flex flex-col items-center justify-center px-4">
+          {/* Cursive Ritual Reader Text */}
+          <div className="group mb-6">
+            <h1
+              className="text-5xl md:text-6xl lg:text-7xl font-medium bg-gradient-to-r from-foreground via-foreground/90 to-foreground/80 bg-clip-text text-transparent text-center transition-all duration-500 group-hover:scale-105"
+              style={{ fontFamily: 'Great Vibes, cursive' }}
+            >
+              Ritual Reader
+            </h1>
           </div>
-          <CardTitle className="text-2xl">Welcome to Ritual Reader</CardTitle>
-          <CardDescription>
-            Sign in to access your personal reading library
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="signin" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="signin">
-              <div className="space-y-4">
-                <Button
-                  onClick={handleGoogleSignIn}
-                  variant="outline"
-                  className="w-full"
-                  disabled={googleLoading || loading}
-                >
-                  {googleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
-                  Continue with Google
-                </Button>
-                
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">
-                      Or continue with
-                    </span>
-                  </div>
-                </div>
 
-                <form onSubmit={handleSignIn} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signin-email">Email</Label>
-                    <Input
-                      id="signin-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signin-password">Password</Label>
-                    <Input
-                      id="signin-password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading || googleLoading}>
-                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Sign In
-                  </Button>
-                </form>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="signup">
-              <div className="space-y-4">
-                <Button
-                  onClick={handleGoogleSignIn}
-                  variant="outline"
-                  className="w-full"
-                  disabled={googleLoading || loading}
-                >
-                  {googleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
-                  Continue with Google
-                </Button>
-                
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">
-                      Or continue with
-                    </span>
-                  </div>
-                </div>
+          <p className="text-muted-foreground text-center max-w-md text-sm md:text-base">
+            Transform reading into a mindful ritual
+          </p>
+        </div>
+      </div>
 
-                <form onSubmit={handleSignUp} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-email">Email</Label>
-                    <Input
-                      id="signup-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-password">Password</Label>
-                    <Input
-                      id="signup-password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      minLength={6}
-                    />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading || googleLoading}>
-                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Sign Up
+      {/* Auth Card */}
+      <div className="flex items-center justify-center px-4 pb-12 -mt-8">
+        <Card className="w-full max-w-md shadow-xl border-border/50 glass-card">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl">Welcome Back</CardTitle>
+            <CardDescription>
+              Sign in to access your personal reading library
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="signin" className="space-y-4">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="signin">Sign In</TabsTrigger>
+                <TabsTrigger value="signup">Sign Up</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="signin" className="animate-page-fade">
+                <div className="space-y-4">
+                  <Button
+                    onClick={handleGoogleSignIn}
+                    variant="outline"
+                    className="w-full"
+                    disabled={googleLoading || loading}
+                  >
+                    {googleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
+                    Continue with Google
                   </Button>
-                </form>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">
+                        Or continue with
+                      </span>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSignIn} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="signin-email">Email</Label>
+                      <Input
+                        id="signin-email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signin-password">Password</Label>
+                      <Input
+                        id="signin-password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={loading || googleLoading}>
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Sign In
+                    </Button>
+                  </form>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="signup" className="animate-page-fade">
+                <div className="space-y-4">
+                  <Button
+                    onClick={handleGoogleSignIn}
+                    variant="outline"
+                    className="w-full"
+                    disabled={googleLoading || loading}
+                  >
+                    {googleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
+                    Continue with Google
+                  </Button>
+
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">
+                        Or continue with
+                      </span>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSignUp} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-email">Email</Label>
+                      <Input
+                        id="signup-email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-password">Password</Label>
+                      <Input
+                        id="signup-password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        minLength={6}
+                      />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={loading || googleLoading}>
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Sign Up
+                    </Button>
+                  </form>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };

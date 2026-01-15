@@ -2,170 +2,333 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Ritual Reader Design System - Mindful & Immersive Reading Experience
-All colors MUST be HSL for proper theming.
+/* Ritual Reader Design System - E-Reader Optimized Colors
+All colors inspired by Kindle and professional e-readers for maximum reading comfort.
+Colors are in HSL format for proper theming.
 */
 
 @layer base {
   :root {
-    /* Core neutral palette - warm, calming tones */
-    --background: 28 15% 97%;
-    --foreground: 220 15% 15%;
+    /* E-Reader Optimized Theme - Light Mode */
+    /* Soft cream tones instead of harsh white - reduces eye strain */
+    --background: 42 15% 95%;
+    --foreground: 0 0% 15%;
 
-    --card: 30 20% 98%;
-    --card-foreground: 220 15% 15%;
+    --card: 40 20% 97%;
+    --card-foreground: 0 0% 15%;
 
-    --popover: 30 20% 98%;
-    --popover-foreground: 220 15% 15%;
+    --popover: 40 20% 97%;
+    --popover-foreground: 0 0% 15%;
 
-    /* Primary - Deep ritual purple for mindfulness */
-    --primary: 265 85% 47%;
-    --primary-foreground: 28 15% 97%;
-    --primary-glow: 265 85% 67%;
+    /* Primary - Warm charcoal (easy on eyes, not pure black) */
+    --primary: 0 0% 20%;
+    --primary-foreground: 42 15% 95%;
+    --primary-glow: 0 0% 30%;
 
-    /* Secondary - Warm gold for achievements */
-    --secondary: 35 85% 65%;
-    --secondary-foreground: 220 15% 15%;
-    --secondary-glow: 35 95% 75%;
+    /* Secondary - Muted warm brown (Kindle-inspired) */
+    --secondary: 25 35% 45%;
+    --secondary-foreground: 42 15% 95%;
+    --secondary-glow: 25 40% 55%;
 
-    /* Reading palette - optimized for long reading sessions */
-    --muted: 28 25% 94%;
-    --muted-foreground: 220 15% 45%;
-    
-    --accent: 200 70% 88%;
-    --accent-foreground: 220 15% 15%;
+    /* Reader-optimized grays - gentle on eyes */
+    --muted: 40 12% 90%;
+    --muted-foreground: 0 0% 40%;
 
-    /* Focus colors for ritual mode */
-    --focus: 180 65% 55%;
-    --focus-foreground: 28 15% 97%;
+    --accent: 40 15% 88%;
+    --accent-foreground: 0 0% 20%;
 
-    /* Streak colors for gamification */
-    --streak: 25 90% 60%;
-    --streak-foreground: 28 15% 97%;
+    /* Focus - Soft teal for clarity without harshness */
+    --focus: 180 25% 45%;
+    --focus-foreground: 42 15% 95%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 28 15% 97%;
+    /* Streak - Warm orange (motivating but not jarring) */
+    --streak: 20 80% 55%;
+    --streak-foreground: 42 15% 95%;
 
-    --border: 28 25% 89%;
-    --input: 28 25% 91%;
-    --ring: 265 85% 47%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 42 15% 95%;
+
+    --border: 40 12% 85%;
+    --input: 40 12% 90%;
+    --ring: 0 0% 25%;
 
     --radius: 0.75rem;
 
-    /* Ritual-specific design tokens */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
-    --gradient-secondary: linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--secondary-glow)));
-    --gradient-ethereal: linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted)));
-    --gradient-reading: linear-gradient(135deg, hsl(28 25% 98%), hsl(30 20% 96%));
-    
-    --shadow-ritual: 0 10px 40px -10px hsl(var(--primary) / 0.3);
-    --shadow-focus: 0 0 30px hsl(var(--focus) / 0.4);
-    --shadow-achievement: 0 8px 32px -8px hsl(var(--secondary) / 0.4);
-    
+    /* Reader-friendly gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(0 0% 20%), hsl(0 0% 30%));
+    --gradient-secondary: linear-gradient(135deg, hsl(25 35% 45%), hsl(25 40% 55%));
+    --gradient-ethereal: linear-gradient(180deg, hsl(42 15% 95%), hsl(40 12% 90%));
+    --gradient-reading: linear-gradient(135deg, hsl(40 20% 97%), hsl(40 15% 94%));
+
+    --shadow-ritual: 0 12px 45px -12px hsl(0 0% 0% / 0.15);
+    --shadow-focus: 0 0 35px hsl(180 25% 45% / 0.25);
+    --shadow-achievement: 0 10px 35px -10px hsl(25 35% 45% / 0.25);
+
     --transition-ritual: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-page: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 40 18% 96%;
+    --sidebar-foreground: 0 0% 20%;
+    --sidebar-primary: 0 0% 20%;
+    --sidebar-primary-foreground: 42 15% 95%;
+    --sidebar-accent: 40 12% 92%;
+    --sidebar-accent-foreground: 0 0% 20%;
+    --sidebar-border: 40 12% 88%;
+    --sidebar-ring: 0 0% 25%;
   }
 
   .dark {
-    /* Dark mode - matte black theme */
-    --background: 220 15% 6%;
-    --foreground: 28 10% 96%;
+    /* E-Reader Optimized Theme - Dark Mode */
+    /* Soft dark gray instead of pure black - easier on eyes at night */
+    --background: 0 0% 12%;
+    --foreground: 40 15% 92%;
 
-    --card: 220 12% 8%;
-    --card-foreground: 28 10% 96%;
+    --card: 0 0% 15%;
+    --card-foreground: 40 15% 92%;
 
-    --popover: 220 25% 10%;
-    --popover-foreground: 28 15% 97%;
+    --popover: 0 0% 13%;
+    --popover-foreground: 40 15% 92%;
 
-    --primary: 265 85% 67%;
-    --primary-foreground: 220 25% 8%;
-    --primary-glow: 265 85% 77%;
+    /* Primary - Soft off-white (not harsh white) */
+    --primary: 40 10% 85%;
+    --primary-foreground: 0 0% 15%;
+    --primary-glow: 40 15% 90%;
 
-    --secondary: 35 85% 75%;
-    --secondary-foreground: 220 25% 8%;
-    --secondary-glow: 35 95% 85%;
+    /* Secondary - Warm amber (easy on eyes) */
+    --secondary: 25 45% 60%;
+    --secondary-foreground: 0 0% 15%;
+    --secondary-glow: 25 50% 70%;
 
-    --muted: 220 8% 12%;
-    --muted-foreground: 28 10% 72%;
+    /* Dark mode muted tones */
+    --muted: 0 0% 18%;
+    --muted-foreground: 40 10% 65%;
 
-    --accent: 200 70% 25%;
-    --accent-foreground: 28 15% 97%;
+    --accent: 0 0% 22%;
+    --accent-foreground: 40 15% 90%;
 
-    --focus: 180 65% 65%;
-    --focus-foreground: 220 25% 8%;
+    /* Focus - Muted teal for dark mode */
+    --focus: 180 30% 55%;
+    --focus-foreground: 0 0% 15%;
 
-    --streak: 25 90% 70%;
-    --streak-foreground: 220 25% 8%;
+    /* Streak - Warm orange for dark mode */
+    --streak: 20 85% 60%;
+    --streak-foreground: 0 0% 15%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 28 15% 97%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 40 15% 92%;
 
-    --border: 220 10% 14%;
-    --input: 220 10% 12%;
-    --ring: 265 85% 67%;
+    --border: 0 0% 22%;
+    --input: 0 0% 18%;
+    --ring: 40 10% 80%;
 
-    /* Dark mode gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
-    --gradient-secondary: linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--secondary-glow)));
-    --gradient-ethereal: linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted)));
-    --gradient-reading: linear-gradient(135deg, hsl(220 12% 9%), hsl(220 10% 12%));
+    /* Dark mode gradients - soft and comfortable */
+    --gradient-primary: linear-gradient(135deg, hsl(40 10% 85%), hsl(40 15% 90%));
+    --gradient-secondary: linear-gradient(135deg, hsl(25 45% 60%), hsl(25 50% 70%));
+    --gradient-ethereal: linear-gradient(180deg, hsl(0 0% 12%), hsl(0 0% 18%));
+    --gradient-reading: linear-gradient(135deg, hsl(0 0% 14%), hsl(0 0% 16%));
 
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 0 0% 14%;
+    --sidebar-foreground: 40 15% 88%;
+    --sidebar-primary: 40 10% 85%;
+    --sidebar-primary-foreground: 0 0% 15%;
+    --sidebar-accent: 0 0% 20%;
+    --sidebar-accent-foreground: 40 15% 88%;
+    --sidebar-border: 0 0% 22%;
+    --sidebar-ring: 40 10% 80%;
+  }
+
+  /* Sepia Reading Mode - Perfect for extended reading sessions */
+  .sepia {
+    --background: 40 30% 92%;
+    --foreground: 30 25% 20%;
+
+    --card: 40 35% 94%;
+    --card-foreground: 30 25% 20%;
+
+    --popover: 40 35% 94%;
+    --popover-foreground: 30 25% 20%;
+
+    --primary: 30 40% 30%;
+    --primary-foreground: 40 30% 92%;
+    --primary-glow: 30 40% 40%;
+
+    --secondary: 35 50% 50%;
+    --secondary-foreground: 40 30% 92%;
+    --secondary-glow: 35 55% 60%;
+
+    --muted: 40 25% 88%;
+    --muted-foreground: 30 20% 45%;
+
+    --accent: 40 28% 86%;
+    --accent-foreground: 30 25% 25%;
+
+    --focus: 180 20% 40%;
+    --focus-foreground: 40 30% 92%;
+
+    --streak: 20 70% 50%;
+    --streak-foreground: 40 30% 92%;
+
+    --destructive: 0 60% 45%;
+    --destructive-foreground: 40 30% 92%;
+
+    --border: 40 20% 82%;
+    --input: 40 22% 86%;
+    --ring: 30 40% 35%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(30 40% 30%), hsl(30 40% 40%));
+    --gradient-secondary: linear-gradient(135deg, hsl(35 50% 50%), hsl(35 55% 60%));
+    --gradient-ethereal: linear-gradient(180deg, hsl(40 30% 92%), hsl(40 25% 88%));
+    --gradient-reading: linear-gradient(135deg, hsl(40 35% 94%), hsl(40 28% 90%));
+
+    --sidebar-background: 40 32% 90%;
+    --sidebar-foreground: 30 25% 25%;
+    --sidebar-primary: 30 40% 30%;
+    --sidebar-primary-foreground: 40 30% 92%;
+    --sidebar-accent: 40 25% 86%;
+    --sidebar-accent-foreground: 30 25% 25%;
+    --sidebar-border: 40 20% 80%;
+    --sidebar-ring: 30 40% 35%;
   }
 }
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-
-  body {
-    @apply bg-background text-foreground font-sans;
-    font-feature-settings: "rlig" 1, "calt" 1;
-    /* Support iOS safe areas */
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+/* animations */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
-/* Hint browsers to keep animation smooth */
-.will-change-transform {
-  will-change: transform;
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes page-fade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-page-fade {
+  animation: page-fade 0.5s ease-out;
 }
 
 @layer components {
+
+  /* Glassmorphism utilities */
+  .glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+  }
+
+  .glass-light {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+  }
+
+  .glass-dark {
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  .glass-card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.15);
+  }
+
+  /* Glass buttons */
+  .glass-button {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .glass-button:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.25);
+    box-shadow: 0 8px 24px 0 rgba(0, 0, 0, 0.2);
+    transform: translateY(-2px);
+  }
+
+  .glass-button:active {
+    transform: translateY(0);
+    box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.15);
+  }
+
+  /* Glass overlay for modals/dialogs */
+  .glass-overlay {
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  /* Frosted glass effect */
+  .frosted {
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  /* Glass with shimmer effect */
+  .glass-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .glass-shimmer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg,
+        transparent,
+        rgba(255, 255, 255, 0.2),
+        transparent);
+    transition: left 0.7s;
+  }
+
+  .glass-shimmer:hover::before {
+    left: 100%;
+  }
+
   /* Ritual-specific component styles */
   .ritual-glow {
     box-shadow: var(--shadow-ritual);
   }
-  
+
   .focus-glow {
     box-shadow: var(--shadow-focus);
   }
-  
+
   .achievement-glow {
     box-shadow: var(--shadow-achievement);
   }
@@ -173,15 +336,15 @@ All colors MUST be HSL for proper theming.
   .gradient-primary {
     background: var(--gradient-primary);
   }
-  
+
   .gradient-secondary {
     background: var(--gradient-secondary);
   }
-  
+
   .gradient-ethereal {
     background: var(--gradient-ethereal);
   }
-  
+
   .gradient-reading {
     background: var(--gradient-reading);
   }
@@ -189,7 +352,7 @@ All colors MUST be HSL for proper theming.
   .transition-ritual {
     transition: var(--transition-ritual);
   }
-  
+
   .transition-page {
     transition: var(--transition-page);
   }
@@ -223,6 +386,7 @@ All colors MUST be HSL for proper theming.
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
@@ -231,23 +395,23 @@ All colors MUST be HSL for proper theming.
   .preserve-3d {
     transform-style: preserve-3d;
   }
-  
+
   .perspective-1000 {
     perspective: 1000px;
   }
-  
+
   .rotate-y-180 {
     transform: rotateY(180deg);
   }
-  
+
   .rotate-y-neg-180 {
     transform: rotateY(-180deg);
   }
-  
+
   .rotate-y-0 {
     transform: rotateY(0deg);
   }
-  
+
   .page-flip-container {
     position: relative;
     height: 100%;
@@ -258,6 +422,7 @@ All colors MUST be HSL for proper theming.
   .book-page-left {
     background: linear-gradient(90deg, hsl(var(--card)), hsl(var(--card)) 70%, hsl(var(--muted) / 0.35));
   }
+
   .book-page-right {
     background: linear-gradient(270deg, hsl(var(--card)), hsl(var(--card)) 70%, hsl(var(--muted) / 0.35));
   }
@@ -284,6 +449,7 @@ All colors MUST be HSL for proper theming.
   .tab-trigger {
     position: relative;
   }
+
   .tab-trigger::after {
     content: "";
     position: absolute;
@@ -297,25 +463,8 @@ All colors MUST be HSL for proper theming.
     transform-origin: center;
     transition: transform .25s ease;
   }
+
   .tab-trigger[data-state="active"]::after {
     transform: scaleX(1);
   }
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Animated gradient divider */
-.divider-shimmer {
-  height: 2px;
-  border-radius: 9999px;
-  background-image: linear-gradient(90deg, transparent, hsl(var(--primary)), transparent);
-  background-size: 200% 100%;
-  animation: shimmer 2.2s linear infinite;
-}
-
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
 }

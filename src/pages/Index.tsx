@@ -31,7 +31,7 @@ const Index = () => {
         <div className="text-center">
           <div className="w-16 h-16 flex items-center justify-center mx-auto mb-4">
             <img
-              src="/image.png"
+              src="/new-logo.png"
               alt="Ritual Reader"
               className="w-16 h-16 object-contain"
               onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/logo.png"; }}
@@ -109,12 +109,12 @@ const Index = () => {
                   : 'Daily goal met — amazing consistency!'}
               </TooltipContent>
             </Tooltip>
-            
+
             <div className="flex items-center gap-2">
               <div className="hidden lg:flex items-center gap-2">
                 <StreakTracker />
               </div>
-              
+
               <div className="flex items-center gap-1">
                 <RitualModeButton />
                 <Button
@@ -129,7 +129,7 @@ const Index = () => {
                     <Moon className="w-4 h-4 transition-transform hover:rotate-12 duration-300" />
                   )}
                 </Button>
-                
+
                 <div className="hidden md:flex items-center gap-1 ml-2 pl-2 border-l border-border/40">
                   <Button variant="ghost" size="sm" asChild className="h-9 rounded-lg">
                     <Link to="/" className="flex items-center gap-2">
@@ -137,9 +137,9 @@ const Index = () => {
                       <span className="hidden lg:inline">Home</span>
                     </Link>
                   </Button>
-                  
-                  <Button 
-                    variant="ghost" 
+
+                  <Button
+                    variant="ghost"
                     size="sm"
                     onClick={signOut}
                     className="h-9 rounded-lg text-muted-foreground hover:text-destructive"
@@ -148,7 +148,7 @@ const Index = () => {
                     <span className="hidden lg:inline ml-2">Sign Out</span>
                   </Button>
                 </div>
-                
+
                 <div className="hidden xl:flex items-center ml-3 pl-3 border-l border-border/40">
                   <div className="text-xs text-muted-foreground font-mono bg-muted/30 px-2 py-1 rounded">
                     {user?.email?.split('@')[0]}
@@ -185,8 +185,8 @@ const Index = () => {
           </TabsList>
 
           <TabsContent value="library" className="animate-page-fade">
-            <BookLibrary 
-              books={books} 
+            <BookLibrary
+              books={books}
               onBookSelect={handleBookSelect}
               onAddBook={handleAddBook}
               onRemoveBook={handleRemoveBook}
@@ -195,7 +195,7 @@ const Index = () => {
 
           <TabsContent value="reader" className="animate-page-fade">
             {currentBook ? (
-              <ReadingInterface 
+              <ReadingInterface
                 book={currentBook}
                 onBackToLibrary={handleBackToLibrary}
               />

@@ -28,8 +28,8 @@ export const Logo = ({ className, imgClassName, alt = "Ritual Reader", priority 
         style={{
           backgroundColor: 'currentColor',
           // @ts-ignore vendor
-          WebkitMaskImage: "url('/image.png')",
-          maskImage: "url('/image.png')",
+          WebkitMaskImage: "url('/new-logo.png')",
+          maskImage: "url('/new-logo.png')",
           WebkitMaskRepeat: 'no-repeat',
           maskRepeat: 'no-repeat',
           WebkitMaskPosition: 'center',
@@ -43,13 +43,13 @@ export const Logo = ({ className, imgClassName, alt = "Ritual Reader", priority 
       />
       {/* Fallback img if mask is not supported */}
       <img
-        src="/image.png"
+        src="/new-logo.png"
         alt={alt}
         className={cn(
           "object-contain w-full h-full select-none " +
-            "drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)] group-hover:drop-shadow-[0_0_10px_rgba(59,130,246,0.35)] transition-all",
+          "drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)] group-hover:drop-shadow-[0_0_10px_rgba(59,130,246,0.35)] transition-all",
           imgClassName
-        , "hidden")}
+          , "hidden")}
         loading={priority ? "eager" : "lazy"}
         decoding="async"
         fetchpriority={priority ? ("high" as any) : ("auto" as any)}
@@ -58,7 +58,7 @@ export const Logo = ({ className, imgClassName, alt = "Ritual Reader", priority 
         sizes="(min-width: 768px) 80px, (min-width: 640px) 64px, 56px"
         draggable={false}
         onError={(e) => {
-          (e.currentTarget as HTMLImageElement).src = "/logo.png";
+          (e.currentTarget as HTMLImageElement).src = "/new-logo.png";
         }}
       />
     </div>
