@@ -467,4 +467,175 @@ Colors are in HSL format for proper theming.
   .tab-trigger[data-state="active"]::after {
     transform: scaleX(1);
   }
+
+  /* Moon Reader Page Flip Animations */
+
+  /* Slide Animation (Default) */
+  @keyframes slideLeft {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+
+    to {
+      transform: translateX(-100%);
+      opacity: 0;
+    }
+  }
+
+  @keyframes slideRight {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+
+    to {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+  }
+
+  @keyframes slideInFromRight {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideInFromLeft {
+    from {
+      transform: translateX(-100%);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  /* Fade Animation */
+  @keyframes fadeOut {
+    from {
+      opacity: 1;
+    }
+
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Curl Animation (Paper-like) */
+  @keyframes curlLeft {
+    from {
+      transform: perspective(1000px) rotateY(0deg);
+      transform-origin: left center;
+      opacity: 1;
+    }
+
+    to {
+      transform: perspective(1000px) rotateY(-90deg);
+      transform-origin: left center;
+      opacity: 0.5;
+    }
+  }
+
+  @keyframes curlRight {
+    from {
+      transform: perspective(1000px) rotateY(0deg);
+      transform-origin: right center;
+      opacity: 1;
+    }
+
+    to {
+      transform: perspective(1000px) rotateY(90deg);
+      transform-origin: right center;
+      opacity: 0.5;
+    }
+  }
+
+  /* Animation Classes */
+  .page-slide-left {
+    animation: slideLeft 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  .page-slide-right {
+    animation: slideRight 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  .page-slide-in-left {
+    animation: slideInFromLeft 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  .page-slide-in-right {
+    animation: slideInFromRight 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  .page-fade-out {
+    animation: fadeOut 0.3s ease-out forwards;
+  }
+
+  .page-fade-in {
+    animation: fadeIn 0.3s ease-in forwards;
+  }
+
+  .page-curl-left {
+    animation: curlLeft 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  .page-curl-right {
+    animation: curlRight 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  /* No animation */
+  .page-none {
+    transition: none;
+  }
+
+  /* Fullscreen Reader Styles */
+  .fullscreen-reader {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 9999 !important;
+    background: hsl(var(--background)) !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    overflow: hidden !important;
+  }
+
+  /* Fullscreen API support */
+  :fullscreen .fullscreen-reader,
+  :-webkit-full-screen .fullscreen-reader,
+  :-moz-full-screen .fullscreen-reader,
+  :-ms-fullscreen .fullscreen-reader {
+    width: 100vw !important;
+    height: 100vh !important;
+  }
+
+  /* Hide scrollbars in fullscreen */
+  .fullscreen-reader::-webkit-scrollbar {
+    display: none;
+  }
+
+  .fullscreen-reader {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }

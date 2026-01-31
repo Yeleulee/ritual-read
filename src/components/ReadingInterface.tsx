@@ -20,13 +20,22 @@ import {
   Minimize2,
   Sun,
   Moon,
-  Type
+  Type,
+  Plus,
+  Minus,
+  AlignLeft,
+  AlignCenter,
+  AlignJustify
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useResolvedFileUrl } from "@/hooks/use-resolved-file-url";
 import { useTheme } from "next-themes";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { PdfReader } from "@/components/readers/PdfReader";
 import { EpubReader } from "@/components/readers/EpubReader";
 import { TextFlipBook } from "@/components/readers/TextFlipBook";
@@ -64,6 +73,20 @@ interface BookItem {
   fileType?: string;
 }
 
+// Animation types
+type PageAnimation = 'slide' | 'fade' | 'curl' | 'none';
+
+interface TypographySettings {
+  fontSize: number;
+  lineHeight: number;
+  fontFamily: string;
+  letterSpacing: number;
+  wordSpacing: number;
+  paragraphSpacing: number;
+  textAlign: 'left' | 'justify' | 'center';
+  hyphenation: boolean;
+}
+
 interface ReadingInterfaceProps {
   book: BookItem;
   onBackToLibrary: () => void;
@@ -72,17 +95,36 @@ interface ReadingInterfaceProps {
 export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProps) => {
   const [isReading, setIsReading] = useState(false);
   const [readingTime, setReadingTime] = useState(0);
-  const [fontSize, setFontSize] = useState(18);
   const [currentPage, setCurrentPage] = useState(1);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { theme, setTheme } = useTheme();
-  // Simplified: remove flip animations
+
+  // Page animation state
+  const [pageAnimation, setPageAnimation] = useState<PageAnimation>('slide');
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [animationClass, setAnimationClass] = useState('');
+
+  // Typography settings
+  const [typography, setTypography] = useState<TypographySettings>({
+    fontSize: 18,
+    lineHeight: 1.8,
+    fontFamily: 'georgia',
+    letterSpacing: 0,
+    wordSpacing: 0,
+    paragraphSpacing: 1.5,
+    textAlign: 'left',
+    hyphenation: false,
+  });
+
+  // Fullscreen state
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+
   const readingAreaRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const { toast } = useToast();
   const { addSeconds } = useReadingStats();
   const [chaptersOpen, setChaptersOpen] = useState(false);
-  const [mobileFullscreen, setMobileFullscreen] = useState(false);
 
   // Sample content for demonstration
   const sampleContent = book.content || `
@@ -134,14 +176,51 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
     }, 0);
   }, [book.id]);
 
-  // Lock body scroll when mobile fullscreen is active
-  useEffect(() => {
-    if (mobileFullscreen) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = prev; };
+  // Fullscreen API handlers
+  const toggleFullscreen = async () => {
+    if (!fullscreenContainerRef.current) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        // Enter fullscreen
+        await fullscreenContainerRef.current.requestFullscreen();
+        setIsFullscreen(true);
+        toast({
+          title: "Fullscreen Mode",
+          description: "Press F or ESC to exit fullscreen",
+        });
+      } else {
+        // Exit fullscreen
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (error) {
+      console.error('Fullscreen error:', error);
+      // Fallback for devices that don't support fullscreen API
+      setIsFullscreen(!isFullscreen);
+      if (!isFullscreen) {
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.body.style.overflow = '';
+      }
     }
-  }, [mobileFullscreen]);
+  };
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+      if (!document.fullscreenElement) {
+        document.body.style.overflow = '';
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.body.style.overflow = '';
+    };
+  }, []);
 
   // Reading session timer
   useEffect(() => {
@@ -260,12 +339,56 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
     );
   };
 
-  const handlePageChange = (newPage: number, _direction: 'next' | 'prev') => {
-    if (newPage < 1 || newPage > effectiveTotalPages) return;
-    setCurrentPage(newPage);
-    // clear goto for pdf/epub so manual nav resumes normal
-    setGotoPdfPage(null);
-    setGotoEpub(null);
+  const handlePageChange = (newPage: number, direction: 'next' | 'prev') => {
+    if (newPage < 1 || newPage > effectiveTotalPages || isAnimating) return;
+
+    // Apply animation if enabled
+    if (pageAnimation !== 'none') {
+      setIsAnimating(true);
+
+      // Determine animation based on direction and type
+      let exitClass = '';
+      let enterClass = '';
+
+      switch (pageAnimation) {
+        case 'slide':
+          exitClass = direction === 'next' ? 'page-slide-left' : 'page-slide-right';
+          enterClass = direction === 'next' ? 'page-slide-in-right' : 'page-slide-in-left';
+          break;
+        case 'fade':
+          exitClass = 'page-fade-out';
+          enterClass = 'page-fade-in';
+          break;
+        case 'curl':
+          exitClass = direction === 'next' ? 'page-curl-left' : 'page-curl-right';
+          enterClass = 'page-fade-in';
+          break;
+      }
+
+      // Apply exit animation
+      setAnimationClass(exitClass);
+
+      // Wait for exit animation to complete
+      const exitDuration = pageAnimation === 'curl' ? 500 : pageAnimation === 'slide' ? 400 : 300;
+
+      setTimeout(() => {
+        setCurrentPage(newPage);
+        setGotoPdfPage(null);
+        setGotoEpub(null);
+        setAnimationClass(enterClass);
+
+        // Reset after enter animation
+        setTimeout(() => {
+          setAnimationClass('');
+          setIsAnimating(false);
+        }, exitDuration);
+      }, exitDuration);
+    } else {
+      // No animation
+      setCurrentPage(newPage);
+      setGotoPdfPage(null);
+      setGotoEpub(null);
+    }
   };
 
   // Touch/swipe handlers
@@ -286,18 +409,30 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
     touchStartRef.current = null;
   };
 
-  // Keyboard navigation
+  // Keyboard navigation and shortcuts
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
+      // Ignore if typing in input fields
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
       if (e.key === 'ArrowLeft') {
         handlePageChange(currentPage - 1, 'prev');
       } else if (e.key === 'ArrowRight') {
         handlePageChange(currentPage + 1, 'next');
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (e.key === 'Escape' && isFullscreen) {
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentPage, effectiveTotalPages]);
+  }, [currentPage, effectiveTotalPages, isFullscreen]);
 
   // Derived chapters list
   const chapters = (() => {
@@ -336,8 +471,69 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
     }
   };
 
+  // Helper function to update typography
+  const updateTypography = (key: keyof TypographySettings, value: any) => {
+    setTypography(prev => ({ ...prev, [key]: value }));
+  };
+
+  // Font family mapping
+  const getFontFamily = (font: string) => {
+    const fonts: Record<string, string> = {
+      georgia: "'Georgia', serif",
+      literata: "'Literata', serif",
+      merriweather: "'Merriweather', serif",
+      inter: "'Inter', sans-serif",
+      system: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    };
+    return fonts[font] || fonts.georgia;
+  };
+
+  // Typography presets
+  const typographyPresets = {
+    compact: {
+      fontSize: 14,
+      lineHeight: 1.4,
+      letterSpacing: 0,
+      wordSpacing: 0,
+      paragraphSpacing: 1.0,
+      textAlign: 'left' as const,
+    },
+    comfortable: {
+      fontSize: 18,
+      lineHeight: 1.8,
+      letterSpacing: 0,
+      wordSpacing: 0,
+      paragraphSpacing: 1.5,
+      textAlign: 'left' as const,
+    },
+    large: {
+      fontSize: 24,
+      lineHeight: 2.0,
+      letterSpacing: 1,
+      wordSpacing: 2,
+      paragraphSpacing: 2.0,
+      textAlign: 'left' as const,
+    },
+    dyslexic: {
+      fontSize: 20,
+      lineHeight: 2.2,
+      letterSpacing: 2,
+      wordSpacing: 4,
+      paragraphSpacing: 2.0,
+      textAlign: 'left' as const,
+      fontFamily: 'inter',
+    },
+  };
+
+  const applyPreset = (preset: keyof typeof typographyPresets) => {
+    setTypography(prev => ({
+      ...prev,
+      ...typographyPresets[preset],
+    }));
+  };
+
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-[env(safe-area-inset-bottom)]">
+    <div ref={fullscreenContainerRef} className={cn("max-w-6xl mx-auto space-y-6 pb-[env(safe-area-inset-bottom)]", isFullscreen && "fullscreen-reader")}>
       {/* Reading Header - Hidden for Immersion */}
       <div className="hidden items-center justify-between animate-page-fade gap-3 flex-wrap">
         <div className="flex items-center space-x-4">
@@ -371,6 +567,13 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
             <BookOpen className="w-4 h-4 mr-2" />
             Chapters
           </Button>
+          <Button variant={settingsOpen ? "destructive" : "outline"} size="sm" className="transition-ritual" onClick={() => setSettingsOpen(true)}>
+            <Settings className="w-4 h-4 mr-2" />
+            Settings
+          </Button>
+          <Button variant={isFullscreen ? "destructive" : "outline"} size="sm" className="transition-ritual" onClick={toggleFullscreen}>
+            {isFullscreen ? (<><Minimize2 className="w-4 h-4 mr-2" />Exit</>) : (<><Maximize2 className="w-4 h-4 mr-2" />Fullscreen</>)}
+          </Button>
         </div>
       </div>
 
@@ -396,6 +599,225 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
         </SheetContent>
       </Sheet>
 
+      {/* Settings Sheet */}
+      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <SheetContent className="glass-card w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Reading Settings</SheetTitle>
+          </SheetHeader>
+
+          <div className="space-y-6 mt-6">
+            {/* Font Size */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Font Size</Label>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => updateTypography('fontSize', Math.max(12, typography.fontSize - 2))}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <Badge variant="outline" className="w-16 justify-center">
+                    {typography.fontSize}px
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => updateTypography('fontSize', Math.min(32, typography.fontSize + 2))}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <Slider
+                value={[typography.fontSize]}
+                onValueChange={([val]) => updateTypography('fontSize', val)}
+                min={12}
+                max={32}
+                step={2}
+              />
+            </div>
+
+            {/* Line Height */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Line Spacing</Label>
+                <Badge variant="outline">{typography.lineHeight.toFixed(1)}</Badge>
+              </div>
+              <Slider
+                value={[typography.lineHeight]}
+                onValueChange={([val]) => updateTypography('lineHeight', val)}
+                min={1.0}
+                max={3.0}
+                step={0.1}
+              />
+              <div className="flex justify-between text-xs text-muted-foreground px-1">
+                <span>Compact</span>
+                <span>Normal</span>
+                <span>Relaxed</span>
+              </div>
+            </div>
+
+            {/* Font Family */}
+            <div className="space-y-2">
+              <Label>Font Family</Label>
+              <Select
+                value={typography.fontFamily}
+                onValueChange={(val) => updateTypography('fontFamily', val)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="georgia">Georgia (Serif)</SelectItem>
+                  <SelectItem value="literata">Literata (Serif)</SelectItem>
+                  <SelectItem value="merriweather">Merriweather (Serif)</SelectItem>
+                  <SelectItem value="inter">Inter (Sans)</SelectItem>
+                  <SelectItem value="system">System Default</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Letter Spacing */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Letter Spacing</Label>
+                <Badge variant="outline">{typography.letterSpacing}px</Badge>
+              </div>
+              <Slider
+                value={[typography.letterSpacing]}
+                onValueChange={([val]) => updateTypography('letterSpacing', val)}
+                min={-2}
+                max={4}
+                step={0.5}
+              />
+            </div>
+
+            {/* Word Spacing */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Word Spacing</Label>
+                <Badge variant="outline">{typography.wordSpacing}px</Badge>
+              </div>
+              <Slider
+                value={[typography.wordSpacing]}
+                onValueChange={([val]) => updateTypography('wordSpacing', val)}
+                min={0}
+                max={8}
+                step={1}
+              />
+            </div>
+
+            {/* Paragraph Spacing */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Paragraph Spacing</Label>
+                <Badge variant="outline">{typography.paragraphSpacing.toFixed(1)}em</Badge>
+              </div>
+              <Slider
+                value={[typography.paragraphSpacing]}
+                onValueChange={([val]) => updateTypography('paragraphSpacing', val)}
+                min={0.5}
+                max={3.0}
+                step={0.25}
+              />
+            </div>
+
+            {/* Text Alignment */}
+            <div className="space-y-2">
+              <Label>Text Alignment</Label>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  variant={typography.textAlign === 'left' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => updateTypography('textAlign', 'left')}
+                >
+                  <AlignLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={typography.textAlign === 'center' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => updateTypography('textAlign', 'center')}
+                >
+                  <AlignCenter className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={typography.textAlign === 'justify' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => updateTypography('textAlign', 'justify')}
+                >
+                  <AlignJustify className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Hyphenation */}
+            <div className="flex items-center justify-between">
+              <Label>Auto-Hyphenation</Label>
+              <Switch
+                checked={typography.hyphenation}
+                onCheckedChange={(checked) => updateTypography('hyphenation', checked)}
+              />
+            </div>
+
+            {/* Page Animation */}
+            <div className="space-y-2">
+              <Label>Page Turn Animation</Label>
+              <Select value={pageAnimation} onValueChange={setPageAnimation}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="slide">Slide (Smooth)</SelectItem>
+                  <SelectItem value="fade">Fade (Quick)</SelectItem>
+                  <SelectItem value="curl">Curl (Paper-like)</SelectItem>
+                  <SelectItem value="none">None (Instant)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Presets */}
+            <div className="space-y-2">
+              <Label>Typography Presets</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyPreset('compact')}
+                >
+                  Compact
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyPreset('comfortable')}
+                >
+                  Comfortable
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyPreset('large')}
+                >
+                  Large Print
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyPreset('dyslexic')}
+                >
+                  Dyslexia
+                </Button>
+              </div>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       {/* Reading Progress */}
       <Card className="animate-page-fade">
         <CardContent className="p-6">
@@ -415,13 +837,36 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
         {/* Main Reading Content */}
         <div
           ref={readingAreaRef}
-          className="relative h-[85vh] md:h-[80vh] lg:h-[75vh] xl:h-[70vh] animate-page-fade cursor-pointer select-none z-[1]"
+          className={cn(
+            "relative h-[85vh] md:h-[80vh] lg:h-[75vh] xl:h-[70vh] animate-page-fade cursor-pointer select-none z-[1]",
+            animationClass
+          )}
+          style={{
+            fontSize: `${typography.fontSize}px`,
+            lineHeight: typography.lineHeight,
+            fontFamily: getFontFamily(typography.fontFamily),
+            letterSpacing: `${typography.letterSpacing}px`,
+            wordSpacing: `${typography.wordSpacing}px`,
+            textAlign: typography.textAlign,
+          }}
           tabIndex={-1}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          <div className={`${isReading ? 'focus-glow' : ''} h-full rounded-lg overflow-hidden border`}>
-            {renderPageContent(currentPage)}
+          <div
+            className={`${isReading ? 'focus-glow' : ''} h-full rounded-lg overflow-hidden border`}
+            style={{
+              hyphens: typography.hyphenation ? 'auto' : 'none',
+            }}
+          >
+            <style>{`
+              .reading-content p {
+                margin-bottom: ${typography.paragraphSpacing}em;
+              }
+            `}</style>
+            <div className="reading-content h-full">
+              {renderPageContent(currentPage)}
+            </div>
           </div>
 
           {/* Click/Tap zones */}
@@ -429,43 +874,8 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
           <button aria-label="Next page" className="absolute top-0 right-0 bottom-24 md:bottom-0 w-1/2 md:w-1/3 z-10 cursor-pointer opacity-0" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} />
         </div>
 
+
       </div>
-
-
-      {/* Mobile fullscreen overlay */}
-      {mobileFullscreen && (
-        <div className="fixed inset-0 z-50 bg-background">
-          <div className="relative h-full pb-20">
-            <div className="h-full rounded-none overflow-hidden border-0">
-              {renderPageContent(currentPage)}
-            </div>
-            {/* Tap zones */}
-            <button aria-label="Previous page" className="absolute top-0 left-0 bottom-20 w-1/2 z-10 opacity-0" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} />
-            <button aria-label="Next page" className="absolute top-0 right-0 bottom-20 w-1/2 z-10 opacity-0" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} />
-          </div>
-          {/* Toolbar inside fullscreen */}
-          <div className="fixed bottom-0 inset-x-0 z-50 bg-background/95 backdrop-blur border-t">
-            <div className="px-3 py-2 flex items-center justify-between gap-3">
-              <Button size="sm" variant="ghost" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} className="h-11 w-11 p-0">
-                <ChevronLeft className="w-6 h-6" />
-              </Button>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="h-10" onClick={() => setChaptersOpen(true)}>
-                  <List className="w-5 h-5 mr-1" />Chapters
-                </Button>
-              </div>
-              <Button size="sm" variant="ghost" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} className="h-11 w-11 p-0">
-                <ChevronRight className="w-6 h-6" />
-              </Button>
-            </div>
-            <div className="px-3 pb-2 flex items-center justify-center">
-              <Button size="sm" variant="secondary" onClick={() => setMobileFullscreen(false)} className="h-8">
-                <Minimize2 className="w-4 h-4 mr-1" /> Exit Fullscreen
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Page Navigation (desktop) */}
       <div className="hidden md:flex items-center justify-between animate-page-fade">
@@ -498,8 +908,8 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
             <Button size="sm" variant="outline" className="h-10" onClick={() => setChaptersOpen(true)}>
               <List className="w-5 h-5 mr-1" />Chapters
             </Button>
-            <Button size="sm" variant={mobileFullscreen ? 'destructive' : 'ritual'} className="h-10" onClick={() => setMobileFullscreen(v => !v)}>
-              {mobileFullscreen ? (<><Minimize2 className="w-4 h-4 mr-1" />Exit</>) : (<><Maximize2 className="w-4 h-4 mr-1" />Fullscreen</>)}
+            <Button size="sm" variant={isFullscreen ? 'destructive' : 'ritual'} className="h-10" onClick={toggleFullscreen}>
+              {isFullscreen ? (<><Minimize2 className="w-4 h-4 mr-1" />Exit</>) : (<><Maximize2 className="w-4 h-4 mr-1" />Fullscreen</>)}
             </Button>
           </div>
           <Button size="sm" variant="ghost" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} className="h-11 w-11 p-0">

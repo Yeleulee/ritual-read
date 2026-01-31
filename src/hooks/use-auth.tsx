@@ -48,10 +48,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    console.log('Attempting sign in for:', email);
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+
+    if (error) {
+      console.error('Sign in error:', error.message, error);
+    } else {
+      console.log('Sign in successful:', data.user?.email);
+    }
+
     return { error };
   };
 
@@ -67,12 +75,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           },
         }
       });
-      
+
       if (error) {
         console.error('Google OAuth error:', error);
         return { error };
       }
-      
+
       return { error: null, data };
     } catch (err) {
       console.error('Google OAuth exception:', err);
