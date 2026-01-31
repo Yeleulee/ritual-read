@@ -15,7 +15,6 @@ export interface BookItem {
   fileUrl?: string;
   fileType?: string;
   lastRead?: Date;
-  tags?: string[]; // Categories/tags for organization
 }
 
 export const useBooks = () => {
@@ -87,7 +86,6 @@ export const useBooks = () => {
         fileUrl: book.file_url,
         fileType: book.file_type,
         lastRead: book.last_read ? new Date(book.last_read) : undefined,
-        tags: book.tags || [],
       }));
 
       // Update with server data
@@ -115,7 +113,6 @@ export const useBooks = () => {
         fileUrl: newBook.fileUrl,
         fileType: newBook.fileType,
         lastRead: newBook.lastRead ?? new Date(),
-        tags: newBook.tags || [],
       };
 
       setBooks((prev) => {
@@ -182,7 +179,6 @@ export const useBooks = () => {
         file_url: fileUrl || null,
         file_type: newBook.fileType || null,
         last_read: newBook.lastRead?.toISOString() || new Date().toISOString(),
-        tags: newBook.tags || [],
       };
 
       console.log('Inserting book data:', bookData);
@@ -240,7 +236,6 @@ export const useBooks = () => {
         fileUrl: data.file_url,
         fileType: data.file_type,
         lastRead: data.last_read ? new Date(data.last_read) : undefined,
-        tags: data.tags || [],
       };
 
       setBooks(prev => {
