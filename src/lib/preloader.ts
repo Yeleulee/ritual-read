@@ -10,7 +10,7 @@ interface PreloadTask {
 class FilePreloader {
   private queue: PreloadTask[] = [];
   private loading: Set<string> = new Set();
-  private maxConcurrent = 2;
+  private maxConcurrent = 4; // Increased from 2 to 4 for faster loading
 
   /**
    * Add a file to the preload queue
@@ -31,7 +31,7 @@ class FilePreloader {
 
     // Add to queue based on priority
     const task: PreloadTask = { id, url, fileType, priority };
-    
+
     if (priority === 'high') {
       this.queue.unshift(task);
     } else {
@@ -82,7 +82,7 @@ class FilePreloader {
 
     try {
       console.log(`Preloading file: ${task.id} (priority: ${task.priority})`);
-      
+
       const response = await fetch(task.url);
       if (!response.ok) {
         throw new Error(`Failed to preload: ${response.statusText}`);
@@ -90,16 +90,16 @@ class FilePreloader {
 
       const blob = await response.blob();
       await cacheFile(task.id, blob, task.fileType);
-      
+
       console.log(`Successfully preloaded: ${task.id}`);
     } catch (error) {
       console.error(`Failed to preload ${task.id}:`, error);
     } finally {
       this.loading.delete(task.id);
-      
-      // Process next item in queue
+
+      // Process next item in queue immediately with reduced delay
       if (this.queue.length > 0) {
-        setTimeout(() => this.processQueue(), 100);
+        setTimeout(() => this.processQueue(), 50); // Reduced from 100ms to 50ms
       }
     }
   }

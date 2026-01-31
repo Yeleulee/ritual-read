@@ -9,132 +9,125 @@ Colors are in HSL format for proper theming.
 
 @layer base {
   :root {
-    /* E-Reader Optimized Theme - Light Mode */
-    /* Soft cream tones instead of harsh white - reduces eye strain */
-    --background: 42 15% 95%;
-    --foreground: 0 0% 15%;
+    /* Light Mode - Professional Clean */
+    --background: 210 20% 98%;
+    --foreground: 222 47% 15%;
 
-    --card: 40 20% 97%;
-    --card-foreground: 0 0% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 15%;
 
-    --popover: 40 20% 97%;
-    --popover-foreground: 0 0% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 15%;
 
-    /* Primary - Warm charcoal (easy on eyes, not pure black) */
-    --primary: 0 0% 20%;
-    --primary-foreground: 42 15% 95%;
-    --primary-glow: 0 0% 30%;
+    /* Primary - Executive Navy */
+    --primary: 222 47% 30%;
+    --primary-foreground: 210 40% 98%;
+    --primary-glow: 222 50% 40%;
 
-    /* Secondary - Muted warm brown (Kindle-inspired) */
-    --secondary: 25 35% 45%;
-    --secondary-foreground: 42 15% 95%;
-    --secondary-glow: 25 40% 55%;
+    /* Secondary - Cool Slate */
+    --secondary: 210 20% 96%;
+    --secondary-foreground: 222 47% 20%;
+    --secondary-glow: 210 20% 90%;
 
-    /* Reader-optimized grays - gentle on eyes */
-    --muted: 40 12% 90%;
-    --muted-foreground: 0 0% 40%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 15% 45%;
 
-    --accent: 40 15% 88%;
-    --accent-foreground: 0 0% 20%;
+    --accent: 210 20% 94%;
+    --accent-foreground: 222 47% 15%;
 
-    /* Focus - Soft teal for clarity without harshness */
-    --focus: 180 25% 45%;
-    --focus-foreground: 42 15% 95%;
+    /* Focus - Royal Blue */
+    --focus: 217 90% 50%;
+    --focus-foreground: 0 0% 100%;
 
-    /* Streak - Warm orange (motivating but not jarring) */
-    --streak: 20 80% 55%;
-    --streak-foreground: 42 15% 95%;
+    /* Streak - Subtle Gold (Achievement) */
+    --streak: 35 90% 50%;
+    --streak-foreground: 0 0% 100%;
 
-    --destructive: 0 65% 50%;
-    --destructive-foreground: 42 15% 95%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 40 12% 85%;
-    --input: 40 12% 90%;
-    --ring: 0 0% 25%;
+    --border: 214 20% 90%;
+    --input: 214 20% 95%;
+    --ring: 222 47% 30%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
-    /* Reader-friendly gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(0 0% 20%), hsl(0 0% 30%));
-    --gradient-secondary: linear-gradient(135deg, hsl(25 35% 45%), hsl(25 40% 55%));
-    --gradient-ethereal: linear-gradient(180deg, hsl(42 15% 95%), hsl(40 12% 90%));
-    --gradient-reading: linear-gradient(135deg, hsl(40 20% 97%), hsl(40 15% 94%));
+    /* Professional Gradients - Subtle & Clean */
+    --gradient-primary: linear-gradient(135deg, hsl(222 47% 30%), hsl(222 50% 40%));
+    --gradient-secondary: linear-gradient(135deg, hsl(210 20% 96%), hsl(210 20% 90%));
+    --gradient-ethereal: linear-gradient(180deg, hsl(210 20% 98%), hsl(210 20% 94%));
+    --gradient-reading: linear-gradient(135deg, hsl(210 20% 99%), hsl(210 20% 97%));
 
-    --shadow-ritual: 0 12px 45px -12px hsl(0 0% 0% / 0.15);
-    --shadow-focus: 0 0 35px hsl(180 25% 45% / 0.25);
-    --shadow-achievement: 0 10px 35px -10px hsl(25 35% 45% / 0.25);
+    --shadow-ritual: 0 4px 20px -4px hsl(222 47% 15% / 0.1);
+    --shadow-focus: 0 0 16px hsl(217 90% 50% / 0.2);
+    --shadow-achievement: 0 6px 20px -4px hsl(35 90% 50% / 0.2);
 
-    --transition-ritual: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-page: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --transition-ritual: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+    --transition-page: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 
-    --sidebar-background: 40 18% 96%;
-    --sidebar-foreground: 0 0% 20%;
-    --sidebar-primary: 0 0% 20%;
-    --sidebar-primary-foreground: 42 15% 95%;
-    --sidebar-accent: 40 12% 92%;
-    --sidebar-accent-foreground: 0 0% 20%;
-    --sidebar-border: 40 12% 88%;
-    --sidebar-ring: 0 0% 25%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 15%;
+    --sidebar-primary: 222 47% 30%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 210 20% 96%;
+    --sidebar-accent-foreground: 222 47% 15%;
+    --sidebar-border: 214 20% 92%;
+    --sidebar-ring: 222 47% 30%;
   }
 
   .dark {
-    /* E-Reader Optimized Theme - Dark Mode */
-    /* Soft dark gray instead of pure black - easier on eyes at night */
-    --background: 0 0% 12%;
-    --foreground: 40 15% 92%;
+    /* Dark Mode - Deep Ocean (Not Pitch Black) */
+    --background: 222 47% 8%;
+    --foreground: 210 20% 96%;
 
-    --card: 0 0% 15%;
-    --card-foreground: 40 15% 92%;
+    --card: 222 45% 10%;
+    --card-foreground: 210 20% 96%;
 
-    --popover: 0 0% 13%;
-    --popover-foreground: 40 15% 92%;
+    --popover: 222 45% 9%;
+    --popover-foreground: 210 20% 96%;
 
-    /* Primary - Soft off-white (not harsh white) */
-    --primary: 40 10% 85%;
-    --primary-foreground: 0 0% 15%;
-    --primary-glow: 40 15% 90%;
+    /* Primary - Vibrant Royal Blue (Accessible on Dark) */
+    --primary: 217 90% 60%;
+    --primary-foreground: 222 47% 8%;
+    --primary-glow: 217 95% 70%;
 
-    /* Secondary - Warm amber (easy on eyes) */
-    --secondary: 25 45% 60%;
-    --secondary-foreground: 0 0% 15%;
-    --secondary-glow: 25 50% 70%;
+    /* Secondary - Slate */
+    --secondary: 217 30% 15%;
+    --secondary-foreground: 210 20% 90%;
+    --secondary-glow: 217 30% 20%;
 
-    /* Dark mode muted tones */
-    --muted: 0 0% 18%;
-    --muted-foreground: 40 10% 65%;
+    --muted: 217 30% 13%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 0 0% 22%;
-    --accent-foreground: 40 15% 90%;
+    --accent: 217 30% 15%;
+    --accent-foreground: 210 20% 96%;
 
-    /* Focus - Muted teal for dark mode */
-    --focus: 180 30% 55%;
-    --focus-foreground: 0 0% 15%;
+    --focus: 217 90% 60%;
+    --focus-foreground: 222 47% 8%;
 
-    /* Streak - Warm orange for dark mode */
-    --streak: 20 85% 60%;
-    --streak-foreground: 0 0% 15%;
+    --streak: 35 90% 50%;
+    --streak-foreground: 222 47% 8%;
 
-    --destructive: 0 70% 55%;
-    --destructive-foreground: 40 15% 92%;
+    --destructive: 0 84% 65%;
+    --destructive-foreground: 210 20% 96%;
 
-    --border: 0 0% 22%;
-    --input: 0 0% 18%;
-    --ring: 40 10% 80%;
+    --border: 217 30% 18%;
+    --input: 217 30% 14%;
+    --ring: 217 90% 60%;
 
-    /* Dark mode gradients - soft and comfortable */
-    --gradient-primary: linear-gradient(135deg, hsl(40 10% 85%), hsl(40 15% 90%));
-    --gradient-secondary: linear-gradient(135deg, hsl(25 45% 60%), hsl(25 50% 70%));
-    --gradient-ethereal: linear-gradient(180deg, hsl(0 0% 12%), hsl(0 0% 18%));
-    --gradient-reading: linear-gradient(135deg, hsl(0 0% 14%), hsl(0 0% 16%));
+    --gradient-primary: linear-gradient(135deg, hsl(217 90% 60%), hsl(217 95% 70%));
+    --gradient-secondary: linear-gradient(135deg, hsl(217 30% 15%), hsl(217 30% 20%));
+    --gradient-ethereal: linear-gradient(180deg, hsl(222 47% 8%), hsl(222 45% 12%));
+    --gradient-reading: linear-gradient(135deg, hsl(222 45% 9%), hsl(222 45% 11%));
 
-    --sidebar-background: 0 0% 14%;
-    --sidebar-foreground: 40 15% 88%;
-    --sidebar-primary: 40 10% 85%;
-    --sidebar-primary-foreground: 0 0% 15%;
-    --sidebar-accent: 0 0% 20%;
-    --sidebar-accent-foreground: 40 15% 88%;
-    --sidebar-border: 0 0% 22%;
-    --sidebar-ring: 40 10% 80%;
+    --sidebar-background: 222 45% 9%;
+    --sidebar-foreground: 210 20% 96%;
+    --sidebar-primary: 217 90% 60%;
+    --sidebar-primary-foreground: 222 47% 8%;
+    --sidebar-accent: 217 30% 14%;
+    --sidebar-accent-foreground: 210 20% 96%;
+    --sidebar-border: 217 30% 18%;
+    --sidebar-ring: 217 90% 60%;
   }
 
   /* Sepia Reading Mode - Perfect for extended reading sessions */

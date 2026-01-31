@@ -220,7 +220,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="assistant" className="animate-page-fade">
-            <AiChat />
+            <AiChat context={currentBook ? `Currently reading: "${currentBook.title}" by ${currentBook.author}.\n\n${(currentBook.content || '').slice(0, 3000)}${(currentBook.content?.length || 0) > 3000 ? '...' : ''}` : ''} />
           </TabsContent>
         </Tabs>
       </div>

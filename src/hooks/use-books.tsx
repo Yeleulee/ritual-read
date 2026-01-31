@@ -15,6 +15,7 @@ export interface BookItem {
   fileUrl?: string;
   fileType?: string;
   lastRead?: Date;
+  tags?: string[]; // Categories/tags for organization
 }
 
 export const useBooks = () => {
@@ -22,7 +23,7 @@ export const useBooks = () => {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
-  
+
   // Local fallback storage key per-user
   const storageKey = `books:${user?.id ?? 'guest'}`;
 
@@ -86,6 +87,7 @@ export const useBooks = () => {
         fileUrl: book.file_url,
         fileType: book.file_type,
         lastRead: book.last_read ? new Date(book.last_read) : undefined,
+        tags: book.tags || [],
       }));
 
       // Update with server data
@@ -113,26 +115,27 @@ export const useBooks = () => {
         fileUrl: newBook.fileUrl,
         fileType: newBook.fileType,
         lastRead: newBook.lastRead ?? new Date(),
+        tags: newBook.tags || [],
       };
-      
+
       setBooks((prev) => {
         const next = [localBook, ...prev];
         writeLocalBooks(next);
         return next;
       });
-      
+
       toast({
         title: 'Book Saved Locally',
         description: 'Your book was saved on this device.',
       });
-      
+
       return localBook;
     }
 
     console.log('Adding book for user:', user.id, 'Book:', newBook.title);
     console.log('User object:', user);
     console.log('Supabase client available:', !!supabase);
-    
+
     // Test authentication
     const { data: authData, error: authError } = await supabase.auth.getUser();
     console.log('Auth test:', { authData, authError });
@@ -148,7 +151,7 @@ export const useBooks = () => {
           const response = await fetch(newBook.fileUrl);
           const blob = await response.blob();
           const uploadedUrl = await saveBookFile(blob, user.id);
-          
+
           if (uploadedUrl.startsWith('supabase://')) {
             fileUrl = uploadedUrl;
             console.log('File uploaded to storage:', fileUrl);
@@ -179,6 +182,7 @@ export const useBooks = () => {
         file_url: fileUrl || null,
         file_type: newBook.fileType || null,
         last_read: newBook.lastRead?.toISOString() || new Date().toISOString(),
+        tags: newBook.tags || [],
       };
 
       console.log('Inserting book data:', bookData);
@@ -193,10 +197,10 @@ export const useBooks = () => {
 
       if (error) {
         console.error('Supabase error:', error);
-        
+
         // If table doesn't exist or any other error, save locally as fallback
         console.warn('Database error, saving locally:', error);
-        
+
         const localBook: BookItem = {
           id: (globalThis as any).crypto?.randomUUID?.() ?? Date.now().toString(),
           title: newBook.title,
@@ -209,18 +213,18 @@ export const useBooks = () => {
           fileType: newBook.fileType,
           lastRead: newBook.lastRead ?? new Date(),
         };
-        
+
         setBooks((prev) => {
           const next = [localBook, ...prev];
           writeLocalBooks(next);
           return next;
         });
-        
+
         toast({
           title: 'Book Saved Locally',
           description: 'Your book was saved on this device. It will sync to the cloud when the database is ready.',
         });
-        
+
         return localBook;
       }
 
@@ -236,6 +240,7 @@ export const useBooks = () => {
         fileUrl: data.file_url,
         fileType: data.file_type,
         lastRead: data.last_read ? new Date(data.last_read) : undefined,
+        tags: data.tags || [],
       };
 
       setBooks(prev => {
@@ -243,16 +248,16 @@ export const useBooks = () => {
         writeLocalBooks(next);
         return next;
       });
-      
+
       toast({
         title: 'Book Added',
         description: 'Your book has been saved successfully.',
       });
-      
+
       return formattedBook;
     } catch (error: any) {
       console.error('Error adding book:', error);
-      
+
       // More detailed error message
       let errorMessage = error.message || 'Unknown error occurred';
       if (error.code) {
@@ -261,7 +266,7 @@ export const useBooks = () => {
       if (error.hint) {
         errorMessage += ` (Hint: ${error.hint})`;
       }
-      
+
       toast({
         title: "Error Adding Book",
         description: errorMessage,
@@ -278,7 +283,7 @@ export const useBooks = () => {
     try {
       const { error } = await supabase
         .from('books')
-        .update({ 
+        .update({
           progress,
           last_read: new Date().toISOString(),
         })
@@ -296,8 +301,8 @@ export const useBooks = () => {
       }
 
       setBooks(prev => {
-        const next = prev.map(book => 
-          book.id === bookId 
+        const next = prev.map(book =>
+          book.id === bookId
             ? { ...book, progress, lastRead: new Date() }
             : book
         );
