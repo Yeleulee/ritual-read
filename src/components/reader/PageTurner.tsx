@@ -106,8 +106,11 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   ref,
 ) {
   const rootRef = useRef<HTMLDivElement>(null);
+  // The chosen mode is an explicit user setting ("None" exists for exactly this), so an OS
+  // reduced-motion hint only shortens the animation instead of silently disabling it.
   const reduced = useReducedMotion();
-  const effectiveMode: PageTurnMode = reduced && mode !== "scroll" ? "none" : mode;
+  const effectiveMode: PageTurnMode = mode;
+  const speed = reduced ? 0.6 : 1;
 
   // Overlay DOM (imperatively driven for 60fps)
   const staticRef = useRef<HTMLDivElement>(null);
@@ -312,8 +315,8 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       const from = t.get();
       const dist = Math.abs(target - from);
       await Promise.all([
-        animate(t, target, { duration: Math.max(0.16, Math.min(0.55, 0.5 * dist + 0.1 - Math.min(0.2, Math.abs(velocity) * 0.1))), ease: [0.22, 1, 0.36, 1] }).finished,
-        animate(py, 0, { duration: 0.35, ease: "easeOut" }).finished,
+        animate(t, target, { duration: speed * Math.max(0.16, Math.min(0.55, 0.5 * dist + 0.1 - Math.min(0.2, Math.abs(velocity) * 0.1))), ease: [0.22, 1, 0.36, 1] }).finished,
+        animate(py, 0, { duration: speed * 0.35, ease: "easeOut" }).finished,
       ]);
       if (!commit) {
         // Put the live reader back where the sheet says it is
@@ -322,7 +325,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       } else onTurned?.(dir);
       finish();
     },
-    [api, finish, onTurned, t, py],
+    [api, finish, onTurned, t, py, speed],
   );
 
   const turn = useCallback(
@@ -332,10 +335,10 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       if (effectiveMode === "none" || effectiveMode === "scroll") return;
       // Programmatic turn: add a little lift so the fold runs diagonally like a thumb flick
       const { H } = sizeRef.current;
-      animate(py, -H * 0.22, { duration: 0.25, ease: "easeOut" });
+      animate(py, -H * 0.22, { duration: speed * 0.25, ease: "easeOut" });
       await settle(dir, true);
     },
-    [beginTurn, settle, effectiveMode, py],
+    [beginTurn, settle, effectiveMode, py, speed],
   );
 
   /* ---------- gestures ----------

@@ -163,7 +163,7 @@ export function ReaderIllustration({ className }: { className?: string }) {
     let pageOnTop = true;
 
     const onLoaded = () => {
-      if (!anim) return;
+      if (!anim || playback.started) return;
       anim.goToAndStop(READ_START, true);
       play.current.started = true;
       play.current.waiting = true;
@@ -279,7 +279,7 @@ export function ReaderIllustration({ className }: { className?: string }) {
     const onComplete = () => {
       play.current.waiting = true;
       play.current.remaining = rand(READING_PAUSE_MIN, READING_PAUSE_MAX);
-      anim?.goToAndStop(0, true);
+      anim?.goToAndStop(READ_START, true);
     };
 
     const onVisibilityChange = () => {
@@ -306,8 +306,10 @@ export function ReaderIllustration({ className }: { className?: string }) {
         anim.addEventListener("DOMLoaded", onLoaded);
         anim.addEventListener("enterFrame", onFrame);
         anim.addEventListener("complete", onComplete);
+        // Inline animationData can finish building the DOM inside loadAnimation(), before the listener exists
+        if (anim.isLoaded) onLoaded();
       })
-      .catch(() => {});
+      .catch((error) => console.error("Hero illustration failed to load", error));
 
     return () => {
       cancelled = true;
