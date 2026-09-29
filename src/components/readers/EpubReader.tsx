@@ -1,15 +1,25 @@
 import { useEffect, useRef, useState } from "react";
-import { toCanvas } from "html-to-image";
 import type { Highlight } from "@/hooks/use-reader-store";
 import { fontFaceCss, HIGHLIGHT_COLORS, MEASURE_EM, SPREAD_MIN_WIDTH, themeToEpubRules, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
-import { embeddedFontCss } from "@/lib/reader-snapshot";
+
+/** A still image of the current page for the page-turn sheet: a canvas, or a detached DOM
+    clone that looks identical once attached. `rrReady` (optional) resolves when it has painted. */
+export type PageFace = (HTMLCanvasElement | HTMLElement) & { rrReady?: () => Promise<void> };
+
+export type GesturePhase = "down" | "move" | "up" | "cancel";
+export interface GesturePoint {
+  id: number;
+  x: number;
+  y: number;
+  pointerType: string;
+}
 
 /* Shared contract every format reader exposes to the shell / PageTurner. */
 export interface ReaderApi {
   next(): Promise<boolean>;
   prev(): Promise<boolean>;
   display(target: string | number): Promise<void>;
-  snapshot(): Promise<HTMLCanvasElement | null>;
+  snapshot(): Promise<PageFace | null>;
   currentLocation(): string | null;
   search?(query: string): Promise<SearchHit[]>;
   clearSelection?(): void;
@@ -59,6 +69,8 @@ interface EpubReaderProps {
   onSelected?: (sel: SelectionInfo | null) => void;
   onHighlightClick?: (id: string, rect: DOMRect) => void;
   onTap?: () => void;
+  /** Pointer events from inside the iframe, in top-window client coordinates */
+  onGesture?: (phase: GesturePhase, p: GesturePoint) => void;
   onKeyDown?: (e: KeyboardEvent) => void;
   onError?: (message: string) => void;
 }
@@ -105,6 +117,7 @@ export const EpubReader = ({
   onSelected,
   onHighlightClick,
   onTap,
+  onGesture,
   onKeyDown,
   onError,
 }: EpubReaderProps) => {
@@ -123,8 +136,8 @@ export const EpubReader = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Latest callbacks without re-creating the rendition
-  const cb = useRef({ onReady, onToc, onRelocated, onSelected, onHighlightClick, onTap, onKeyDown, onError });
-  cb.current = { onReady, onToc, onRelocated, onSelected, onHighlightClick, onTap, onKeyDown, onError };
+  const cb = useRef({ onReady, onToc, onRelocated, onSelected, onHighlightClick, onTap, onGesture, onKeyDown, onError });
+  cb.current = { onReady, onToc, onRelocated, onSelected, onHighlightClick, onTap, onGesture, onKeyDown, onError };
 
   settingsRef.current = settings;
   themeRef.current = theme;
@@ -271,21 +284,31 @@ export const EpubReader = ({
           const container = containerRef.current;
           const c = r?.getContents()[0];
           if (!r || !c || !container) return null;
-          const frame = c.document.defaultView.frameElement as HTMLElement;
+          const frame = c.document.defaultView.frameElement as HTMLIFrameElement;
           const fr = frame.getBoundingClientRect();
           const cr = container.getBoundingClientRect();
-          const offsetX = Math.max(0, cr.left - fr.left);
-          const offsetY = Math.max(0, cr.top - fr.top);
-          const fontCss = await embeddedFontCss(settingsRef.current.fontId);
-          return await toCanvas(c.document.documentElement as HTMLElement, {
-            width: Math.round(cr.width),
-            height: Math.round(cr.height),
-            pixelRatio: Math.min(2, window.devicePixelRatio || 1),
-            backgroundColor: themeRef.current.bg,
-            cacheBust: false,
-            fontEmbedCSS: fontCss,
-            style: { transform: `translate(${-offsetX}px, ${-offsetY}px)`, transformOrigin: "top left" },
-          });
+          const bg = themeRef.current.bg;
+          // A frozen copy of the section in a same-origin srcdoc iframe, positioned exactly where the live one is.
+          // Scripts are dropped; blob: resources and our injected stylesheet resolve as-is.
+          const wrap = document.createElement("div") as PageFace;
+          wrap.style.cssText = `position:absolute;inset:0;overflow:hidden;background:${bg}`;
+          const clone = document.createElement("iframe");
+          clone.setAttribute("aria-hidden", "true");
+          clone.tabIndex = -1;
+          clone.style.cssText = `position:absolute;left:${fr.left - cr.left}px;top:${fr.top - cr.top}px;width:${fr.width}px;height:${fr.height}px;border:0;margin:0;pointer-events:none;background:${bg}`;
+          const html = (c.document.documentElement as HTMLElement).outerHTML.replace(/<script[\s\S]*?<\/script>/gi, "");
+          clone.srcdoc = `<!DOCTYPE html>${html}`;
+          wrap.appendChild(clone);
+          // srcdoc only loads once attached; caller awaits this after mounting
+          wrap.rrReady = function (this: HTMLElement) {
+            const f = this.querySelector("iframe");
+            if (!f) return Promise.resolve();
+            return new Promise<void>((res) => {
+              f.addEventListener("load", () => requestAnimationFrame(() => res()), { once: true });
+              window.setTimeout(res, 400);
+            });
+          };
+          return wrap;
         } catch (e) {
           console.warn("snapshot failed", e);
           return null;
@@ -367,6 +390,17 @@ export const EpubReader = ({
             if ((e.target as HTMLElement | null)?.closest?.("a")) return;
             cb.current.onTap?.();
           });
+          // Pointer events don't cross the iframe boundary; forward them so swipes anywhere can turn pages
+          const forward = (phase: GesturePhase) => (e: PointerEvent) => {
+            if (phase === "move" && !contents.window.getSelection()?.isCollapsed) return;
+            const f = (contents.window.frameElement as HTMLElement | null)?.getBoundingClientRect();
+            if (!f) return;
+            cb.current.onGesture?.(phase, { id: e.pointerId, x: e.clientX + f.left, y: e.clientY + f.top, pointerType: e.pointerType });
+          };
+          doc.addEventListener("pointerdown", forward("down"));
+          doc.addEventListener("pointermove", forward("move"));
+          doc.addEventListener("pointerup", forward("up"));
+          doc.addEventListener("pointercancel", forward("cancel"));
         } catch {
           /* ignore */
         }

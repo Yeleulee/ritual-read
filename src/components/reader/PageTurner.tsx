@@ -1,15 +1,18 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { animate, useMotionValue, useReducedMotion } from "framer-motion";
-import type { ReaderApi } from "@/components/readers/EpubReader";
+import type { GesturePhase, GesturePoint, PageFace, ReaderApi } from "@/components/readers/EpubReader";
 import type { PageTurnMode, ReaderTheme } from "@/lib/reader-themes";
 
 /* Apple Books–style page turning on top of any ReaderApi.
-   The live reader advances underneath; a raster snapshot of the outgoing page is animated on top
-   (curl = 2-D fold with mirrored back face and cast shadow; slide = horizontal sheet). */
+   The live reader advances underneath; a still copy of the outgoing page is animated on top
+   (curl = 2-D fold with mirrored back face and cast shadow; slide = horizontal sheet).
+   Gestures: tap either edge, swipe anywhere with a finger/pen, drag from an edge with a mouse. */
 
 export interface PageTurnerHandle {
   turn: (dir: 1 | -1) => void;
+  /** Pointer events from a reader that swallows them (EPUB iframe) */
+  feed: (phase: GesturePhase, p: GesturePoint) => void;
 }
 
 interface PageTurnerProps {
@@ -36,8 +39,14 @@ type Geometry = {
 };
 
 const EDGE = 0.18;
-const TAP_MS = 260;
-const TAP_PX = 8;
+const EDGE_NARROW = 0.24; // phones: bigger tap targets
+const TAP_MS = 300;
+const TAP_PX = 10;
+const DRAG_PX = 12;
+const SWIPE_PX = 40; // "none" mode: a flick still turns
+const SNAPSHOT_BUDGET_MS = 450; // past this, turn without animation rather than feel stuck
+
+const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T) => Promise.race([p, new Promise<T>((r) => window.setTimeout(() => r(fallback), ms))]);
 
 const pts = (p: Pt[]) => p.map((q) => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(" ");
 const poly = (p: Pt[]) => (p.length < 3 ? "polygon(0 0, 0 0, 0 0)" : `polygon(${p.map((q) => `${q.x.toFixed(1)}px ${q.y.toFixed(1)}px`).join(",")})`);
@@ -119,16 +128,20 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   const sizeRef = useRef({ W: 0, H: 0 });
 
   // Snapshot cache of the current page, refreshed a moment after each relocation
-  const cache = useRef<{ key: string; canvas: HTMLCanvasElement } | null>(null);
-  const validCanvas = (c: HTMLCanvasElement | null | undefined) => (c && c.width > 0 && c.height > 0 ? c : null);
+  const cache = useRef<{ key: string; face: PageFace } | null>(null);
+  const validFace = (f: PageFace | null | undefined): PageFace | null => {
+    if (!f) return null;
+    if (f instanceof HTMLCanvasElement) return f.width > 0 && f.height > 0 ? f : null;
+    return f;
+  };
   const cacheKey = () => `${snapshotKey}|${sizeRef.current.W}x${sizeRef.current.H}`;
   useEffect(() => {
     if (!api || effectiveMode === "none" || effectiveMode === "scroll") return;
     let cancelled = false;
     const id = window.setTimeout(async () => {
       const key = cacheKey();
-      const c = validCanvas(await api.snapshot());
-      if (!cancelled && c) cache.current = { key, canvas: c };
+      const f = validFace(await api.snapshot());
+      if (!cancelled && f) cache.current = { key, face: f };
     }, 180);
     return () => {
       cancelled = true;
@@ -139,10 +152,10 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
 
   const getSnapshot = useCallback(async () => {
     const key = cacheKey();
-    if (cache.current?.key === key) return cache.current.canvas;
-    const c = validCanvas(await api?.snapshot());
-    if (c) cache.current = { key, canvas: c };
-    return c;
+    if (cache.current?.key === key) return cache.current.face;
+    const f = validFace(await withTimeout(api?.snapshot() ?? Promise.resolve(null), SNAPSHOT_BUDGET_MS, null));
+    if (f) cache.current = { key, face: f };
+    return f;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, snapshotKey]);
 
@@ -158,15 +171,27 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   }, []);
 
   /* ---------- painting ---------- */
-  const paintCanvas = (host: HTMLDivElement | null, canvas: HTMLCanvasElement | null) => {
-    if (!host) return;
+  const paintFace = (host: HTMLDivElement | null, face: PageFace | null): Promise<void> => {
+    if (!host) return Promise.resolve();
     host.replaceChildren();
-    if (canvas) {
-      canvas.style.width = "100%";
-      canvas.style.height = "100%";
-      canvas.style.display = "block";
-      host.appendChild(canvas);
-    } else host.style.background = theme.bg;
+    if (!face) {
+      host.style.background = theme.bg;
+      return Promise.resolve();
+    }
+    if (face instanceof HTMLCanvasElement) {
+      face.style.width = "100%";
+      face.style.height = "100%";
+      face.style.display = "block";
+    }
+    host.appendChild(face);
+    return face.rrReady ? face.rrReady() : Promise.resolve();
+  };
+  const cloneFace = (face: PageFace | null): PageFace | null => {
+    if (!face) return null;
+    if (face instanceof HTMLCanvasElement) return cloneCanvas(face);
+    const c = face.cloneNode(true) as PageFace;
+    c.rrReady = face.rrReady;
+    return c;
   };
 
   const render = useCallback(() => {
@@ -232,34 +257,44 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       const kind = effectiveMode === "slide" ? "slide" : "curl";
       try {
         const current = await getSnapshot();
+        if (!current) {
+          // Nothing to animate with — still turn, just without the sheet
+          await (dir === 1 ? api.next() : api.prev());
+          onTurned?.(dir);
+          turning.current = false;
+          return false;
+        }
         // Mount the right overlay variant now so its refs exist for painting
         flushSync(() => {
           activeRef.current = { dir, kind };
           setActive({ dir, kind });
         });
+        const sheet = kind === "slide" ? slideRef.current : frontRef.current;
         if (dir === 1) {
           // Outgoing page rides the sheet; the live reader already shows the next page underneath
-          paintCanvas(staticRef.current, null);
+          void paintFace(staticRef.current, null);
           if (staticRef.current) staticRef.current.style.display = "none";
-          paintCanvas(kind === "slide" ? slideRef.current : frontRef.current, current);
-          if (kind === "curl") paintCanvas(backImgRef.current, current ? cloneCanvas(current) : null);
+          const ready = [paintFace(sheet, current)];
+          if (kind === "curl") ready.push(paintFace(backImgRef.current, cloneFace(current)));
           t.set(0);
           render();
+          await Promise.all(ready);
           await api.next();
         } else {
           // Current page stays as a static layer; the previous page unfolds over it (t from 1 → 0)
           if (staticRef.current) staticRef.current.style.display = "block";
-          paintCanvas(staticRef.current, current);
-          paintCanvas(kind === "slide" ? slideRef.current : frontRef.current, null);
-          if (kind === "curl") paintCanvas(backImgRef.current, null);
+          await paintFace(staticRef.current, current);
+          void paintFace(sheet, null);
+          if (kind === "curl") void paintFace(backImgRef.current, null);
           t.set(1);
           render();
           await api.prev();
           // Give the live reader a frame to paint, then capture the incoming page for the sheet
           await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-          const prevCanvas = validCanvas(await api.snapshot());
-          paintCanvas(kind === "slide" ? slideRef.current : frontRef.current, prevCanvas);
-          if (kind === "curl") paintCanvas(backImgRef.current, prevCanvas ? cloneCanvas(prevCanvas) : null);
+          const prevFace = validFace(await withTimeout(api.snapshot(), SNAPSHOT_BUDGET_MS, null));
+          const ready = [paintFace(sheet, prevFace)];
+          if (kind === "curl") ready.push(paintFace(backImgRef.current, cloneFace(prevFace)));
+          await Promise.all(ready);
         }
         return true;
       } catch (e) {
@@ -303,74 +338,86 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     [beginTurn, settle, effectiveMode, py],
   );
 
-  useImperativeHandle(ref, () => ({ turn }), [turn]);
+  /* ---------- gestures ----------
+     One engine for every input source: root pointer events (capture phase, so the reader keeps
+     getting them for selection/links until a horizontal drag is recognised) and events fed in
+     from inside the EPUB iframe. */
+  type Zone = "left" | "right" | "center";
+  type Gesture = { id: number; type: string; zone: Zone; dir: 1 | -1; startX: number; startY: number; startT: number; lastX: number; lastTime: number; vx: number; dragging: boolean; began: boolean; captured: boolean; starting?: Promise<boolean> };
+  const gesture = useRef<Gesture | null>(null);
 
-  /* ---------- gestures ---------- */
-  const gesture = useRef<null | { dir: 1 | -1; startX: number; startY: number; startT: number; lastX: number; lastTime: number; vx: number; dragging: boolean; began: boolean; starting?: Promise<boolean> }>(null);
-
-  const onPointerDown = (e: React.PointerEvent, zone: "left" | "right" | "center") => {
-    if (disabled || e.button !== 0) return;
-    if (effectiveMode === "scroll") {
-      if (zone === "center") onTapCenter?.();
-      return;
-    }
-    const dir: 1 | -1 = zone === "right" ? 1 : -1;
-    if (zone === "center") {
-      gesture.current = { dir: 1, startX: e.clientX, startY: e.clientY, startT: performance.now(), lastX: e.clientX, lastTime: performance.now(), vx: 0, dragging: false, began: false };
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      return;
-    }
-    gesture.current = { dir, startX: e.clientX, startY: e.clientY, startT: performance.now(), lastX: e.clientX, lastTime: performance.now(), vx: 0, dragging: false, began: false };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  const edgeFraction = () => (sizeRef.current.W < 600 ? EDGE_NARROW : EDGE);
+  const zoneAt = (x: number): Zone => {
+    const { W } = sizeRef.current;
+    const left = rootRef.current?.getBoundingClientRect().left ?? 0;
+    const rx = W ? (x - left) / W : 0.5;
+    const edge = edgeFraction();
+    return rx < edge ? "left" : rx > 1 - edge ? "right" : "center";
+  };
+  const hasSelection = () => {
+    const s = document.getSelection();
+    return !!s && !s.isCollapsed && s.toString().trim().length > 0;
+  };
+  const releaseCapture = (g: Gesture) => {
+    if (!g.captured) return;
+    try { rootRef.current?.releasePointerCapture(g.id); } catch { /* already released */ }
   };
 
-  const onPointerMove = async (e: React.PointerEvent, zone: "left" | "right" | "center") => {
+  const gDown = (p: GesturePoint) => {
+    if (disabled || effectiveMode === "scroll") return;
+    const now = performance.now();
+    gesture.current = { id: p.id, type: p.pointerType, zone: zoneAt(p.x), dir: 1, startX: p.x, startY: p.y, startT: now, lastX: p.x, lastTime: now, vx: 0, dragging: false, began: false, captured: false };
+  };
+
+  const gMove = async (p: GesturePoint) => {
     const g = gesture.current;
-    if (!g) return;
+    if (!g || g.id !== p.id) return;
     const now = performance.now();
     const dt = Math.max(1, now - g.lastTime);
-    g.vx = (e.clientX - g.lastX) / dt;
-    g.lastX = e.clientX;
+    g.vx = (p.x - g.lastX) / dt;
+    g.lastX = p.x;
     g.lastTime = now;
-    const dx = e.clientX - g.startX;
-    if (!g.dragging && Math.abs(dx) > TAP_PX && zone !== "center") g.dragging = true;
-    if (!g.dragging) return;
-    if (effectiveMode === "none") return;
-    if (!g.began) {
+    const dx = p.x - g.startX;
+    const dy = p.y - g.startY;
+    if (!g.dragging) {
+      if (Math.abs(dx) < DRAG_PX || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+      // Mouse drags in the middle of the page select text; fingers and pens swipe anywhere
+      if (g.zone === "center" && g.type === "mouse") return;
+      if (effectiveMode === "none" || hasSelection()) return;
+      const dir: 1 | -1 = dx < 0 ? 1 : -1;
+      if ((dir === 1 && !canNext) || (dir === -1 && !canPrev)) { gesture.current = null; return; }
+      g.dragging = true;
+      g.dir = dir;
+      try { rootRef.current?.setPointerCapture(p.id); g.captured = true; } catch { /* fed from an iframe */ }
       g.began = true;
-      g.starting = beginTurn(g.dir);
-      const ok = await g.starting;
-      if (!ok) {
-        gesture.current = null;
-        return;
-      }
+      g.starting = beginTurn(dir);
+      if (!(await g.starting)) { releaseCapture(g); gesture.current = null; return; }
     }
     if (!turning.current) return;
     const { W } = sizeRef.current;
-    if (g.dir === 1) {
-      const travel = Math.max(1, g.startX - W * 0.12);
-      t.set(Math.max(0, Math.min(1, (g.startX - e.clientX) / travel)));
-    } else {
-      const travel = Math.max(1, W * 0.88 - g.startX);
-      t.set(Math.max(0, Math.min(1, 1 - (e.clientX - g.startX) / travel)));
-    }
-    py.set((e.clientY - g.startY) * 0.5);
+    // Enough travel that a mid-page swipe feels like dragging a real sheet, not a hair trigger
+    const travel = Math.max(W * 0.5, g.dir === 1 ? g.startX - W * 0.12 : W * 0.88 - g.startX);
+    t.set(Math.max(0, Math.min(1, g.dir === 1 ? (g.startX - p.x) / travel : 1 - (p.x - g.startX) / travel)));
+    py.set(dy * 0.5);
   };
 
-  const onPointerUp = async (e: React.PointerEvent, zone: "left" | "right" | "center") => {
+  const gUp = async (p: GesturePoint) => {
     const g = gesture.current;
+    if (!g || g.id !== p.id) return;
     gesture.current = null;
-    if (!g) return;
+    releaseCapture(g);
     const elapsed = performance.now() - g.startT;
-    const moved = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
+    const dx = p.x - g.startX;
+    const dy = p.y - g.startY;
     if (!g.dragging) {
-      if (elapsed < TAP_MS && moved < TAP_PX) {
-        if (zone === "center") onTapCenter?.();
-        else turn(g.dir);
+      if (elapsed < TAP_MS && Math.hypot(dx, dy) < TAP_PX) {
+        // Centre taps reach the reader itself, which reports them via onTap
+        if (g.zone !== "center") turn(g.zone === "right" ? 1 : -1);
+      } else if (effectiveMode === "none" && Math.abs(dx) > SWIPE_PX && Math.abs(dx) > Math.abs(dy) && !hasSelection()) {
+        turn(dx < 0 ? 1 : -1);
       }
       return;
     }
-    if (!g.began) return;
     if (g.starting && !(await g.starting)) return;
     if (!turning.current) return;
     const tv = t.get();
@@ -380,16 +427,31 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     await settle(g.dir, commit, towardCommit);
   };
 
-  const zoneProps = (zone: "left" | "right" | "center") => ({
-    onPointerDown: (e: React.PointerEvent) => onPointerDown(e, zone),
-    onPointerMove: (e: React.PointerEvent) => onPointerMove(e, zone),
-    onPointerUp: (e: React.PointerEvent) => onPointerUp(e, zone),
-    onPointerCancel: () => {
-      const g = gesture.current;
-      gesture.current = null;
-      if (g?.began) void g.starting?.then((ok) => { if (ok && turning.current) return settle(g.dir, false); });
-    },
-  });
+  const gCancel = (p?: GesturePoint) => {
+    const g = gesture.current;
+    if (!g || (p && g.id !== p.id)) return;
+    gesture.current = null;
+    releaseCapture(g);
+    if (g.began) void g.starting?.then((ok) => { if (ok && turning.current) return settle(g.dir, false); });
+  };
+
+  const feed = useCallback((phase: GesturePhase, p: GesturePoint) => {
+    if (phase === "down") gDown(p);
+    else if (phase === "move") void gMove(p);
+    else if (phase === "up") void gUp(p);
+    else gCancel(p);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disabled, effectiveMode, canNext, canPrev, beginTurn, settle, turn]);
+
+  useImperativeHandle(ref, () => ({ turn, feed }), [turn, feed]);
+
+  const toPoint = (e: React.PointerEvent): GesturePoint => ({ id: e.pointerId, x: e.clientX, y: e.clientY, pointerType: e.pointerType });
+  const rootPointer = {
+    onPointerDownCapture: (e: React.PointerEvent) => { if (e.button === 0) gDown(toPoint(e)); },
+    onPointerMoveCapture: (e: React.PointerEvent) => { void gMove(toPoint(e)); },
+    onPointerUpCapture: (e: React.PointerEvent) => { void gUp(toPoint(e)); },
+    onPointerCancelCapture: (e: React.PointerEvent) => gCancel(toPoint(e)),
+  };
 
   const showZones = effectiveMode !== "scroll" && !disabled;
   const sheetShadow = theme.dark ? "rgba(0,0,0,.6)" : "rgba(0,0,0,.28)";
@@ -398,14 +460,14 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   }
 
   return (
-    <div ref={rootRef} className="relative h-full w-full select-none overflow-hidden" style={{ touchAction: effectiveMode === "scroll" ? "pan-y" : "none" }}>
+    <div ref={rootRef} className="relative h-full w-full select-none overflow-hidden" style={{ touchAction: effectiveMode === "scroll" ? "pan-y" : "none" }} {...rootPointer}>
       <div className="absolute inset-0">{children}</div>
 
-      {/* Edge zones: turn; the middle is left to the reader for selection, centre taps arrive via onTap */}
+      {/* Edge zones: tap targets that keep edge touches away from the text; the middle belongs to the reader */}
       {showZones && (
         <>
-          <div className="absolute inset-y-0 left-0 z-20" style={{ width: `${EDGE * 100}%`, cursor: canPrev ? "w-resize" : "default" }} {...zoneProps("left")} aria-hidden />
-          <div className="absolute inset-y-0 right-0 z-20" style={{ width: `${EDGE * 100}%`, cursor: canNext ? "e-resize" : "default" }} {...zoneProps("right")} aria-hidden />
+          <div className="absolute inset-y-0 left-0 z-20" style={{ width: `${edgeFraction() * 100}%`, cursor: canPrev ? "w-resize" : "default" }} aria-hidden />
+          <div className="absolute inset-y-0 right-0 z-20" style={{ width: `${edgeFraction() * 100}%`, cursor: canNext ? "e-resize" : "default" }} aria-hidden />
         </>
       )}
 

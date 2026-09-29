@@ -422,15 +422,15 @@ Colors are in HSL format for proper theming.
     .auth-scene__steam { opacity: 0.6; }
   }
 
-  /* Landing hero figure: slow breath layered over the Lottie transforms */
+  /* Breathing affects the torso artwork only, leaving the seated pose anchored. */
   .hero-breathe {
     transform-box: fill-box;
     transform-origin: 50% 100%;
-    animation: hero-breathe 3.8s ease-in-out infinite;
+    animation: hero-breathe 6.5s ease-in-out infinite;
   }
   @keyframes hero-breathe {
     0%, 100% { transform: scale(1, 1); }
-    50% { transform: scale(1.002, 1.008); }
+    50% { transform: scale(1, 1.004); }
   }
 
   /* Animated open-book logo — sized by font-size (1em ≈ one glyph) */

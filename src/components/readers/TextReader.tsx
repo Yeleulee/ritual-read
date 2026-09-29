@@ -1,8 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { toCanvas } from "html-to-image";
 import type { Highlight } from "@/hooks/use-reader-store";
 import { BODY_TEXT_RULES, fontById, HIGHLIGHT_COLORS, pageLayout, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
-import { embeddedFontCss } from "@/lib/reader-snapshot";
 import type { ReaderApi, RelocatedInfo, SearchHit, SelectionInfo } from "./EpubReader";
 
 /* Plain-text / DOCX reader. The whole text is laid out once in CSS columns the size of a page;
@@ -214,12 +212,11 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
       async snapshot() {
         const vp = viewportRef.current;
         if (!vp) return null;
-        try {
-          const fontEmbedCSS = await embeddedFontCss(settingsRef.current.fontId);
-          return await toCanvas(vp, { pixelRatio: Math.min(2, window.devicePixelRatio || 1), backgroundColor: themeRef.current.bg, cacheBust: false, fontEmbedCSS });
-        } catch {
-          return null;
-        }
+        // Everything that positions the page is inline style or utility classes, so a deep clone is pixel-identical
+        const face = vp.cloneNode(true) as HTMLElement;
+        face.style.pointerEvents = "none";
+        face.removeAttribute("data-lov-id");
+        return face;
       },
       async search(query) {
         const q = query.trim().toLowerCase();
