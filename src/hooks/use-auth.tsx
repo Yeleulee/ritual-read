@@ -14,12 +14,38 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Dev-only: when Supabase isn't configured (or explicitly requested), run with a local fake session
+// so the app is usable without credentials. Never active in production builds.
+export const DEV_AUTH_BYPASS =
+  import.meta.env.DEV &&
+  (import.meta.env.VITE_DEV_AUTH_BYPASS === 'true' || !import.meta.env.VITE_SUPABASE_URL);
+
+const DEV_SESSION_KEY = 'ritual:dev-session';
+
+const devUser = {
+  id: 'local-dev-user',
+  email: 'you@localhost',
+  aud: 'authenticated',
+  role: 'authenticated',
+  app_metadata: { provider: 'local' },
+  user_metadata: { full_name: 'Local Reader' },
+  created_at: new Date(0).toISOString(),
+} as unknown as User;
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (DEV_AUTH_BYPASS) {
+      // Signed in by default; sign-out only clears the flag until next sign-in
+      const signedOut = localStorage.getItem(DEV_SESSION_KEY) === 'out';
+      setUser(signedOut ? null : devUser);
+      setLoading(false);
+      return;
+    }
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -39,7 +65,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => subscription.unsubscribe();
   }, []);
 
+  const devSignIn = () => {
+    localStorage.setItem(DEV_SESSION_KEY, 'in');
+    setUser(devUser);
+    return { error: null };
+  };
+
   const signUp = async (email: string, password: string) => {
+    if (DEV_AUTH_BYPASS) return devSignIn();
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -48,6 +81,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signIn = async (email: string, password: string) => {
+    if (DEV_AUTH_BYPASS) return devSignIn();
     console.log('Attempting sign in for:', email);
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -64,6 +98,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signInWithGoogle = async () => {
+    if (DEV_AUTH_BYPASS) return devSignIn();
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -89,6 +124,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
+    if (DEV_AUTH_BYPASS) {
+      localStorage.setItem(DEV_SESSION_KEY, 'out');
+      setUser(null);
+      return;
+    }
     await supabase.auth.signOut();
   };
 

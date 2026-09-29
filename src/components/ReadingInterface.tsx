@@ -44,19 +44,12 @@ import { DocxReader } from "@/components/readers/DocxReader";
 
 // Loading skeleton component
 const ReaderSkeleton = () => (
-  <div className="w-full h-full flex items-center justify-center glass-card rounded-lg">
-    <div className="space-y-4 w-full max-w-2xl px-8">
-      <div className="h-8 bg-muted/50 rounded-lg animate-pulse" />
-      <div className="h-8 bg-muted/40 rounded-lg animate-pulse" />
-      <div className="h-8 bg-muted/30 rounded-lg animate-pulse" />
-      <div className="h-8 bg-muted/40 rounded-lg animate-pulse" />
-      <div className="h-8 bg-muted/50 rounded-lg animate-pulse" />
-      <div className="flex items-center justify-center gap-2 mt-8">
-        <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" />
-        <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-        <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-      </div>
-      <p className="text-center text-sm text-muted-foreground mt-4">Loading your book...</p>
+  <div className="w-full h-full flex items-center justify-center border border-border bg-card">
+    <div className="space-y-3 w-full max-w-2xl px-8">
+      {[100, 96, 92, 98, 60].map((w, i) => (
+        <div key={i} className="h-3 bg-muted animate-pulse" style={{ width: `${w}%` }} />
+      ))}
+      <p className="eyebrow pt-6">Loading</p>
     </div>
   </div>
 );
@@ -533,46 +526,36 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
   };
 
   return (
-    <div ref={fullscreenContainerRef} className={cn("max-w-6xl mx-auto space-y-6 pb-[env(safe-area-inset-bottom)]", isFullscreen && "fullscreen-reader")}>
-      {/* Reading Header - Hidden for Immersion */}
-      <div className="hidden items-center justify-between animate-page-fade gap-3 flex-wrap">
-        <div className="flex items-center space-x-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onBackToLibrary}
-            className="transition-ritual hover:bg-muted"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
+    <div ref={fullscreenContainerRef} className={cn("max-w-6xl mx-auto space-y-5 pb-[env(safe-area-inset-bottom)]", isFullscreen && "fullscreen-reader bg-background p-4")}>
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-3 flex-wrap border-b border-border pb-4">
+        <div className="flex items-center gap-4 min-w-0">
+          <Button variant="ghost" size="sm" onClick={onBackToLibrary} className="-ml-2 text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="w-4 h-4" />
             Library
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold ritual-heading" style={{ WebkitTextFillColor: 'unset' }}>{book.title}</h1>
-            <p className="text-muted-foreground">by {book.author}</p>
+          <div className="min-w-0 border-l border-border pl-4">
+            <h1 className="font-serif text-xl leading-tight truncate">{book.title}</h1>
+            <p className="eyebrow truncate">{book.author}</p>
           </div>
         </div>
 
-        <div className="hidden md:flex items-center space-x-4">
-          <Badge variant="outline" className="flex items-center gap-2">
-            <Clock className="w-3 h-3" />
-            {formatTime(readingTime)}
-          </Badge>
-          <Button
-            variant={isReading ? "destructive" : "ritual"}
-            onClick={isReading ? pauseReading : startReading}
-          >
-            {isReading ? (<><Pause className="w-4 h-4 mr-2" />Pause</>) : (<><Play className="w-4 h-4 mr-2" />Start Reading</>)}
+        <div className="hidden md:flex items-center gap-1">
+          <span className={cn("eyebrow tabular-nums mr-3", isReading && "text-foreground")}>{formatTime(readingTime)}</span>
+          <Button size="sm" variant={isReading ? "outline" : "default"} onClick={isReading ? pauseReading : startReading}>
+            {isReading ? (<><Pause className="w-4 h-4" />Pause</>) : (<><Play className="w-4 h-4" />Start session</>)}
           </Button>
-          <Button variant={chaptersOpen ? "destructive" : "outline"} size="sm" className="transition-ritual" onClick={() => setChaptersOpen(true)}>
-            <BookOpen className="w-4 h-4 mr-2" />
+          <span className="h-5 w-px bg-border mx-2" />
+          <Button variant="ghost" size="sm" onClick={() => setChaptersOpen(true)}>
+            <List className="w-4 h-4" />
             Chapters
           </Button>
-          <Button variant={settingsOpen ? "destructive" : "outline"} size="sm" className="transition-ritual" onClick={() => setSettingsOpen(true)}>
-            <Settings className="w-4 h-4 mr-2" />
-            Settings
+          <Button variant="ghost" size="sm" onClick={() => setSettingsOpen(true)}>
+            <Type className="w-4 h-4" />
+            Type
           </Button>
-          <Button variant={isFullscreen ? "destructive" : "outline"} size="sm" className="transition-ritual" onClick={toggleFullscreen}>
-            {isFullscreen ? (<><Minimize2 className="w-4 h-4 mr-2" />Exit</>) : (<><Maximize2 className="w-4 h-4 mr-2" />Fullscreen</>)}
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"} onClick={toggleFullscreen}>
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </Button>
         </div>
       </div>
@@ -583,16 +566,17 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
           <SheetHeader>
             <SheetTitle>Chapters</SheetTitle>
           </SheetHeader>
-          <div className="mt-4 space-y-1">
+          <div className="mt-4 space-y-px">
             {chapters.length === 0 ? (
               <div className="text-sm text-muted-foreground">No chapters detected.</div>
-            ) : chapters.map((c) => (
+            ) : chapters.map((c, i) => (
               <button
                 key={c.id}
-                className="w-full text-left text-sm p-2 rounded hover:bg-muted transition"
+                className="w-full text-left text-sm py-2.5 border-b border-border hover:text-foreground text-foreground/80 transition-colors flex gap-3"
                 onClick={() => { handleChapterClick(c); setChaptersOpen(false); }}
               >
-                {c.label}
+                <span className="font-mono text-[11px] text-muted-foreground w-6 shrink-0 pt-0.5">{String(i + 1).padStart(2, "0")}</span>
+                <span className="truncate">{c.label}</span>
               </button>
             ))}
           </div>
@@ -601,9 +585,9 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
 
       {/* Settings Sheet */}
       <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <SheetContent className="glass-card w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Reading Settings</SheetTitle>
+            <SheetTitle className="display text-3xl">Type &amp; layout</SheetTitle>
           </SheetHeader>
 
           <div className="space-y-6 mt-6">
@@ -767,7 +751,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
             {/* Page Animation */}
             <div className="space-y-2">
               <Label>Page Turn Animation</Label>
-              <Select value={pageAnimation} onValueChange={setPageAnimation}>
+              <Select value={pageAnimation} onValueChange={(v) => setPageAnimation(v as PageAnimation)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -819,18 +803,11 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       </Sheet>
 
       {/* Reading Progress */}
-      <Card className="animate-page-fade">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-4">
-              <BookOpen className="w-5 h-5 text-primary" />
-              <span className="text-sm font-medium">Page {currentPage} of {effectiveTotalPages}</span>
-            </div>
-            <div className="text-sm text-muted-foreground">{Math.round((currentPage / effectiveTotalPages) * 100)}% complete</div>
-          </div>
-          <Progress value={(currentPage / effectiveTotalPages) * 100} className="h-2" />
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-between gap-4 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+        <span>Page <span className="text-foreground">{currentPage}</span> of {effectiveTotalPages}</span>
+        <Progress value={(currentPage / effectiveTotalPages) * 100} className="flex-1 max-w-md" />
+        <span className="text-foreground tabular-nums">{Math.round((currentPage / effectiveTotalPages) * 100)}%</span>
+      </div>
 
       {/* Reading Content */}
       <div className="relative">
@@ -854,7 +831,7 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
           onTouchEnd={handleTouchEnd}
         >
           <div
-            className={`${isReading ? 'focus-glow' : ''} h-full rounded-lg overflow-hidden border`}
+            className={cn("h-full overflow-hidden border bg-card transition-colors", isReading ? "border-foreground" : "border-border")}
             style={{
               hyphens: typography.hyphenation ? 'auto' : 'none',
             }}
@@ -878,38 +855,56 @@ export const ReadingInterface = ({ book, onBackToLibrary }: ReadingInterfaceProp
       </div>
 
       {/* Page Navigation (desktop) */}
-      <div className="hidden md:flex items-center justify-between animate-page-fade">
-        <Button variant="outline" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} className="transition-ritual">Previous Page</Button>
-        <div className="flex items-center space-x-2">
+      <div className="hidden md:flex items-center justify-between border-t border-border pt-4">
+        <Button variant="ghost" size="sm" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1}>
+          <ChevronLeft className="w-4 h-4" />Previous
+        </Button>
+        <div className="flex items-center gap-1 font-mono text-xs">
           {Array.from({ length: Math.min(5, effectiveTotalPages) }, (_, i) => {
             const pageNumber = currentPage <= 3 ? i + 1 : currentPage - 2 + i;
             if (pageNumber > effectiveTotalPages) return null;
             return (
-              <Button key={pageNumber} variant={pageNumber === currentPage ? "default" : "ghost"} size="sm" onClick={() => handlePageChange(pageNumber, pageNumber > currentPage ? 'next' : 'prev')} className="transition-ritual">{pageNumber}</Button>
+              <button
+                key={pageNumber}
+                onClick={() => handlePageChange(pageNumber, pageNumber > currentPage ? 'next' : 'prev')}
+                className={cn("h-8 min-w-8 px-2 tabular-nums transition-colors", pageNumber === currentPage ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}
+                aria-current={pageNumber === currentPage ? "page" : undefined}
+              >
+                {pageNumber}
+              </button>
             );
           })}
           {effectiveTotalPages > 5 && currentPage < effectiveTotalPages - 2 && (
             <>
-              <span className="text-muted-foreground">...</span>
-              <Button variant="ghost" size="sm" onClick={() => handlePageChange(effectiveTotalPages, 'next')} className="transition-ritual">{effectiveTotalPages}</Button>
+              <span className="text-muted-foreground px-1">…</span>
+              <button onClick={() => handlePageChange(effectiveTotalPages, 'next')} className="h-8 min-w-8 px-2 tabular-nums text-muted-foreground hover:text-foreground">{effectiveTotalPages}</button>
             </>
           )}
         </div>
-        <Button variant="outline" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} className="transition-ritual">Next Page</Button>
+        <Button variant="ghost" size="sm" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages}>
+          Next<ChevronRight className="w-4 h-4" />
+        </Button>
       </div>
 
       {/* Mobile bottom toolbar */}
-      <div className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-background/95 backdrop-blur border-t">
+      <div className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-background border-t border-border">
         <div className="container mx-auto px-3 py-2 flex items-center justify-between gap-3">
           <Button size="sm" variant="ghost" onClick={() => handlePageChange(currentPage - 1, 'prev')} disabled={currentPage === 1} className="h-11 w-11 p-0">
             <ChevronLeft className="w-6 h-6" />
           </Button>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" className="h-10" onClick={() => setChaptersOpen(true)}>
-              <List className="w-5 h-5 mr-1" />Chapters
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant={isReading ? "outline" : "default"} className="h-10" onClick={isReading ? pauseReading : startReading}>
+              {isReading ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              {isReading ? formatTime(readingTime) : "Start"}
             </Button>
-            <Button size="sm" variant={isFullscreen ? 'destructive' : 'ritual'} className="h-10" onClick={toggleFullscreen}>
-              {isFullscreen ? (<><Minimize2 className="w-4 h-4 mr-1" />Exit</>) : (<><Maximize2 className="w-4 h-4 mr-1" />Fullscreen</>)}
+            <Button size="sm" variant="ghost" className="h-10" onClick={() => setChaptersOpen(true)}>
+              <List className="w-5 h-5" />
+            </Button>
+            <Button size="sm" variant="ghost" className="h-10" onClick={() => setSettingsOpen(true)}>
+              <Type className="w-5 h-5" />
+            </Button>
+            <Button size="sm" variant="ghost" className="h-10" onClick={toggleFullscreen}>
+              {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
             </Button>
           </div>
           <Button size="sm" variant="ghost" onClick={() => handlePageChange(currentPage + 1, 'next')} disabled={currentPage === effectiveTotalPages} className="h-11 w-11 p-0">

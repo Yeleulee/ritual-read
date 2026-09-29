@@ -3,11 +3,11 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAuth } from '@/hooks/use-auth';
+import { Wordmark } from '@/components/Wordmark';
+import { useAuth, DEV_AUTH_BYPASS } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 
 const GoogleIcon = () => (
   <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
@@ -110,72 +110,73 @@ export const AuthForm = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Back to Home Button */}
-      <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-50">
-        <Link to="/">
-          <Button
-            variant="ghost"
-            className="glass-button group hover:scale-105 transition-all duration-300"
-          >
-            <svg
-              className="w-4 h-4 mr-2 transition-transform group-hover:-translate-x-1"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            <span className="hidden sm:inline">Back to Home</span>
-            <span className="sm:hidden">Back</span>
-          </Button>
-        </Link>
-      </div>
+    <div className="min-h-screen bg-background text-foreground grid lg:grid-cols-12">
+      {/* Statement panel */}
+      <aside className="hidden lg:flex lg:col-span-7 flex-col justify-between border-r border-border px-10 py-8">
+        <Wordmark size="md" />
 
-      {/* Hero Section with Cursive Branding */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-background via-muted/30 to-background py-12 md:py-16">
-        {/* Animated background elements */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-primary/5 rounded-full blur-3xl animate-pulse" />
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+        <div>
+          <p className="eyebrow">Sign in</p>
+          <h1 className="display text-6xl xl:text-7xl mt-6 max-w-2xl">
+            The book is waiting <em className="italic text-muted-foreground">where you left it.</em>
+          </h1>
         </div>
 
-        {/* Branding Display */}
-        <div className="relative z-10 flex flex-col items-center justify-center px-4">
-          {/* Cursive Ritual Reader Text */}
-          <div className="group mb-6">
-            <h1
-              className="text-5xl md:text-6xl lg:text-7xl font-medium bg-gradient-to-r from-foreground via-foreground/90 to-foreground/80 bg-clip-text text-transparent text-center transition-all duration-500 group-hover:scale-105"
-              style={{ fontFamily: 'Great Vibes, cursive' }}
-            >
-              Ritual Reader
-            </h1>
+        <dl className="grid grid-cols-3 gap-6 border-t border-border pt-5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+          <div>
+            <dt>Library</dt>
+            <dd className="mt-1 text-foreground">Synced or local</dd>
           </div>
+          <div>
+            <dt>Streak</dt>
+            <dd className="mt-1 text-foreground">Kept across devices</dd>
+          </div>
+          <div>
+            <dt>Privacy</dt>
+            <dd className="mt-1 text-foreground">Your books stay yours</dd>
+          </div>
+        </dl>
+      </aside>
 
-          <p className="text-muted-foreground text-center max-w-md text-sm md:text-base">
-            Transform reading into a mindful ritual
-          </p>
+      {/* Form panel */}
+      <section className="lg:col-span-5 flex flex-col px-4 sm:px-8 py-6 lg:py-8">
+        <div className="flex items-center justify-between lg:justify-end">
+          <span className="lg:hidden"><Wordmark size="sm" /></span>
+          <Button asChild variant="ghost" size="sm" className="text-muted-foreground -mr-2">
+            <Link to="/">
+              <ArrowLeft className="w-4 h-4" />
+              Home
+            </Link>
+          </Button>
         </div>
-      </div>
 
-      {/* Auth Card */}
-      <div className="flex items-center justify-center px-4 pb-12 -mt-8">
-        <Card className="w-full max-w-md shadow-xl border-border/50 glass-card">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Welcome Back</CardTitle>
-            <CardDescription>
-              Sign in to access your personal reading library
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="signin" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="signin">Sign In</TabsTrigger>
-                <TabsTrigger value="signup">Sign Up</TabsTrigger>
+        <div className="flex-1 flex items-center">
+          <div className="w-full max-w-sm mx-auto">
+            <div className="lg:hidden mb-10">
+              <p className="eyebrow">Sign in</p>
+              <h1 className="display text-4xl mt-3">The book is waiting where you left it.</h1>
+            </div>
+
+            {DEV_AUTH_BYPASS && (
+              <div className="mb-8 border border-dashed border-border p-4">
+                <p className="eyebrow">Local mode</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  No Supabase keys found, so auth is bypassed. Books are stored in this browser.
+                </p>
+                <Button className="mt-4 w-full" onClick={() => signIn('', '')}>
+                  Continue locally
+                </Button>
+              </div>
+            )}
+
+            <Tabs defaultValue="signin" className="space-y-8">
+              <TabsList className="grid w-full grid-cols-2 gap-0">
+                <TabsTrigger value="signin" className="justify-start">Sign in</TabsTrigger>
+                <TabsTrigger value="signup" className="justify-start">Create account</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="signin" className="animate-page-fade">
-                <div className="space-y-4">
+              <TabsContent value="signin" className="animate-page-fade mt-0">
+                <div className="space-y-6">
                   <Button
                     onClick={handleGoogleSignIn}
                     variant="outline"
@@ -186,33 +187,30 @@ export const AuthForm = () => {
                     Continue with Google
                   </Button>
 
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">
-                        Or continue with
-                      </span>
-                    </div>
+                  <div className="flex items-center gap-3">
+                    <span className="h-px flex-1 bg-border" />
+                    <span className="eyebrow">or</span>
+                    <span className="h-px flex-1 bg-border" />
                   </div>
 
-                  <form onSubmit={handleSignIn} className="space-y-4">
+                  <form onSubmit={handleSignIn} className="space-y-5">
                     <div className="space-y-2">
-                      <Label htmlFor="signin-email">Email</Label>
+                      <Label htmlFor="signin-email" className="eyebrow">Email</Label>
                       <Input
                         id="signin-email"
                         type="email"
+                        autoComplete="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="signin-password">Password</Label>
+                      <Label htmlFor="signin-password" className="eyebrow">Password</Label>
                       <Input
                         id="signin-password"
                         type="password"
+                        autoComplete="current-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
@@ -220,14 +218,14 @@ export const AuthForm = () => {
                     </div>
                     <Button type="submit" className="w-full" disabled={loading || googleLoading}>
                       {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Sign In
+                      Sign in
                     </Button>
                   </form>
                 </div>
               </TabsContent>
 
-              <TabsContent value="signup" className="animate-page-fade">
-                <div className="space-y-4">
+              <TabsContent value="signup" className="animate-page-fade mt-0">
+                <div className="space-y-6">
                   <Button
                     onClick={handleGoogleSignIn}
                     variant="outline"
@@ -238,50 +236,50 @@ export const AuthForm = () => {
                     Continue with Google
                   </Button>
 
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">
-                        Or continue with
-                      </span>
-                    </div>
+                  <div className="flex items-center gap-3">
+                    <span className="h-px flex-1 bg-border" />
+                    <span className="eyebrow">or</span>
+                    <span className="h-px flex-1 bg-border" />
                   </div>
 
-                  <form onSubmit={handleSignUp} className="space-y-4">
+                  <form onSubmit={handleSignUp} className="space-y-5">
                     <div className="space-y-2">
-                      <Label htmlFor="signup-email">Email</Label>
+                      <Label htmlFor="signup-email" className="eyebrow">Email</Label>
                       <Input
                         id="signup-email"
                         type="email"
+                        autoComplete="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="signup-password">Password</Label>
+                      <Label htmlFor="signup-password" className="eyebrow">Password</Label>
                       <Input
                         id="signup-password"
                         type="password"
+                        autoComplete="new-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         minLength={6}
                       />
+                      <p className="text-xs text-muted-foreground">At least 6 characters.</p>
                     </div>
                     <Button type="submit" className="w-full" disabled={loading || googleLoading}>
                       {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Sign Up
+                      Create account
                     </Button>
                   </form>
                 </div>
               </TabsContent>
             </Tabs>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
+
+        <p className="eyebrow text-center lg:text-right mt-8">Free · No card required</p>
+      </section>
     </div>
   );
 };

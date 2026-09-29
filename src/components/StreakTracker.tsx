@@ -1,190 +1,138 @@
-import { useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Flame, Calendar, Trophy, Target, Star } from "lucide-react";
 import { useReadingStats } from "@/hooks/use-reading-stats";
+import { cn } from "@/lib/utils";
+import { SectionHeader, Stat, StatGrid, Panel, Rule } from "@/components/dashboard/primitives";
 
 interface StreakTrackerProps {
   detailed?: boolean;
 }
 
+const GOALS = [10, 20, 30, 45, 60];
+const MILESTONES = [
+  { days: 1, label: "First day" },
+  { days: 7, label: "One week" },
+  { days: 14, label: "Two weeks" },
+  { days: 30, label: "One month" },
+  { days: 100, label: "One hundred days" },
+];
+
 export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
   const { state, current, weekly, setGoalMinutes } = useReadingStats();
 
-  const badges = useMemo(() => ([
-    { id: 1, name: "First Steps", description: "Read for 1 day", earned: current.currentStreak >= 1, icon: "🌱" },
-    { id: 2, name: "Week Warrior", description: "7-day streak", earned: current.currentStreak >= 7, icon: "⚡" },
-    { id: 3, name: "Consistency Champ", description: "14-day streak", earned: current.currentStreak >= 14, icon: "🏅" },
-    { id: 4, name: "Month Master", description: "30-day streak", earned: current.currentStreak >= 30, icon: "🏆" },
-  ]), [current.currentStreak]);
+  const minutesRead = Math.floor((current.todayProgress / 100) * state.goalMinutesPerDay);
+  const minutesLeft = Math.max(0, state.goalMinutesPerDay - minutesRead);
+  const goalMet = minutesLeft === 0;
 
+  // Compact header widget
   if (!detailed) {
-    const minutesRead = Math.floor((current.todayProgress / 100) * state.goalMinutesPerDay);
-    const minutesLeft = Math.max(0, state.goalMinutesPerDay - minutesRead);
     return (
-      <Card className="w-fit border-border/60">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-500/20 to-yellow-400/20 flex items-center justify-center">
-              <Flame className="w-5 h-5 text-streak" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold leading-none">{current.currentStreak} day streak</div>
-              <div className="mt-1 w-28">
-                <Progress value={current.todayProgress} className="h-1" />
-              </div>
-              <div className="mt-1 text-[11px] text-muted-foreground truncate">
-                {minutesLeft > 0 ? `Read ${minutesLeft} min today to keep it 🔥` : 'Goal met — keep going!'}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="w-44">
+        <div className="flex items-baseline justify-between font-mono text-[11px] uppercase tracking-[0.12em]">
+          <span className="text-foreground">{current.currentStreak}-day streak</span>
+          <span className="text-muted-foreground">{goalMet ? "Goal met" : `${minutesLeft} min left`}</span>
+        </div>
+        <Rule value={current.todayProgress} className="mt-2" />
+      </div>
     );
   }
 
+  const next = MILESTONES.find((m) => m.days > current.currentStreak);
+
   return (
-    <div className="space-y-6">
-      {/* Streak Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="ritual-glow animate-page-fade">
-          <CardContent className="p-6 text-center">
-            <div className="w-16 h-16 gradient-secondary rounded-full flex items-center justify-center mx-auto mb-4 animate-streak-pulse">
-              <Flame className="w-8 h-8 text-streak-foreground" />
-            </div>
-            <div className="text-3xl font-bold text-streak mb-2">{current.currentStreak}</div>
-            <div className="text-sm text-muted-foreground">Current Streak</div>
-          </CardContent>
-        </Card>
+    <div className="space-y-10">
+      <SectionHeader
+        eyebrow="Streaks"
+        title={
+          current.currentStreak === 0
+            ? "Start today."
+            : <>{current.currentStreak} {current.currentStreak === 1 ? "day" : "days"} <span className="text-muted-foreground">in a row.</span></>
+        }
+        meta={
+          goalMet
+            ? "Today's goal is met."
+            : `${minutesLeft} more ${minutesLeft === 1 ? "minute" : "minutes"} today keeps it going.`
+        }
+      />
 
-        <Card className="animate-page-fade">
-          <CardContent className="p-6 text-center">
-            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-              <Trophy className="w-8 h-8 text-secondary" />
-            </div>
-            <div className="text-3xl font-bold mb-2">{state.longestStreak}</div>
-            <div className="text-sm text-muted-foreground">Longest Streak</div>
-          </CardContent>
-        </Card>
+      <StatGrid className="grid-cols-3">
+        <Stat label="Current" value={current.currentStreak} hint="days" />
+        <Stat label="Longest" value={state.longestStreak} hint="days" />
+        <Stat label="Today" value={`${Math.min(100, current.todayProgress)}%`} hint={`${minutesRead} of ${state.goalMinutesPerDay} min`} />
+      </StatGrid>
 
-        <Card className="animate-page-fade">
-          <CardContent className="p-6 text-center">
-            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-              <Target className="w-8 h-8 text-focus" />
-            </div>
-            <div className="text-3xl font-bold mb-2">{current.todayProgress}%</div>
-            <div className="text-sm text-muted-foreground">Today's Goal</div>
-          </CardContent>
-        </Card>
+      <div className="grid lg:grid-cols-5 gap-6">
+        {/* Week */}
+        <Panel title="This week" className="lg:col-span-3">
+          <ol className="grid grid-cols-7 gap-2">
+            {weekly.map((d, i) => (
+              <li key={i} className="text-center">
+                <span className="eyebrow block">{d.day.slice(0, 1)}</span>
+                <div
+                  className={cn(
+                    "mt-2 flex aspect-square items-center justify-center border font-mono text-sm tabular-nums",
+                    d.read ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground",
+                  )}
+                  aria-label={`${d.day}: ${d.read ? `${d.minutes} minutes` : "no reading"}`}
+                >
+                  {d.read ? d.minutes : "·"}
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-4 text-xs text-muted-foreground">Minutes read per day. A filled square is a day the goal was met.</p>
+        </Panel>
+
+        {/* Goal */}
+        <Panel title="Daily goal" className="lg:col-span-2">
+          <div className="flex items-baseline gap-2">
+            <span className="font-sans font-light text-5xl leading-none tracking-[-0.03em] tabular-nums">{state.goalMinutesPerDay}</span>
+            <span className="font-serif italic text-xl text-muted-foreground">minutes</span>
+          </div>
+          <Rule value={current.todayProgress} className="mt-5" />
+          <div className="mt-5 grid grid-cols-5 border border-border divide-x divide-border">
+            {GOALS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setGoalMinutes(m)}
+                aria-pressed={state.goalMinutesPerDay === m}
+                className={cn(
+                  "h-10 font-mono text-xs tabular-nums transition-colors",
+                  state.goalMinutesPerDay === m ? "bg-foreground text-background" : "hover:bg-muted",
+                )}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">Twenty minutes is enough to finish a book a month.</p>
+        </Panel>
       </div>
 
-      {/* Today's Progress */}
-      <Card className="animate-page-fade">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-primary" />
-            Today's Reading Goal
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">{state.goalMinutesPerDay} minutes daily goal</span>
-            <span className="font-medium">{Math.floor((current.todayProgress / 100) * state.goalMinutesPerDay)} min read</span>
-          </div>
-          <Progress value={current.todayProgress} className="h-3" />
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>Adjust goal:</span>
-            <div className="flex gap-1">
-              {[10,20,30,45,60].map(m => (
-                <Button key={m} size="sm" variant="outline" onClick={() => setGoalMinutes(m)}>{m}m</Button>
-              ))}
-            </div>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Keep going! You're {Math.max(0, 100 - current.todayProgress)}% away from maintaining your streak.
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Weekly Calendar */}
-      <Card className="animate-page-fade">
-        <CardHeader>
-          <CardTitle className="ritual-heading">This Week's Progress</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-7 gap-3">
-            {weekly.map((day, index) => (
-              <div key={index} className="text-center">
-                <div className="text-xs text-muted-foreground mb-2">{day.day}</div>
-                <div 
-                  className={`w-12 h-12 rounded-lg flex items-center justify-center text-sm font-medium transition-ritual ${
-                    day.read 
-                      ? 'gradient-secondary text-secondary-foreground achievement-glow' 
-                      : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {day.read ? day.minutes : '—'}
+      {/* Milestones */}
+      <Panel
+        title="Milestones"
+        action={next && (() => { const d = next.days - current.currentStreak; return <span className="eyebrow">{d} {d === 1 ? "day" : "days"} to {next.label.toLowerCase()}</span>; })()}
+      >
+        <ol className="divide-y divide-border -my-2">
+          {MILESTONES.map((m) => {
+            const earned = current.currentStreak >= m.days || state.longestStreak >= m.days;
+            return (
+              <li key={m.days} className="flex items-center justify-between gap-4 py-3 first:pt-2 last:pb-2">
+                <div className="flex items-center gap-4">
+                  <span
+                    aria-hidden
+                    className={cn("h-2.5 w-2.5 border", earned ? "border-foreground bg-foreground" : "border-border")}
+                  />
+                  <span className={cn("font-serif text-lg", !earned && "text-muted-foreground")}>{m.label}</span>
                 </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Achievements */}
-      <Card className="animate-page-fade">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Star className="w-5 h-5 text-secondary" />
-            Reading Achievements
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {badges.map((badge) => (
-              <div 
-                key={badge.id} 
-                className={`p-4 rounded-lg border transition-ritual ${
-                  badge.earned 
-                    ? 'bg-secondary/10 border-secondary/20 animate-achievement-bounce' 
-                    : 'bg-muted/50 border-border'
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <div className="text-2xl">{badge.icon}</div>
-                  <div className="flex-1">
-                    <div className={`font-medium ${badge.earned ? 'text-secondary' : 'text-muted-foreground'}`}>
-                      {badge.name}
-                    </div>
-                    <div className="text-sm text-muted-foreground">{badge.description}</div>
-                  </div>
-                  {badge.earned && (
-                    <Badge className="gradient-secondary">
-                      Earned
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Motivation */}
-      <Card className="gradient-primary text-primary-foreground animate-page-fade">
-        <CardContent className="p-6 text-center">
-          <Flame className="w-12 h-12 mx-auto mb-4 animate-ritual-glow" />
-          <h3 className="text-xl font-bold mb-2">You're on fire! 🔥</h3>
-          <p className="text-primary-foreground/90">
-            {current.currentStreak >= 7 
-              ? `Amazing! You've been reading consistently for ${current.currentStreak} days. Keep the momentum going!`
-              : `You're doing great! Just ${Math.max(0, 7 - current.currentStreak)} more days to unlock the Week Warrior badge.`
-            }
-          </p>
-        </CardContent>
-      </Card>
+                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                  {earned ? "Reached" : `${m.days} days`}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      </Panel>
     </div>
   );
 };

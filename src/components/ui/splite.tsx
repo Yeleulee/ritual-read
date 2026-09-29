@@ -38,7 +38,7 @@ export function SplineScene({ scene, className }: SplineSceneProps) {
   if (shouldFallback) {
     return (
       <div className={className}>
-        <div className="w-full h-full rounded-2xl border bg-gradient-to-br from-muted/60 to-background" />
+        <div className="w-full h-full bg-grid" />
       </div>
     )
   }

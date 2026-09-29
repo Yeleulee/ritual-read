@@ -1,86 +1,75 @@
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
+import { Rule } from "@/components/dashboard/primitives";
 import { getCurrentTrack, useMusicPlayer } from "@/hooks/use-music-player";
-import { Maximize2, Music2, Pause, Play, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Maximize2, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 
+export const formatTime = (seconds?: number) => {
+  const s = Math.max(0, Math.floor(seconds || 0));
+  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+};
+
+/** "Now playing" strip inside the music dialog. */
 export const InlineRitualAudioControls = () => {
   const { queue, isPlaying, volume, next, prev, togglePlay, setVolume, setViewMode, currentTime, duration, requestSeek } = useMusicPlayer();
-  const currentTrack = useMusicPlayer(getCurrentTrack);
+  const track = useMusicPlayer(getCurrentTrack);
+  const hasQueue = queue.length > 0;
+
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    requestSeek((duration || 0) * Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)));
+  };
 
   return (
-    <Card className="p-3 border-border/60">
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-md overflow-hidden bg-muted flex items-center justify-center shadow-sm">
-          {currentTrack ? (
-            <img src={currentTrack.thumbnailUrl} alt={currentTrack.title} className="w-full h-full object-cover" />
+    <section className="border-y border-border bg-card px-6 py-4">
+      <div className="flex items-center gap-4">
+        <div className={cn("h-12 w-12 shrink-0 overflow-hidden border border-border bg-muted", !track && "flex items-center justify-center")}>
+          {track ? (
+            <img src={track.thumbnailUrl} alt="" className="h-full w-full object-cover" />
           ) : (
-            <Music2 className="w-5 h-5 text-muted-foreground" />
+            <span className="font-serif italic text-muted-foreground">·</span>
           )}
         </div>
+
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold truncate">
-            {currentTrack?.title || "No track selected"}
-          </div>
-          <div className="text-[11px] text-muted-foreground truncate">
-            {currentTrack?.channelTitle || (queue.length ? "Ready" : "Use search to pick a track")}
-          </div>
-          <div className="mt-2">
-            <div
-              className="h-3 flex items-center"
-              onClick={(e) => {
-                const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const ratio = Math.max(0, Math.min(1, x / rect.width));
-                const target = (duration || 0) * ratio;
-                requestSeek(target);
-              }}
-            >
-              <Progress value={duration > 0 ? (currentTime / duration) * 100 : 0} className="h-1 w-full cursor-pointer" />
-            </div>
-            <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-3 flex items-center gap-2 flex-wrap">
-        <Button variant="secondary" size="icon" onClick={() => prev()} disabled={!queue.length}>
-          <SkipBack className="w-4 h-4" />
-        </Button>
-        <Button variant="secondary" size="icon" onClick={() => togglePlay()} disabled={!queue.length}>
-          {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-        </Button>
-        <Button variant="secondary" size="icon" onClick={() => next()} disabled={!queue.length}>
-          <SkipForward className="w-4 h-4" />
-        </Button>
-
-        <div className="ml-2 flex items-center gap-2">
-          <Volume2 className="w-4 h-4 text-muted-foreground" />
-          <div className="w-32">
-            <Slider value={[volume]} onValueChange={(v) => setVolume(v[0])} min={0} max={100} step={1} />
-          </div>
+          <p className="eyebrow">{track ? (isPlaying ? "Now playing" : "Paused") : "Nothing playing"}</p>
+          <p className="mt-0.5 truncate font-serif text-lg leading-tight">{track?.title || "Pick a track below"}</p>
+          {track && <p className="truncate text-xs text-muted-foreground">{track.channelTitle}</p>}
         </div>
 
-        <div className="ml-auto">
-          <Button variant="ghost" size="sm" onClick={() => setViewMode("full")}>
-            <Maximize2 className="w-4 h-4 mr-1" />
-            Open Player
+        <div className="flex items-center gap-0.5">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => prev()} disabled={!hasQueue} aria-label="Previous">
+            <SkipBack className="h-4 w-4" />
+          </Button>
+          <Button variant={isPlaying ? "outline" : "default"} size="icon" className="h-9 w-9" onClick={() => togglePlay()} disabled={!hasQueue} aria-label={isPlaying ? "Pause" : "Play"}>
+            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => next()} disabled={!hasQueue} aria-label="Next">
+            <SkipForward className="h-4 w-4" />
           </Button>
         </div>
       </div>
-    </Card>
+
+      {track && (
+        <div className="mt-4">
+          <div className="cursor-pointer py-1" onClick={seek} role="slider" aria-label="Seek" aria-valuenow={Math.round(currentTime)} aria-valuemin={0} aria-valuemax={Math.round(duration)}>
+            <Rule value={duration > 0 ? (currentTime / duration) * 100 : 0} />
+          </div>
+          <div className="mt-1.5 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground tabular-nums">
+            <span>{formatTime(currentTime)}</span>
+            <div className="flex items-center gap-3">
+              <span>Vol</span>
+              <Slider value={[volume]} onValueChange={(v) => setVolume(v[0])} min={0} max={100} step={1} className="w-24" aria-label="Volume" />
+              <span className="w-7 text-right">{volume}</span>
+              <button type="button" onClick={() => setViewMode("full")} className="ml-2 inline-flex items-center gap-1 hover:text-foreground transition-colors">
+                <Maximize2 className="h-3 w-3" /> Player
+              </button>
+            </div>
+            <span>{formatTime(duration)}</span>
+          </div>
+        </div>
+      )}
+    </section>
   );
 };
-
-function formatTime(seconds?: number) {
-  const s = Math.max(0, Math.floor(seconds || 0));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${r.toString().padStart(2, '0')}`;
-}
-
-

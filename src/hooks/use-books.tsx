@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from './use-auth';
+import { useAuth, DEV_AUTH_BYPASS } from './use-auth';
 import { useToast } from './use-toast';
 import { saveBookFile } from '@/lib/fileCache';
 
@@ -22,6 +22,8 @@ export const useBooks = () => {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
+  // Dev bypass has a fake user but no backend — treat as local-only
+  const isLocal = !user || DEV_AUTH_BYPASS;
 
   // Local fallback storage key per-user
   const storageKey = `books:${user?.id ?? 'guest'}`;
@@ -54,7 +56,7 @@ export const useBooks = () => {
       setBooks(localBooks);
       setLoading(false);
 
-      if (!user) {
+      if (isLocal) {
         console.log('No user, using local books only');
         return;
       }
@@ -100,7 +102,7 @@ export const useBooks = () => {
 
   // Add a new book
   const addBook = async (newBook: Omit<BookItem, 'id'>) => {
-    if (!user) {
+    if (isLocal) {
       console.log('No user, saving book locally');
       const localBook: BookItem = {
         id: (globalThis as any).crypto?.randomUUID?.() ?? Date.now().toString(),
@@ -273,7 +275,14 @@ export const useBooks = () => {
 
   // Update book progress
   const updateBookProgress = async (bookId: string, progress: number) => {
-    if (!user) return;
+    if (isLocal) {
+      setBooks((prev) => {
+        const next = prev.map((b) => (b.id === bookId ? { ...b, progress, lastRead: new Date() } : b));
+        writeLocalBooks(next);
+        return next;
+      });
+      return;
+    }
 
     try {
       const { error } = await supabase
@@ -316,7 +325,7 @@ export const useBooks = () => {
 
   // Remove a book
   const removeBook = async (bookId: string) => {
-    if (!user) {
+    if (isLocal) {
       // Fallback: remove from local cache only
       setBooks((prev) => {
         const next = prev.filter((b) => b.id !== bookId);

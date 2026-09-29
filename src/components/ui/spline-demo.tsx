@@ -1,51 +1,64 @@
 'use client'
 
 import { SplineScene } from "@/components/ui/splite";
-import { Card } from "@/components/ui/card"
-import { Spotlight } from "@/components/ui/spotlight"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
 import { Link } from "react-router-dom"
- 
+
 export function SplineSceneBasic() {
   return (
-    <Card className="w-full h-auto md:h-[500px] bg-black/[0.96] relative overflow-hidden">
-      <Spotlight
-        className="-top-40 left-0 md:left-60 md:-top-20"
-        fill="white"
-      />
-      
-      <div className="flex flex-col-reverse md:flex-row h-full">
-        {/* Left content */}
-        <div className="flex-1 p-6 md:p-8 relative z-10 flex flex-col justify-center">
-          <h1 className="text-3xl md:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400">
-            Ritual Reader
-          </h1>
-          <p className="mt-3 md:mt-4 text-neutral-300 max-w-lg">
-            Transform reading into a mindful ritual. Import books, focus deeply, track streaks, 
-            and get AI insights—all in a beautifully minimal experience.
-          </p>
-          <div className="mt-5 md:mt-6 flex flex-wrap gap-3">
-            <Link to="/app">
-              <Button className="gap-2">
-                Get Started <ArrowRight className="w-4 h-4" />
+    <section className="relative border-y border-border">
+      <div className="grid md:grid-cols-12 min-h-[560px]">
+        {/* Copy */}
+        <div className="md:col-span-6 lg:col-span-5 flex flex-col justify-between px-4 sm:px-6 lg:px-10 py-10 md:py-14 md:border-r border-border">
+          <p className="eyebrow">01 — A reading app, not a feed</p>
+
+          <div className="mt-12 md:mt-0">
+            <h1 className="display text-[2.75rem] sm:text-6xl lg:text-7xl text-foreground">
+              Read like it <em className="italic text-muted-foreground">matters.</em>
+            </h1>
+            <p className="mt-6 max-w-md text-base md:text-lg leading-relaxed text-muted-foreground">
+              Import your EPUBs and PDFs, sit down with one book at a time, and let the streak
+              take care of the rest.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Button asChild size="lg">
+                <Link to="/app">
+                  Start reading <ArrowRight />
+                </Link>
               </Button>
-            </Link>
-            <a href="#features">
-              <Button variant="outline">See Features</Button>
-            </a>
+              <Button asChild variant="link" size="lg" className="px-2">
+                <a href="#features">See what's inside</a>
+              </Button>
+            </div>
           </div>
+
+          <dl className="mt-12 grid grid-cols-3 gap-4 border-t border-border pt-5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+            <div>
+              <dt>Formats</dt>
+              <dd className="mt-1 text-foreground">EPUB · PDF · TXT</dd>
+            </div>
+            <div>
+              <dt>Storage</dt>
+              <dd className="mt-1 text-foreground">Local-first</dd>
+            </div>
+            <div>
+              <dt>Assistant</dt>
+              <dd className="mt-1 text-foreground">Gemini</dd>
+            </div>
+          </dl>
         </div>
 
-        {/* Right content */}
-        <div className="flex-1 relative min-h-[280px] md:min-h-0">
-          <SplineScene 
+        {/* Scene */}
+        <div className="md:col-span-6 lg:col-span-7 relative min-h-[320px] bg-[#0a0a0a]">
+          <SplineScene
             scene="https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode"
             className="w-full h-full will-change-transform"
           />
+          <span className="pointer-events-none absolute bottom-4 right-4 eyebrow">fig. 1 — the reading room</span>
         </div>
       </div>
-    </Card>
+    </section>
   )
 }
 

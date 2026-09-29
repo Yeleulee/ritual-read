@@ -9,10 +9,11 @@ import { AiChat } from "@/components/AiChat";
 import { AuthForm } from "@/components/AuthForm";
 import { useAuth } from "@/hooks/use-auth";
 import { useBooks } from "@/hooks/use-books";
-import { Book, BookOpen, TrendingUp, Flame, Moon, Sun, Home, LogOut } from "lucide-react";
+import { Moon, Sun, Home, LogOut } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
+import { Wordmark } from "@/components/Wordmark";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 
@@ -29,15 +30,8 @@ const Index = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="w-16 h-16 flex items-center justify-center mx-auto mb-4">
-            <img
-              src="/new-logo.png"
-              alt="Ritual Reader"
-              className="w-16 h-16 object-contain"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/logo.png"; }}
-            />
-          </div>
-          <p className="text-muted-foreground">Loading...</p>
+          <span className="font-serif italic text-3xl">Ritual</span>
+          <p className="eyebrow mt-3">Loading</p>
         </div>
       </div>
     );
@@ -83,105 +77,65 @@ const Index = () => {
     }
   };
 
+  const minutesLeft = Math.max(0, state.goalMinutesPerDay - Math.floor((current.todayProgress / 100) * state.goalMinutesPerDay));
+
   return (
-    <div className="min-h-screen gradient-ethereal bg-grid">
-      <div className="container mx-auto px-4 py-4">
-        {/* Professional Header */}
-        <header className="relative overflow-hidden backdrop-blur-md bg-background/80 border-b border-border/40 rounded-xl mb-6 animate-page-fade">
-          <div className="absolute inset-0 pointer-events-none opacity-60">
-            <div className="h-1.5 w-full bg-gradient-to-r from-primary/40 via-secondary/50 to-primary/40" />
-          </div>
-          <div className="flex items-center justify-between px-6 py-4 gap-4">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link to="/" className="flex items-center group" aria-label="Ritual Reader Home">
-                  <span
-                    className="text-2xl sm:text-3xl font-medium bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent"
-                    style={{ fontFamily: 'Great Vibes, cursive' }}
-                  >
-                    Ritual
-                  </span>
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" align="start" className="text-xs">
-                {Math.max(0, state.goalMinutesPerDay - Math.floor((current.todayProgress / 100) * state.goalMinutesPerDay)) > 0
-                  ? `Read ${Math.max(0, state.goalMinutesPerDay - Math.floor((current.todayProgress / 100) * state.goalMinutesPerDay))} min today to keep your streak!`
-                  : 'Daily goal met — amazing consistency!'}
-              </TooltipContent>
-            </Tooltip>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-[2px] border-b border-border">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between gap-4">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span><Wordmark size="md" /></span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start" className="text-xs">
+              {minutesLeft > 0 ? `Read ${minutesLeft} min today to keep your streak` : 'Daily goal met'}
+            </TooltipContent>
+          </Tooltip>
 
-            <div className="flex items-center gap-2">
-              <div className="hidden lg:flex items-center gap-2">
-                <StreakTracker />
-              </div>
-
-              <div className="flex items-center gap-1">
-                <RitualModeButton />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                  className="h-9 w-9 rounded-lg hover:bg-muted/80"
-                >
-                  {theme === 'dark' ? (
-                    <Sun className="w-4 h-4 transition-transform hover:rotate-180 duration-300" />
-                  ) : (
-                    <Moon className="w-4 h-4 transition-transform hover:rotate-12 duration-300" />
-                  )}
-                </Button>
-
-                <div className="hidden md:flex items-center gap-1 ml-2 pl-2 border-l border-border/40">
-                  <Button variant="ghost" size="sm" asChild className="h-9 rounded-lg">
-                    <Link to="/" className="flex items-center gap-2">
-                      <Home className="w-4 h-4" />
-                      <span className="hidden lg:inline">Home</span>
-                    </Link>
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={signOut}
-                    className="h-9 rounded-lg text-muted-foreground hover:text-destructive"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span className="hidden lg:inline ml-2">Sign Out</span>
-                  </Button>
-                </div>
-
-                <div className="hidden xl:flex items-center ml-3 pl-3 border-l border-border/40">
-                  <div className="text-xs text-muted-foreground font-mono bg-muted/30 px-2 py-1 rounded">
-                    {user?.email?.split('@')[0]}
-                  </div>
-                </div>
-              </div>
+          <div className="flex items-center gap-1">
+            <div className="hidden lg:flex items-center mr-2">
+              <StreakTracker />
             </div>
-          </div>
-        </header>
 
+            <RitualModeButton />
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Toggle theme"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="h-9 w-9"
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
+
+            <span className="hidden md:block h-5 w-px bg-border mx-2" />
+
+            <Button variant="ghost" size="sm" asChild className="hidden md:inline-flex h-9">
+              <Link to="/">
+                <Home className="w-4 h-4" />
+                <span className="hidden lg:inline">Home</span>
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={signOut} className="hidden md:inline-flex h-9 text-muted-foreground hover:text-foreground">
+              <LogOut className="w-4 h-4" />
+              <span className="hidden lg:inline">Sign out</span>
+            </Button>
+
+            <span className="hidden xl:inline-flex ml-3 eyebrow">{user?.email?.split('@')[0]}</span>
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-10 py-6">
         {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="flex w-full max-w-full mx-auto rounded-full bg-muted/60 backdrop-blur p-1 overflow-x-auto gap-1 shadow-sm">
-            <TabsTrigger value="library" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3">
-              <Book className="w-4 h-4" />
-              Library
-            </TabsTrigger>
-            <TabsTrigger value="reader" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3" disabled={!currentBook}>
-              <BookOpen className="w-4 h-4" />
-              Reader
-            </TabsTrigger>
-            <TabsTrigger value="progress" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3">
-              <TrendingUp className="w-4 h-4" />
-              Progress
-            </TabsTrigger>
-            <TabsTrigger value="streaks" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3">
-              <Flame className="w-4 h-4" />
-              Streaks
-            </TabsTrigger>
-            <TabsTrigger value="assistant" className="tab-trigger flex items-center gap-2 h-8 flex-none px-3">
-              <BookOpen className="w-4 h-4" />
-              Assistant
-            </TabsTrigger>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
+          <TabsList className="flex w-full overflow-x-auto scrollbar-hide gap-8">
+            <TabsTrigger value="library" className="flex-none">Library</TabsTrigger>
+            <TabsTrigger value="reader" className="flex-none" disabled={!currentBook}>Reader</TabsTrigger>
+            <TabsTrigger value="progress" className="flex-none">Progress</TabsTrigger>
+            <TabsTrigger value="streaks" className="flex-none">Streaks</TabsTrigger>
+            <TabsTrigger value="assistant" className="flex-none">Assistant</TabsTrigger>
           </TabsList>
 
           <TabsContent value="library" className="animate-page-fade">
@@ -200,9 +154,9 @@ const Index = () => {
                 onBackToLibrary={handleBackToLibrary}
               />
             ) : (
-              <div className="text-center py-12">
-                <BookOpen className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-xl font-medium text-muted-foreground">
+              <div className="text-center py-24 border border-dashed border-border">
+                <p className="eyebrow">Reader</p>
+                <h3 className="display text-3xl mt-3 text-muted-foreground">
                   Select a book to start reading
                 </h3>
               </div>
@@ -214,7 +168,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="streaks" className="animate-page-fade">
-            <div className="max-w-2xl mx-auto">
+            <div className="max-w-4xl">
               <StreakTracker detailed />
             </div>
           </TabsContent>

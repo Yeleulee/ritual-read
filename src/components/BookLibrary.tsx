@@ -1,14 +1,12 @@
 import { useState } from "react";
 import { extractDocxContent, estimateDocxPages } from "@/lib/docx";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, BookOpen, Clock, FileText, Trash2 } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { SectionHeader, Rule, Empty } from "@/components/dashboard/primitives";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +38,26 @@ interface BookLibraryProps {
   onAddBook: (book: Omit<BookItem, "id">) => void;
   onRemoveBook?: (bookId: string) => void;
 }
+
+// Flat ink cover with a serif glyph — used when a file has no artwork
+const flatCover = (label: string, small = false): string => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 240;
+  canvas.height = 320;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  ctx.fillStyle = '#161616';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(14, 14, canvas.width - 28, canvas.height - 28);
+  ctx.fillStyle = '#F8EFE5';
+  ctx.font = small ? '500 34px "JetBrains Mono", monospace' : 'italic 150px "Instrument Serif", Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, canvas.width / 2, canvas.height / 2 + (small ? 0 : 12));
+  return canvas.toDataURL('image/png');
+};
 
 export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: BookLibraryProps) => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -73,28 +91,8 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
         });
       };
 
-      const generatePlaceholderCover = (title: string): string => {
-        const canvas = document.createElement('canvas');
-        // 3:4 thumbnail
-        canvas.width = 240;
-        canvas.height = 320;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return '';
-        // gradient background
-        const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-        grad.addColorStop(0, 'hsl(265,85%,47%)');
-        grad.addColorStop(1, 'hsl(35,85%,65%)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        // title initial
-        const initial = (title?.trim()?.[0] || 'B').toUpperCase();
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
-        ctx.font = 'bold 160px Georgia, serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(initial, canvas.width / 2, canvas.height / 2 + 10);
-        return canvas.toDataURL('image/png');
-      };
+      const generatePlaceholderCover = (title: string): string =>
+        flatCover((title?.trim()?.[0] || 'B').toUpperCase());
 
       // Generate an object URL for supported binary formats so the readers can open them later
       if (fileExtension && ['pdf', 'epub', 'mobi', 'azw', 'azw3', 'ppt', 'pptx'].includes(fileExtension)) {
@@ -185,27 +183,7 @@ This EPUB file has been imported but could not be fully parsed. You can still re
         estimatedPages = estimateDocxPages(text);
         fileType = 'docx';
         fileUrl = URL.createObjectURL(file);
-
-        // Generate a simple document cover
-        const canvas = document.createElement('canvas');
-        canvas.width = 240;
-        canvas.height = 320;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-          grad.addColorStop(0, 'hsl(220, 90%, 55%)');
-          grad.addColorStop(1, 'hsl(260, 80%, 60%)');
-          ctx.fillStyle = grad;
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-          ctx.fillStyle = 'rgba(255,255,255,0.95)';
-          ctx.font = 'bold 90px Arial';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('DOC', canvas.width / 2, canvas.height / 2);
-
-          coverUrl = canvas.toDataURL('image/png');
-        }
+        coverUrl = flatCover('DOCX', true);
       } else if (fileExtension === 'pptx' || fileExtension === 'ppt') {
         // Handle PowerPoint files
         fileType = 'pptx';
@@ -220,27 +198,7 @@ Estimated slides: ${estimatedPages}
 
 Start viewing to see the full presentation.`;
 
-        // Generate a presentation-themed cover
-        const canvas = document.createElement('canvas');
-        canvas.width = 240;
-        canvas.height = 320;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-          grad.addColorStop(0, 'hsl(210,85%,47%)');
-          grad.addColorStop(1, 'hsl(180,85%,55%)');
-          ctx.fillStyle = grad;
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-          // Draw presentation icon
-          ctx.fillStyle = 'rgba(255,255,255,0.9)';
-          ctx.font = 'bold 80px Arial, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('📊', canvas.width / 2, canvas.height / 2);
-
-          coverUrl = canvas.toDataURL('image/png');
-        }
+        coverUrl = flatCover('PPTX', true);
       } else {
         // Fallback for other formats - try to read as text
         content = await file.text();
@@ -292,179 +250,157 @@ Start viewing to see the full presentation.`;
     return `${Math.floor(diffInHours / 24)} days ago`;
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-end">
-        
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button variant="ritual">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Book
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle className="ritual-heading">Add New Book</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="title">Title</Label>
-                <Input
-                  id="title"
-                  value={newBook.title}
-                  onChange={(e) => setNewBook(prev => ({ ...prev, title: e.target.value }))}
-                  placeholder="Enter book title"
-                />
-              </div>
-              <div>
-                <Label htmlFor="author">Author</Label>
-                <Input
-                  id="author"
-                  value={newBook.author}
-                  onChange={(e) => setNewBook(prev => ({ ...prev, author: e.target.value }))}
-                  placeholder="Enter author name"
-                />
-              </div>
-              <div>
-                <Label htmlFor="pages">Total Pages (optional)</Label>
-                <Input
-                  id="pages"
-                  type="number"
-                  value={newBook.totalPages || ""}
-                  onChange={(e) => setNewBook(prev => ({ ...prev, totalPages: parseInt(e.target.value) || 0 }))}
-                  placeholder="Number of pages"
-                />
-              </div>
-              <div>
-                <Label htmlFor="file">Upload File</Label>
-                <Input
-                  id="file"
-                  type="file"
-                  accept=".txt,.epub,.pdf,.mobi,.azw,.azw3,.fb2,.djvu,.rtf,.doc,.docx,.ppt,.pptx"
-                  onChange={handleFileUpload}
-                  className="cursor-pointer"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Supports TXT, EPUB, PDF, PPT, PPTX, MOBI, AZW, FB2, DJVU, RTF, DOC, DOCX files
-                </p>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+  const inProgress = books.filter((b) => b.progress > 0 && b.progress < 100).length;
+  const finished = books.filter((b) => b.progress >= 100).length;
 
-      {/* Books Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {books.map((book) => (
-          <Card 
-            key={book.id} 
-            className="group cursor-pointer transition-ritual hover:ritual-glow hover:-translate-y-1"
-            onClick={() => onBookSelect(book)}
-          >
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="w-12 h-16 rounded-lg overflow-hidden mb-3 bg-muted flex items-center justify-center">
+  const addDialog = (
+    <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+      <DialogTrigger asChild>
+        <Button>
+          <Plus className="w-4 h-4" />
+          Add book
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md rounded-lg">
+        <DialogHeader>
+          <p className="eyebrow">Library</p>
+          <DialogTitle className="display text-3xl">Add a book</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-5 pt-2">
+          <div className="space-y-2">
+            <Label htmlFor="title" className="eyebrow">Title</Label>
+            <Input
+              id="title"
+              value={newBook.title}
+              onChange={(e) => setNewBook(prev => ({ ...prev, title: e.target.value }))}
+              placeholder="Leave blank to use the file name"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="author" className="eyebrow">Author</Label>
+            <Input
+              id="author"
+              value={newBook.author}
+              onChange={(e) => setNewBook(prev => ({ ...prev, author: e.target.value }))}
+              placeholder="Optional"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="pages" className="eyebrow">Pages</Label>
+            <Input
+              id="pages"
+              type="number"
+              value={newBook.totalPages || ""}
+              onChange={(e) => setNewBook(prev => ({ ...prev, totalPages: parseInt(e.target.value) || 0 }))}
+              placeholder="Optional — estimated from the file"
+            />
+          </div>
+          <div className="space-y-2 border-t border-border pt-5">
+            <Label htmlFor="file" className="eyebrow">File</Label>
+            <Input
+              id="file"
+              type="file"
+              accept=".txt,.epub,.pdf,.mobi,.azw,.azw3,.fb2,.djvu,.rtf,.doc,.docx,.ppt,.pptx"
+              onChange={handleFileUpload}
+              className="cursor-pointer file:mr-3 file:font-mono file:text-[11px] file:uppercase file:tracking-[0.12em]"
+            />
+            <p className="text-xs text-muted-foreground">
+              EPUB, PDF, TXT, DOCX, PPTX and more. Choosing a file adds it immediately.
+            </p>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
+  return (
+    <div className="space-y-8">
+      <SectionHeader
+        eyebrow="Library"
+        title={books.length ? "Your shelf" : "An empty shelf"}
+        meta={
+          books.length
+            ? `${books.length} ${books.length === 1 ? "book" : "books"} · ${inProgress} in progress · ${finished} finished`
+            : "Add a file to start."
+        }
+        action={addDialog}
+      />
+
+      {books.length === 0 ? (
+        <Empty
+          title="Nothing here yet."
+          body="Drop in an EPUB or PDF and it will appear on this shelf with its cover, progress and last-read time."
+          action={
+            <Button onClick={() => setIsAddDialogOpen(true)}>
+              <Plus className="w-4 h-4" />
+              Add your first book
+            </Button>
+          }
+        />
+      ) : (
+        <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-6 gap-y-10">
+          {books.map((book) => (
+            <li key={book.id} className="group relative">
+              <button
+                type="button"
+                onClick={() => onBookSelect(book)}
+                className="block w-full text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background"
+              >
+                <div className="relative aspect-[2/3] w-full overflow-hidden border border-border bg-muted transition-transform duration-300 ease-out group-hover:-translate-y-1">
                   {book.coverUrl ? (
-                    // eslint-disable-next-line jsx-a11y/alt-text
-                    <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
+                    <img src={book.coverUrl} alt="" className="h-full w-full object-cover" />
                   ) : (
-                    <div className="w-full h-full gradient-reading flex items-center justify-center">
-                      <BookOpen className="w-6 h-6 text-primary" />
+                    <div className="flex h-full w-full items-center justify-center bg-foreground text-background">
+                      <span className="font-serif italic text-6xl">{book.title.trim()[0]?.toUpperCase() || "B"}</span>
                     </div>
                   )}
-                </div>
-                <div className="flex items-center gap-2">
-                  {book.progress > 0 && (
-                    <Badge variant="secondary" className="text-xs">
-                      {Math.round(book.progress)}%
-                    </Badge>
-                  )}
-                  {onRemoveBook && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <button
-                          aria-label="Delete book"
-                          className="inline-flex items-center justify-center rounded-md h-8 w-8 hover:bg-muted transition-colors text-red-600 hover:text-red-700 dark:text-red-400"
-                          onClick={(e) => e.stopPropagation()}
-                          title="Remove book"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Remove this book?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            "{book.title}" will be removed from your library. This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onRemoveBook(book.id);
-                            }}
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                  {book.progress >= 100 && (
+                    <span className="absolute left-2 top-2 bg-foreground px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-background">
+                      Finished
+                    </span>
                   )}
                 </div>
-              </div>
-              <CardTitle className="text-lg line-clamp-2 group-hover:text-primary transition-colors">
-                {book.title}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">{book.author}</p>
-            </CardHeader>
-            
-            <CardContent className="space-y-3">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Progress</span>
-                  <span className="font-medium">{Math.round(book.progress)}%</span>
-                </div>
-                <Progress value={book.progress} className="h-2" />
-              </div>
-              
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <FileText className="w-3 h-3" />
-                  {book.totalPages} pages
-                </div>
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {formatLastRead(book.lastRead)}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-        
-        {books.length === 0 && (
-          <div className="col-span-full text-center py-12">
-            <BookOpen className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-xl font-medium text-muted-foreground mb-2">
-              Your library is empty
-            </h3>
-            <p className="text-muted-foreground mb-4">
-              Add your first book to begin your mindful reading journey
-            </p>
-            <Button 
-              onClick={() => setIsAddDialogOpen(true)}
-              variant="ritual"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Your First Book
-            </Button>
-          </div>
-        )}
-      </div>
+                <Rule value={book.progress} className="mt-3" />
+                <h3 className="mt-3 font-serif text-lg leading-snug line-clamp-2">{book.title}</h3>
+                <p className="mt-0.5 text-sm text-muted-foreground truncate">{book.author}</p>
+                <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                  {Math.round(book.progress)}% · {book.totalPages} pp · {formatLastRead(book.lastRead)}
+                </p>
+              </button>
+
+              {onRemoveBook && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button
+                      aria-label={`Remove ${book.title}`}
+                      className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center border border-border bg-background/90 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="rounded-lg">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="display text-2xl">Remove this book?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        “{book.title}” will be removed from your library. This cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Keep</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => onRemoveBook(book.id)}
+                      >
+                        Remove
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 };
