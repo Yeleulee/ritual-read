@@ -28,6 +28,13 @@ const NORMAL: Pt = [-6, -36];
 // Frame windows where the hand sweeps down across the book (arm keyframes at 60→90 and 120→150)
 const FLIPS: Array<[number, number]> = [[60, 90], [120, 150]];
 
+// Playback is scheduled by hand instead of looping: only the two reading beats ever play
+// (never the 0–30 pick-up or 150–179 put-down), alternating in order because the book tilts
+// at 90, with short reading pauses and slight tempo changes between them.
+const BEATS: Array<[number, number]> = [[READ_START, 90], [90, READ_END]];
+const HOVER_SPEED = 1.25;
+const rand = (a: number, b: number) => a + Math.random() * (b - a);
+
 const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 const sub = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -67,7 +74,54 @@ export function ReaderIllustration({ className }: { className?: string }) {
   const spin = useRef({ offset: 0, velocity: 0, dragging: false, lastX: 0, frame: 0 });
   const globeGroup = useRef<SVGGElement | null>(null);
   const animRef = useRef<AnimationItem | null>(null);
-  const visible = useRef(true);
+  // Playback scheduler: reading beats with short holds between them
+  const play = useRef({ visible: false, started: false, beat: 0, phase: "idle" as "idle" | "playing", base: 1, hover: 1, timer: 0 });
+
+  const applySpeed = () => animRef.current?.setSpeed(play.current.base * play.current.hover);
+
+  const startSegment = (seg: [number, number]) => {
+    const anim = animRef.current;
+    if (!anim) return;
+    play.current.phase = "playing";
+    applySpeed();
+    anim.playSegments(seg, true);
+  };
+
+  const playNextBeat = () => {
+    const p = play.current;
+    p.base = rand(0.85, 1.05);
+    const seg = BEATS[p.beat];
+    p.beat = (p.beat + 1) % BEATS.length;
+    startSegment(seg);
+  };
+
+  const scheduleNext = () => {
+    const p = play.current;
+    window.clearTimeout(p.timer);
+    if (!p.visible) return;
+    // A reading pause between page turns — the book stays open and up the whole time
+    const hold = Math.random() < 0.8 ? rand(300, 1400) : rand(1800, 2800);
+    p.timer = window.setTimeout(playNextBeat, hold);
+  };
+
+  const resume = () => {
+    const p = play.current;
+    const anim = animRef.current;
+    if (!anim) return;
+    if (!p.started) {
+      p.started = true;
+      playNextBeat();
+    } else if (p.phase === "playing") {
+      anim.play();
+    } else {
+      scheduleNext();
+    }
+  };
+
+  const suspend = () => {
+    window.clearTimeout(play.current.timer);
+    animRef.current?.pause();
+  };
 
   const applySpin = () => {
     const g = globeGroup.current;
@@ -92,6 +146,7 @@ export function ReaderIllustration({ className }: { className?: string }) {
     if (!host.current) return;
     let anim: AnimationItem | null = null;
     let cancelled = false;
+    let globeRaf = 0;
     let page: SVGPathElement | null = null;
     // Near (right) page group; the turning leaf drops behind it once past vertical
     let nearPage: SVGGElement | null = null;
@@ -99,9 +154,8 @@ export function ReaderIllustration({ className }: { className?: string }) {
 
     const onLoaded = () => {
       if (!anim) return;
-      // Loop only the reading pose. Frames 0–30 / 150–179 are the artist's "pick up / put down".
-      anim.playSegments([READ_START, READ_END], true);
-      if (!visible.current) anim.pause();
+      // Park on the reading pose (frame 0 is the book lowered); beats start once we're on screen
+      anim.goToAndStop(READ_START, true);
 
       const svg = host.current?.querySelector("svg");
       if (!svg) return;
@@ -110,6 +164,15 @@ export function ReaderIllustration({ className }: { className?: string }) {
       // renderer.elements: [0] = people precomp, [1] = room precomp
       const people = anim.renderer?.elements?.[0];
       const room = anim.renderer?.elements?.[1];
+
+      // Breathing: wrap the whole figure so a CSS transform can ride on top of Lottie's
+      if (people?.layerElement) {
+        const layer: SVGGElement = people.layerElement;
+        const breath = document.createElementNS(SVG_NS, "g");
+        breath.setAttribute("class", "hero-breathe");
+        while (layer.firstChild) breath.appendChild(layer.firstChild);
+        layer.appendChild(breath);
+      }
 
       // Turning page: appended inside the book layer so it inherits arm + book motion
       const book = people?.elements?.find((e: any) => e.data?.nm === "book");
@@ -144,20 +207,27 @@ export function ReaderIllustration({ className }: { className?: string }) {
         applySpin();
       }
 
+      // Globe runs on its own clock so it keeps turning while the reader pauses between flips
+      const tickGlobe = () => {
+        const s = spin.current;
+        if (play.current.visible && !s.dragging) {
+          s.velocity += (IDLE_SPIN - s.velocity) * 0.03;
+          s.offset += s.velocity;
+          applySpin();
+        }
+        globeRaf = requestAnimationFrame(tickGlobe);
+      };
+      globeRaf = requestAnimationFrame(tickGlobe);
+
       setReady(true);
+      if (play.current.visible) resume();
     };
 
     const onFrame = () => {
       if (!anim) return;
       // Absolute clip frame (currentFrame is relative to the playing segment)
       const f = anim.currentFrame + (anim.firstFrame || 0);
-      const s = spin.current;
-      s.frame = f;
-      // Idle drift; a flick's momentum eases back into it instead of stopping
-      if (!s.dragging) {
-        s.velocity += (IDLE_SPIN - s.velocity) * 0.03;
-        s.offset += s.velocity;
-      }
+      spin.current.frame = f;
       applySpin();
       if (!page) return;
       const win = FLIPS.find(([a, b]) => f >= a && f <= b);
@@ -180,8 +250,13 @@ export function ReaderIllustration({ className }: { className?: string }) {
       page.setAttribute("opacity", "1");
     };
 
-    // Fetch + patch the clip so the 30–150 loop is seamless: leg1 ends the loop at 7° but
-    // starts it at 0°, so we re-time its last keyframe and keep the rhythm with a mid-beat.
+    const onComplete = () => {
+      play.current.phase = "idle";
+      scheduleNext();
+    };
+
+    // Fetch + patch the clip so beats can be chained: leg1 ends the reading section at 7° but
+    // starts it at 0°, so re-time it to the arms' 60-frame cadence (0° at 30/90/150).
     fetch(SRC)
       .then((r) => r.json())
       .then((data) => {
@@ -190,23 +265,19 @@ export function ReaderIllustration({ className }: { className?: string }) {
           const people = data.assets?.find((a: any) => a.id === "comp_0");
           const leg = people?.layers?.find((l: any) => l.nm === "leg1");
           const kfs: any[] = leg?.ks?.r?.k;
-          if (Array.isArray(kfs)) {
-            const beat = kfs.find((k) => k.t === 70);
-            const last = kfs.find((k) => k.t === READ_END);
-            if (beat && last) {
-              last.s = [0];
-              const mid = JSON.parse(JSON.stringify(beat));
-              mid.t = 130;
-              mid.s = [4];
-              kfs.splice(kfs.indexOf(last), 0, mid);
-            }
+          if (Array.isArray(kfs) && kfs.length > 1) {
+            const ease = { i: kfs[1].i, o: kfs[1].o };
+            leg.ks.r.k = [
+              { ...ease, t: 0, s: [7] }, { ...ease, t: 30, s: [0] }, { ...ease, t: 60, s: [7] }, { ...ease, t: 90, s: [0] },
+              { ...ease, t: 120, s: [7] }, { ...ease, t: 150, s: [0] }, { t: CLIP_FRAMES, s: [7] },
+            ];
           }
         } catch {}
 
         anim = lottie.loadAnimation({
           container: host.current,
           renderer: "svg",
-          loop: true,
+          loop: false,
           autoplay: false,
           animationData: data,
           rendererSettings: { preserveAspectRatio: "xMidYMid meet", progressiveLoad: false },
@@ -214,19 +285,24 @@ export function ReaderIllustration({ className }: { className?: string }) {
         animRef.current = anim;
         anim.addEventListener("DOMLoaded", onLoaded);
         anim.addEventListener("enterFrame", onFrame);
+        anim.addEventListener("complete", onComplete);
       })
       .catch(() => {});
 
     return () => {
       cancelled = true;
+      cancelAnimationFrame(globeRaf);
+      window.clearTimeout(play.current.timer);
       if (anim) {
         anim.removeEventListener("DOMLoaded", onLoaded);
         anim.removeEventListener("enterFrame", onFrame);
+        anim.removeEventListener("complete", onComplete);
         anim.destroy();
       }
       animRef.current = null;
       globeGroup.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Only run while visible
@@ -234,14 +310,16 @@ export function ReaderIllustration({ className }: { className?: string }) {
     if (!wrap.current) return;
     const io = new IntersectionObserver(
       ([e]) => {
-        visible.current = e.isIntersecting;
-        if (e.isIntersecting) animRef.current?.play();
-        else animRef.current?.pause();
+        play.current.visible = e.isIntersecting;
+        if (!animRef.current) return;
+        if (e.isIntersecting) resume();
+        else suspend();
       },
       { threshold: 0.15 },
     );
     io.observe(wrap.current);
     return () => io.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
   // Pointer → composition coordinates
@@ -298,10 +376,14 @@ export function ReaderIllustration({ className }: { className?: string }) {
   const onPointerLeave = () => {
     rawX.set(0);
     rawY.set(0);
-    animRef.current?.setSpeed(1);
+    play.current.hover = 1;
+    applySpeed();
     if (!spin.current.dragging) setCursor("default");
   };
-  const onPointerEnter = () => { animRef.current?.setSpeed(1.25); };
+  const onPointerEnter = () => {
+    play.current.hover = HOVER_SPEED;
+    applySpeed();
+  };
 
   return (
     <div

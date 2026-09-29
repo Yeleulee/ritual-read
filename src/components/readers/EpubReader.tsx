@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toCanvas } from "html-to-image";
 import type { Highlight } from "@/hooks/use-reader-store";
-import { fontFaceCss, HIGHLIGHT_COLORS, themeToEpubRules, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
+import { fontFaceCss, HIGHLIGHT_COLORS, MEASURE_EM, SPREAD_MIN_WIDTH, themeToEpubRules, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
 import { embeddedFontCss } from "@/lib/reader-snapshot";
 
 /* Shared contract every format reader exposes to the shell / PageTurner. */
@@ -346,7 +346,8 @@ export const EpubReader = ({
         width: "100%",
         height: "100%",
         flow,
-        spread: "none",
+        spread: "auto",
+        minSpreadWidth: SPREAD_MIN_WIDTH,
         allowScriptedContent: false,
       });
       renditionRef.current = rendition;
@@ -506,6 +507,9 @@ export const EpubReader = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlights, status]);
 
+  // Readable measure: one column, or two facing pages plus a gutter, plus the body padding epub.js applies
+  const frameMaxWidth = Math.round((MEASURE_EM * 2 + 3.2) * settings.fontSize * 1.18);
+
   return (
     <div className="relative h-full w-full" style={{ background: theme.bg }}>
       {status === "error" ? (
@@ -517,7 +521,7 @@ export const EpubReader = ({
           Opening book…
         </div>
       ) : null}
-      <div ref={containerRef} className="h-full w-full" />
+      <div ref={containerRef} className="mx-auto h-full w-full" style={{ maxWidth: frameMaxWidth }} />
     </div>
   );
 };

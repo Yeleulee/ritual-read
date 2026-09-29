@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BookLibrary } from "@/components/BookLibrary";
 import { ReaderShell } from "@/components/reader/ReaderShell";
 import { StreakTracker } from "@/components/StreakTracker";
@@ -10,7 +10,7 @@ import { AuthForm } from "@/components/AuthForm";
 import { useAuth } from "@/hooks/use-auth";
 import { useBooks } from "@/hooks/use-books";
 import { Moon, Sun, Home, LogOut } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/Wordmark";
@@ -18,12 +18,27 @@ import { UserMenu } from "@/components/UserMenu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 
+const TABS = ["library", "reader", "progress", "streaks", "assistant"] as const;
+
 const Index = () => {
   const { theme, setTheme } = useTheme();
   const { user, loading: authLoading, signOut } = useAuth();
   const { books, loading: booksLoading, addBook, updateBookProgress, removeBook } = useBooks();
   const [currentBook, setCurrentBook] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState("library");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const [activeTab, setActiveTabState] = useState(() => (TABS.includes(requestedTab as (typeof TABS)[number]) && requestedTab !== "reader" ? requestedTab! : "library"));
+  const setActiveTab = (tab: string) => {
+    setActiveTabState(tab);
+    setSearchParams(tab === "library" ? {} : { tab }, { replace: true });
+  };
+  // ?book=<id> opens that book directly once the library has loaded
+  const requestedBook = searchParams.get("book");
+  useEffect(() => {
+    if (!requestedBook || currentBook || booksLoading) return;
+    const match = books.find((b) => b.id === requestedBook);
+    if (match) { setCurrentBook(match); setActiveTabState("reader"); }
+  }, [requestedBook, books, booksLoading, currentBook]);
   const { current, state } = useReadingStats();
 
   // Show loading screen while checking auth
@@ -45,7 +60,8 @@ const Index = () => {
 
   const handleBookSelect = (book: any) => {
     setCurrentBook(book);
-    setActiveTab("reader");
+    setActiveTabState("reader");
+    setSearchParams({ book: book.id }, { replace: true });
   };
 
   const handleBackToLibrary = () => {
@@ -54,15 +70,12 @@ const Index = () => {
   };
 
   const handleAddBook = async (newBook: any) => {
-    try {
-      const addedBook = await addBook(newBook);
-      if (addedBook) {
-        // Auto-open the newly added book
-        setCurrentBook(addedBook);
-        setActiveTab("reader");
-      }
-    } catch (error) {
-      console.error('Failed to add book:', error);
+    // Rethrow so the add dialog stays open on failure (the hook already toasts the error)
+    const addedBook = await addBook(newBook);
+    if (addedBook) {
+      // Auto-open the newly added book
+      setCurrentBook(addedBook);
+      setActiveTab("reader");
     }
   };
 

@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { extractDocxContent, estimateDocxPages } from "@/lib/docx";
+import { loadPdfjs } from "@/lib/pdf";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, X } from "lucide-react";
+import { Loader2, Plus, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { SectionHeader, Rule, Empty } from "@/components/dashboard/primitives";
 import {
@@ -35,9 +36,32 @@ interface BookItem {
 interface BookLibraryProps {
   books: BookItem[];
   onBookSelect: (book: BookItem) => void;
-  onAddBook: (book: Omit<BookItem, "id">) => void;
+  onAddBook: (book: Omit<BookItem, "id"> & { file?: File }) => void | Promise<unknown>;
   onRemoveBook?: (bookId: string) => void;
 }
+
+// Everything we can learn from a file before the user confirms the import
+interface Draft {
+  file: File;
+  fileName: string;
+  title: string;
+  author: string;
+  totalPages: number;
+  content: string;
+  fileUrl?: string;
+  fileType?: string;
+  coverUrl?: string;
+}
+
+const stripExt = (name: string) => name.replace(/\.[^/.]+$/, "");
+const clean = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+
+// Resolves even if a parser hangs, so the dialog never gets stuck on a bad file
+const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> =>
+  new Promise((resolve) => {
+    const t = window.setTimeout(() => resolve(fallback), ms);
+    p.then((v) => { window.clearTimeout(t); resolve(v); }, () => { window.clearTimeout(t); resolve(fallback); });
+  });
 
 // Flat ink cover with a serif glyph — used when a file has no artwork
 const flatCover = (label: string, small = false): string => {
@@ -66,176 +90,196 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
     author: "",
     totalPages: 0,
   });
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const resetDialog = () => {
+    setNewBook({ title: "", author: "", totalPages: 0 });
+    setDraft(null);
+    setAnalyzing(false);
+    setSaving(false);
+    if (fileInput.current) fileInput.current.value = "";
+  };
 
-    const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    let content = "";
-    let estimatedPages = 0;
-    let fileUrl: string | undefined;
-    let fileType: string | undefined;
-    let coverUrl: string | undefined;
+  const handleDialogChange = (open: boolean) => {
+    if (!open && saving) return;
+    setIsAddDialogOpen(open);
+    if (!open) resetDialog();
+  };
 
-    try {
-      const blobUrlToDataUrl = async (blobUrl: string): Promise<string> => {
-        const res = await fetch(blobUrl);
-        const blob = await res.blob();
-        return await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-      };
+  const blobUrlToDataUrl = async (blobUrl: string): Promise<string> => {
+    const res = await fetch(blobUrl);
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
 
-      const generatePlaceholderCover = (title: string): string =>
-        flatCover((title?.trim()?.[0] || 'B').toUpperCase());
+  // Read what we can from the file: title/author metadata, page count, cover, text
+  const analyzeFile = async (file: File): Promise<Draft> => {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const draft: Draft = {
+      file,
+      fileName: file.name,
+      title: stripExt(file.name),
+      author: "",
+      totalPages: 0,
+      content: "",
+    };
 
-      // Generate an object URL for supported binary formats so the readers can open them later
-      if (fileExtension && ['pdf', 'epub', 'mobi', 'azw', 'azw3', 'ppt', 'pptx'].includes(fileExtension)) {
-        fileUrl = URL.createObjectURL(file);
-        fileType = fileExtension === 'pptx' || fileExtension === 'ppt' ? 'pptx' : fileExtension;
-      }
+    if (["pdf", "epub", "mobi", "azw", "azw3", "ppt", "pptx"].includes(ext)) {
+      draft.fileUrl = URL.createObjectURL(file);
+      draft.fileType = ext === "ppt" || ext === "pptx" ? "pptx" : ext;
+    }
 
-      if (fileExtension === 'txt') {
-        // Handle text files
-        const text = await file.text();
-        content = text;
-        estimatedPages = Math.ceil(text.length / 2000);
-      } else if (fileExtension === 'pdf') {
-        // Handle PDF files
-        fileType = 'pdf';
-        const pdfjsLib = await import('pdfjs-dist');
-        // @ts-ignore - version prop available at runtime
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
-        
-        const pdf = await pdfjsLib.getDocument(fileUrl).promise;
-        estimatedPages = pdf.numPages;
-        content = `PDF: ${newBook.title || file.name}\n\nOpen to render.`;
-
-        // Render first page to a small canvas to create a cover image
+    if (ext === "txt") {
+      const text = await file.text();
+      draft.content = text;
+      draft.totalPages = Math.ceil(text.length / 2000);
+    } else if (ext === "pdf") {
+      draft.fileType = "pdf";
+      const pdfjsLib = await loadPdfjs();
+      const pdf = await withTimeout(pdfjsLib.getDocument(draft.fileUrl!).promise, 15000, null);
+      if (pdf) {
+        draft.totalPages = pdf.numPages;
+        const meta = await withTimeout(pdf.getMetadata(), 5000, null);
+        const info = (meta?.info ?? {}) as Record<string, unknown>;
+        if (clean(info.Title)) draft.title = clean(info.Title);
+        if (clean(info.Author)) draft.author = clean(info.Author);
         try {
-          const page1 = await pdf.getPage(1);
-          const viewport = page1.getViewport({ scale: 0.5 });
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            await page1.render({ canvasContext: ctx, viewport, canvas }).promise;
-            coverUrl = canvas.toDataURL('image/png');
-          }
-        } catch (err) {
-          console.warn('Could not render PDF cover:', err);
-        }
-      } else if (fileExtension === 'epub') {
-        // Handle EPUB files
-        const arrayBuffer = await file.arrayBuffer();
-        try {
-          const ePub = await import('epubjs');
-          const book = ePub.default(arrayBuffer);
-          
-          await book.ready;
-          
-          // Get rough page estimate
-          estimatedPages = 100; // Default estimate for EPUB
-          
-          // Create placeholder content for EPUB
-          content = `EPUB File: ${newBook.title || file.name}
-
-This is an EPUB file that has been imported into your library. The full content will be displayed when you open the book for reading.
-
-File: ${file.name}
-Estimated pages: ${estimatedPages}
-
-Start reading to view the full content.`;
-
-          // Try to get cover from epub.js and convert to a data URL (persistent)
-          try {
-            const maybeCoverUrl = await (book as any).coverUrl?.();
-            if (maybeCoverUrl) {
-              try {
-                coverUrl = await blobUrlToDataUrl(maybeCoverUrl as string);
-              } catch (e) {
-                console.warn('Failed to cache EPUB cover blob, using blob URL directly:', e);
-                coverUrl = maybeCoverUrl as string;
+          const page1 = await withTimeout(pdf.getPage(1), 5000, null);
+          if (page1) {
+            const viewport = page1.getViewport({ scale: 0.5 });
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              canvas.width = viewport.width;
+              canvas.height = viewport.height;
+              const renderTask = page1.render({ canvasContext: ctx, viewport, canvas });
+              const rendered = await withTimeout(renderTask.promise.then(() => true), 8000, false);
+              if (rendered) {
+                draft.coverUrl = canvas.toDataURL("image/jpeg", 0.8);
+              } else {
+                renderTask.cancel();
               }
             }
-          } catch (e) {
-            // Best-effort only
-            console.warn('Failed to extract EPUB cover via coverUrl():', e);
           }
-        } catch (error) {
-          console.warn('EPUB parsing failed, treating as generic file:', error);
-          estimatedPages = 100;
-          content = `EPUB File: ${newBook.title || file.name}
-
-This EPUB file has been imported but could not be fully parsed. You can still read it in the reader interface.`;
+        } catch (err) {
+          console.warn("Could not render PDF cover:", err);
         }
-      } else if (fileExtension === 'docx' || fileExtension === 'doc') {
-        // Handle Word documents
-        const buffer = await file.arrayBuffer();
-        const { text } = await extractDocxContent(buffer);
-        content = text;
-        estimatedPages = estimateDocxPages(text);
-        fileType = 'docx';
-        fileUrl = URL.createObjectURL(file);
-        coverUrl = flatCover('DOCX', true);
-      } else if (fileExtension === 'pptx' || fileExtension === 'ppt') {
-        // Handle PowerPoint files
-        fileType = 'pptx';
-        estimatedPages = 10; // Default estimate for presentations
-        
-        content = `PowerPoint Presentation: ${newBook.title || file.name}
-
-This is a PowerPoint presentation that has been imported into your library. The slides will be displayed when you open it for viewing.
-
-File: ${file.name}
-Estimated slides: ${estimatedPages}
-
-Start viewing to see the full presentation.`;
-
-        coverUrl = flatCover('PPTX', true);
-      } else {
-        // Fallback for other formats - try to read as text
-        content = await file.text();
-        estimatedPages = Math.ceil(content.length / 2000);
+        pdf.destroy().catch(() => {});
       }
-
-      // Ensure we always have a persistent cover image if possible
-      if (!coverUrl) {
-        coverUrl = generatePlaceholderCover(newBook.title || file.name.replace(/\.[^/.]+$/, ""));
+      draft.content = `PDF: ${draft.title}\n\nOpen to render.`;
+    } else if (ext === "epub") {
+      draft.totalPages = 100;
+      try {
+        const ePub = await import("epubjs");
+        const book = ePub.default(await file.arrayBuffer());
+        await withTimeout(book.ready, 15000, null);
+        const meta = await withTimeout((book as any).loaded?.metadata as Promise<any>, 5000, null);
+        if (clean(meta?.title)) draft.title = clean(meta.title);
+        if (clean(meta?.creator)) draft.author = clean(meta.creator);
+        const maybeCover = await withTimeout((book as any).coverUrl?.() as Promise<string | null>, 5000, null);
+        if (maybeCover) {
+          try {
+            draft.coverUrl = await blobUrlToDataUrl(maybeCover);
+          } catch {
+            draft.coverUrl = maybeCover;
+          }
+        }
+      } catch (error) {
+        console.warn("EPUB parsing failed, importing with file name only:", error);
       }
+      draft.content = `EPUB File: ${draft.title}\n\nOpen to read.`;
+    } else if (ext === "docx" || ext === "doc") {
+      const { text } = await extractDocxContent(await file.arrayBuffer());
+      draft.content = text;
+      draft.totalPages = estimateDocxPages(text);
+      draft.fileType = "docx";
+      draft.fileUrl = URL.createObjectURL(file);
+      draft.coverUrl = flatCover("DOCX", true);
+    } else if (ext === "pptx" || ext === "ppt") {
+      draft.fileType = "pptx";
+      draft.totalPages = 10;
+      draft.content = `PowerPoint Presentation: ${draft.title}\n\nOpen to view the slides.`;
+      draft.coverUrl = flatCover("PPTX", true);
+    } else {
+      draft.content = await file.text();
+      draft.totalPages = Math.ceil(draft.content.length / 2000);
+    }
 
-      onAddBook({
-        title: newBook.title || file.name.replace(/\.[^/.]+$/, ""),
-        author: newBook.author || "Unknown Author",
-        progress: 0,
-        totalPages: newBook.totalPages || estimatedPages,
-        content,
-        fileUrl,
-        fileType: fileType || fileExtension,
-        coverUrl,
-        lastRead: new Date(),
-      });
+    if (!draft.fileType) draft.fileType = ext;
+    if (!draft.coverUrl) draft.coverUrl = flatCover((draft.title.trim()[0] || "B").toUpperCase());
+    return draft;
+  };
 
-      toast({
-        title: "Book Added Successfully",
-        description: `"${newBook.title || file.name}" has been added to your library.`,
-      });
-
-      setNewBook({ title: "", author: "", totalPages: 0 });
-      setIsAddDialogOpen(false);
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setAnalyzing(true);
+    setDraft(null);
+    // A new file replaces whatever the previous file prefilled
+    setNewBook({ title: "", author: "", totalPages: 0 });
+    try {
+      // Hard ceiling so a pathological file can never leave the dialog stuck
+      const d = await Promise.race([
+        analyzeFile(file),
+        new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("File analysis timed out")), 30000)),
+      ]);
+      setDraft(d);
+      setNewBook({ title: d.title, author: d.author, totalPages: d.totalPages });
     } catch (error) {
-      console.error('Error processing file:', error);
-      toast({
-        title: "Error Adding Book",
-        description: "There was an error processing your file. Please try again.",
-        variant: "destructive",
+      console.error("Error reading file:", error);
+      // Still allow the import with the file name — the readers open the raw file
+      setDraft({
+        file,
+        fileName: file.name,
+        title: stripExt(file.name),
+        author: "",
+        totalPages: 0,
+        content: "",
+        fileUrl: URL.createObjectURL(file),
+        fileType: file.name.split(".").pop()?.toLowerCase(),
+        coverUrl: flatCover((stripExt(file.name)[0] || "B").toUpperCase()),
       });
+      setNewBook({ title: stripExt(file.name), author: "", totalPages: 0 });
+      toast({
+        title: "Couldn't read the file details",
+        description: "You can still add it — fill in the title and author yourself.",
+      });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!draft || saving) return;
+    setSaving(true);
+    try {
+      // The hook toasts success/failure once the upload and insert actually finish
+      await onAddBook({
+        title: newBook.title.trim() || draft.title,
+        author: newBook.author.trim() || draft.author || "Unknown Author",
+        progress: 0,
+        totalPages: newBook.totalPages || draft.totalPages,
+        content: draft.content,
+        fileUrl: draft.fileUrl,
+        fileType: draft.fileType,
+        coverUrl: draft.coverUrl,
+        lastRead: new Date(),
+        file: draft.file,
+      });
+      setIsAddDialogOpen(false);
+      resetDialog();
+    } catch (error) {
+      console.error("Error adding book:", error);
+      setSaving(false);
     }
   };
 
@@ -254,26 +298,71 @@ Start viewing to see the full presentation.`;
   const finished = books.filter((b) => b.progress >= 100).length;
 
   const addDialog = (
-    <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+    <Dialog open={isAddDialogOpen} onOpenChange={handleDialogChange}>
       <DialogTrigger asChild>
         <Button>
           <Plus className="w-4 h-4" />
           Add book
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md rounded-lg">
+      <DialogContent className="max-w-md overflow-hidden rounded-lg">
         <DialogHeader>
           <p className="eyebrow">Library</p>
           <DialogTitle className="display text-3xl">Add a book</DialogTitle>
         </DialogHeader>
-        <div className="space-y-5 pt-2">
+        {/* min-w-0: a grid item's auto min-width would otherwise grow to the file input's intrinsic (filename) width */}
+        <div className="min-w-0 space-y-5 pt-2">
+          <div className="space-y-2">
+            <Label htmlFor="file" className="eyebrow">File</Label>
+            <Input
+              ref={fileInput}
+              id="file"
+              type="file"
+              accept=".txt,.epub,.pdf,.mobi,.azw,.azw3,.fb2,.djvu,.rtf,.doc,.docx,.ppt,.pptx"
+              onChange={handleFileChange}
+              disabled={analyzing || saving}
+              className="min-w-0 max-w-full cursor-pointer truncate file:mr-3 file:font-mono file:text-[11px] file:uppercase file:tracking-[0.12em]"
+            />
+            <p className="text-xs text-muted-foreground">
+              EPUB, PDF, TXT, DOCX, PPTX and more. Title and author are read from the file when available.
+            </p>
+          </div>
+
+          {(analyzing || draft) && (
+            <div className="flex items-center gap-4 rounded-md border border-border bg-muted/40 p-3">
+              <div className="h-16 w-12 shrink-0 overflow-hidden rounded-sm bg-foreground/10">
+                {draft?.coverUrl && !analyzing ? (
+                  <img src={draft.coverUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 text-sm">
+                {analyzing ? (
+                  <p className="text-muted-foreground">Reading file details…</p>
+                ) : (
+                  <>
+                    <p className="truncate font-medium">{draft?.fileName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {draft?.fileType?.toUpperCase()}
+                      {draft?.totalPages ? ` · ~${draft.totalPages} pages` : ""}
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="title" className="eyebrow">Title</Label>
             <Input
               id="title"
               value={newBook.title}
               onChange={(e) => setNewBook(prev => ({ ...prev, title: e.target.value }))}
-              placeholder="Leave blank to use the file name"
+              placeholder={draft ? draft.title : "Filled in from the file"}
+              disabled={saving}
             />
           </div>
           <div className="space-y-2">
@@ -283,6 +372,7 @@ Start viewing to see the full presentation.`;
               value={newBook.author}
               onChange={(e) => setNewBook(prev => ({ ...prev, author: e.target.value }))}
               placeholder="Optional"
+              disabled={saving}
             />
           </div>
           <div className="space-y-2">
@@ -293,22 +383,19 @@ Start viewing to see the full presentation.`;
               value={newBook.totalPages || ""}
               onChange={(e) => setNewBook(prev => ({ ...prev, totalPages: parseInt(e.target.value) || 0 }))}
               placeholder="Optional — estimated from the file"
+              disabled={saving}
             />
-          </div>
-          <div className="space-y-2 border-t border-border pt-5">
-            <Label htmlFor="file" className="eyebrow">File</Label>
-            <Input
-              id="file"
-              type="file"
-              accept=".txt,.epub,.pdf,.mobi,.azw,.azw3,.fb2,.djvu,.rtf,.doc,.docx,.ppt,.pptx"
-              onChange={handleFileUpload}
-              className="cursor-pointer file:mr-3 file:font-mono file:text-[11px] file:uppercase file:tracking-[0.12em]"
-            />
-            <p className="text-xs text-muted-foreground">
-              EPUB, PDF, TXT, DOCX, PPTX and more. Choosing a file adds it immediately.
-            </p>
           </div>
         </div>
+        <DialogFooter className="pt-2">
+          <Button variant="ghost" onClick={() => handleDialogChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={handleImport} disabled={!draft || analyzing || saving}>
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            {saving ? "Adding…" : "Add to library"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

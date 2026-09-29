@@ -45,11 +45,6 @@ const Landing = () => {
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-[2px] border-b border-border">
         <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between">
           <Wordmark iconOnly />
-          <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
-            <a href="#hero" className="hover:text-foreground transition-colors">About</a>
-            <a href="#features" className="hover:text-foreground transition-colors">Inside</a>
-            <a href="#method" className="hover:text-foreground transition-colors">Method</a>
-          </nav>
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"

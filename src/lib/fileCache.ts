@@ -10,7 +10,7 @@ export async function saveBookFile(file: Blob | File, userId: string): Promise<s
     
     const { data, error } = await supabase.storage
       .from('books')
-      .upload(fileName, file);
+      .upload(fileName, file, { contentType: file.type || 'application/octet-stream', upsert: false });
     
     if (error) {
       console.error('Supabase storage upload error:', error);

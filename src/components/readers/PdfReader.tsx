@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReaderApi, RelocatedInfo, SearchHit, TocItem } from "./EpubReader";
 import type { ReaderTheme } from "@/lib/reader-themes";
+import { loadPdfjs } from "@/lib/pdf";
 
 interface PdfReaderProps {
   fileUrl: string;
@@ -141,8 +142,7 @@ export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onR
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const pdfjsLib = await import("pdfjs-dist");
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
+      const pdfjsLib = await loadPdfjs();
       setLoading(true);
       setError(null);
       try {

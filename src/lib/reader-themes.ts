@@ -41,15 +41,16 @@ export interface ReaderFont {
 
 export const FONTS: ReaderFont[] = [
   { id: "publisher", label: "Original", family: "", sample: "Publisher's font" },
+  { id: "charis", label: "Charter", family: '"Charis SIL", "Charter", "Bitstream Charter", Georgia, serif', faces: [[400, "normal", "CharisSIL-400-normal.woff2"], [400, "italic", "CharisSIL-400-italic.woff2"], [700, "normal", "CharisSIL-700-normal.woff2"]] },
+  { id: "newyork", label: "New York", family: 'ui-serif, "New York", "Iowan Old Style", "Charis SIL", Georgia, serif' },
   { id: "literata", label: "Literata", family: '"Literata", Georgia, serif', faces: [[400, "normal", "Literata-400-normal.woff2"], [400, "italic", "Literata-400-italic.woff2"], [700, "normal", "Literata-700-normal.woff2"]] },
-  { id: "charis", label: "Charis", family: '"Charis SIL", "Charter", Georgia, serif', faces: [[400, "normal", "CharisSIL-400-normal.woff2"], [400, "italic", "CharisSIL-400-italic.woff2"], [700, "normal", "CharisSIL-700-normal.woff2"]] },
+  { id: "sourceserif", label: "Athelas", family: '"Athelas", "Source Serif 4", Georgia, serif', faces: [[400, "normal", "SourceSerif4-400-normal.woff2"], [400, "italic", "SourceSerif4-400-italic.woff2"], [700, "normal", "SourceSerif4-700-normal.woff2"]] },
   { id: "newsreader", label: "Newsreader", family: '"Newsreader", "Iowan Old Style", Baskerville, serif', faces: [[400, "normal", "Newsreader-400-normal.woff2"], [400, "italic", "Newsreader-400-italic.woff2"], [700, "normal", "Newsreader-700-normal.woff2"]] },
-  { id: "sourceserif", label: "Source Serif", family: '"Source Serif 4", "Athelas", Georgia, serif', faces: [[400, "normal", "SourceSerif4-400-normal.woff2"], [400, "italic", "SourceSerif4-400-italic.woff2"], [700, "normal", "SourceSerif4-700-normal.woff2"]] },
   { id: "georgia", label: "Georgia", family: 'Georgia, "Times New Roman", serif' },
   { id: "palatino", label: "Palatino", family: '"Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", serif' },
   { id: "times", label: "Times New Roman", family: '"Times New Roman", Times, serif' },
+  { id: "system", label: "San Francisco", family: '-apple-system, BlinkMacSystemFont, ui-sans-serif, "Segoe UI", Roboto, system-ui, sans-serif' },
   { id: "inter", label: "Inter", family: '"Inter", -apple-system, "Segoe UI", system-ui, sans-serif', faces: [[400, "normal", "Inter-400-normal.woff2"], [700, "normal", "Inter-700-normal.woff2"]] },
-  { id: "system", label: "System", family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif' },
 ];
 
 export interface ReaderSettings {
@@ -68,16 +69,19 @@ export interface ReaderSettings {
   margins: "narrow" | "normal" | "wide";
 }
 
+// Apple Books' 100% size is ~17px on phones and ~19px on larger screens
+const defaultFontSize = () => (typeof window !== "undefined" && window.innerWidth < 640 ? 17 : 19);
+
 export const DEFAULT_SETTINGS: ReaderSettings = {
   theme: "original",
   autoNight: false,
-  fontId: "literata",
-  fontSize: 18,
+  fontId: "charis",
+  fontSize: defaultFontSize(),
   bold: false,
-  lineHeight: 1.6,
+  lineHeight: 1.5,
   letterSpacing: 0,
   wordSpacing: 0,
-  justify: false,
+  justify: true,
   hyphenation: true,
   pageTurn: "curl",
   brightness: 1,
@@ -86,6 +90,23 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
 
 export const FONT_SIZE_MIN = 12;
 export const FONT_SIZE_MAX = 32;
+
+/** Comfortable line length in ems of the body size (≈ 60–70 characters). */
+export const MEASURE_EM = 34;
+/** Two facing pages once the viewport is wide enough for two comfortable columns. */
+export const SPREAD_MIN_WIDTH = 1000;
+
+/** Page geometry for column readers: one page or a two-page spread, capped to a readable measure. */
+export function pageLayout(viewportWidth: number, viewportHeight: number, s: ReaderSettings) {
+  const pad = { narrow: 0.05, normal: 0.08, wide: 0.12 }[s.margins];
+  const columns = viewportWidth >= SPREAD_MIN_WIDTH && viewportWidth > viewportHeight ? 2 : 1;
+  const measure = MEASURE_EM * s.fontSize;
+  const gutter = columns === 2 ? Math.round(Math.max(48, s.fontSize * 3.2)) : 0;
+  const sidePad = Math.round(viewportWidth * pad);
+  const columnWidth = Math.min(measure, Math.floor((viewportWidth - sidePad * 2 - gutter) / columns));
+  const contentWidth = columnWidth * columns + gutter;
+  return { columns, columnWidth, gutter, contentWidth, sidePad: Math.max(sidePad, Math.floor((viewportWidth - contentWidth) / 2)) };
+}
 
 export const fontById = (id: string) => FONTS.find((f) => f.id === id) ?? FONTS[0];
 
@@ -114,6 +135,18 @@ export function fontFaceCss(origin = typeof location !== "undefined" ? location.
 
 const MARGINS = { narrow: "4%", normal: "8%", wide: "14%" } as const;
 
+/** Micro-typography every reader applies to body text (kerning, ligatures, widow control). */
+export const BODY_TEXT_RULES: Record<string, string> = {
+  "text-rendering": "optimizeLegibility",
+  "font-kerning": "normal",
+  "font-variant-ligatures": "common-ligatures",
+  "font-optical-sizing": "auto",
+  "-webkit-font-smoothing": "antialiased",
+  "-moz-osx-font-smoothing": "grayscale",
+  orphans: "2",
+  widows: "2",
+};
+
 /** Rule set for epub.js `rendition.themes.register(name, rules)`. */
 export function themeToEpubRules(theme: ReaderTheme, s: ReaderSettings) {
   const font = fontById(s.fontId);
@@ -131,18 +164,19 @@ export function themeToEpubRules(theme: ReaderTheme, s: ReaderSettings) {
     "padding-left": `${MARGINS[s.margins]} !important`,
     "padding-right": `${MARGINS[s.margins]} !important`,
     "-webkit-text-size-adjust": "100%",
+    ...BODY_TEXT_RULES,
   };
   if (font.family) body["font-family"] = `${font.family} !important`;
   if (weight) body["font-weight"] = `${weight} !important`;
 
-  const text: Record<string, string> = { color: `${theme.fg} !important` };
+  const text: Record<string, string> = { color: `${theme.fg} !important`, orphans: "2", widows: "2" };
   if (font.family) text["font-family"] = "inherit !important";
   if (weight) text["font-weight"] = `${weight} !important`;
 
   return {
     body,
     "p, li, blockquote, dd, dt, span, div": text,
-    "h1, h2, h3, h4, h5, h6": { color: `${theme.fg} !important`, ...(font.family ? { "font-family": "inherit !important" } : {}) },
+    "h1, h2, h3, h4, h5, h6": { color: `${theme.fg} !important`, "text-align": "left !important", hyphens: "manual !important", "-webkit-hyphens": "manual !important", "page-break-after": "avoid", "break-after": "avoid", ...(font.family ? { "font-family": "inherit !important" } : {}) },
     a: { color: `${theme.link} !important`, "text-decoration-color": `${theme.link} !important` },
     "::selection": { background: theme.selection },
     img: { "max-width": "100% !important", height: "auto !important", filter: theme.dark ? "brightness(.85)" : "none" },

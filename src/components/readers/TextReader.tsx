@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toCanvas } from "html-to-image";
 import type { Highlight } from "@/hooks/use-reader-store";
-import { fontById, HIGHLIGHT_COLORS, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
+import { BODY_TEXT_RULES, fontById, HIGHLIGHT_COLORS, pageLayout, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
 import { embeddedFontCss } from "@/lib/reader-snapshot";
 import type { ReaderApi, RelocatedInfo, SearchHit, SelectionInfo } from "./EpubReader";
 
-/* Plain-text / DOCX reader. The whole text is laid out once in CSS columns the size of the
-   viewport; a "page" is one column, turned by shifting the track. Locations are `txt:<page>`,
-   highlight ranges are `txt:<startOffset>-<endOffset>` over the flattened text. */
+/* Plain-text / DOCX reader. The whole text is laid out once in CSS columns the size of a page;
+   a "page" is one column (or two facing columns on wide screens), turned by shifting the track.
+   Locations are `txt:<page>`, highlight ranges are `txt:<startOffset>-<endOffset>` over the flattened text. */
 
 interface TextReaderProps {
   content: string;
@@ -22,18 +22,29 @@ interface TextReaderProps {
   onTap?: () => void;
 }
 
-type Para = { start: number; text: string };
+type Para = { start: number; text: string; heading?: boolean };
+
+const HEADING_WORDS = /^(chapter|part|book|prologue|epilogue|introduction|preface|foreword|afterword|appendix|interlude)\b/i;
+// Short standalone lines that read as titles: "Chapter 3", "II.", "12 The Return", or ALL CAPS
+const isHeading = (text: string) =>
+  text.length <= 80 && !/[.!?]$/.test(text.replace(/["'\u201d\u2019)]+$/, "")) &&
+  (HEADING_WORDS.test(text) || /^[IVXLC]+\.?(\s|$)/.test(text) || /^\d{1,3}\.?(\s+\S|$)/.test(text) || (text === text.toUpperCase() && /[A-Z]/.test(text)));
 
 function splitParagraphs(content: string): Para[] {
   const out: Para[] = [];
   let offset = 0;
   for (const raw of content.replace(/\r\n?/g, "\n").split(/\n{2,}|\n(?=\s{2,})/)) {
     const text = raw.replace(/\s*\n\s*/g, " ").trim();
-    if (text) out.push({ start: offset, text });
+    if (text) out.push({ start: offset, text, heading: isHeading(text) });
     offset += text.length + 1; // +1 for the paragraph break
   }
   return out;
 }
+
+// "-webkit-font-smoothing" -> WebkitFontSmoothing, "font-kerning" -> fontKerning
+const BODY_STYLE = Object.fromEntries(
+  Object.entries(BODY_TEXT_RULES).map(([k, v]) => [k.replace(/^-/, "").replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()).replace(/^(webkit|moz|ms)/, (m) => m[0].toUpperCase() + m.slice(1)), v]),
+) as React.CSSProperties;
 
 const parseRange = (s: string) => {
   const m = /^txt:(\d+)-(\d+)$/.exec(s);
@@ -42,13 +53,16 @@ const parseRange = (s: string) => {
 
 export const TextReader = ({ content, settings, theme, initialLocation, highlights, onReady, onRelocated, onSelected, onHighlightClick, onTap }: TextReaderProps) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const initialTextPage = /^txt:\d+$/.test(initialLocation ?? "") ? parseInt((initialLocation ?? "").slice(4), 10) : 1;
   const pageRef = useRef(Math.max(1, initialTextPage));
   const initialAppliedRef = useRef(false);
   const [page, setPage] = useState(pageRef.current);
   const [pages, setPages] = useState(1);
-  const [vpWidth, setVpWidth] = useState(0);
+  // Horizontal distance between the starts of two consecutive pages (one or two columns + gutters)
+  const [stride, setStride] = useState(0);
+  const [layout, setLayout] = useState(() => pageLayout(0, 0, settings));
   const paras = useMemo(() => splitParagraphs(content), [content]);
   const flat = useMemo(() => paras.map((p) => p.text).join("\n"), [paras]);
 
@@ -61,7 +75,6 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
 
   const scroll = settings.pageTurn === "scroll";
   const font = fontById(settings.fontId);
-  const margins = { narrow: "4%", normal: "8%", wide: "14%" }[settings.margins];
 
   const emit = (p: number, n: number, percentOverride?: number) => {
     const percent = percentOverride ?? (n > 1 ? (p - 1) / (n - 1) : 0);
@@ -89,25 +102,36 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
   // Column geometry: recount pages whenever size or typography changes
   useLayoutEffect(() => {
     const vp = viewportRef.current;
+    const frame = frameRef.current;
     const track = trackRef.current;
-    if (!vp || !track) return;
+    if (!vp || !frame || !track) return;
     const measure = () => {
+      const w = vp.clientWidth;
+      const h = vp.clientHeight;
+      if (!w) return;
       if (scroll) {
+        // Scrolling reads as one long single column at a comfortable measure
+        const l = pageLayout(w, Infinity, settingsRef.current);
+        setLayout(l);
+        frame.style.width = `${l.contentWidth}px`;
         track.style.columnWidth = "auto";
         track.style.columnGap = "normal";
         track.style.height = "auto";
-        const n = Math.max(1, Math.ceil(track.scrollHeight / Math.max(1, vp.clientHeight)));
+        const n = Math.max(1, Math.ceil(track.scrollHeight / Math.max(1, h)));
         setPages(n);
         pagesRef.current = n;
         return;
       }
-      const w = vp.clientWidth;
-      if (!w) return;
-      setVpWidth(w);
-      track.style.columnWidth = `${w}px`;
-      track.style.columnGap = "0px";
-      track.style.height = `${vp.clientHeight}px`;
-      const n = Math.max(1, Math.round(track.scrollWidth / w));
+      const l = pageLayout(w, h, settingsRef.current);
+      setLayout(l);
+      frame.style.width = `${l.contentWidth}px`;
+      track.style.columnWidth = `${l.columnWidth}px`;
+      track.style.columnGap = `${l.gutter}px`;
+      track.style.height = "100%";
+      const step = l.columnWidth + l.gutter;
+      const cols = Math.max(1, Math.round((track.scrollWidth + l.gutter) / step));
+      const n = Math.max(1, Math.ceil(cols / l.columns));
+      setStride(step * l.columns);
       setPages(n);
       pagesRef.current = n;
       if (pageRef.current > n) goTo(n);
@@ -160,9 +184,11 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
           if (r) {
             // find the page containing this offset via the rendered mark/element
             const el = trackRef.current?.querySelector<HTMLElement>(`[data-start="${r.start}"]`) ?? offsetToElement(r.start);
-            if (el && viewportRef.current) {
-              const x = el.getBoundingClientRect().left - trackRef.current!.getBoundingClientRect().left;
-              goTo(Math.floor(x / viewportRef.current.clientWidth) + 1);
+            if (el && trackRef.current) {
+              const x = el.getBoundingClientRect().left - trackRef.current.getBoundingClientRect().left;
+              const l = layoutRef.current;
+              const col = Math.floor((x + l.gutter / 2) / Math.max(1, l.columnWidth + l.gutter));
+              goTo(Math.floor(col / l.columns) + 1);
             }
           } else goTo(parseInt(target.slice(4), 10) || 1);
         }
@@ -174,12 +200,12 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
         document.getSelection()?.removeAllRanges();
       },
       visibleText() {
-        const vp = viewportRef.current;
+        const frame = frameRef.current;
         const track = trackRef.current;
-        if (!vp || !track) return "";
-        const vr = vp.getBoundingClientRect();
+        if (!frame || !track) return "";
+        const vr = frame.getBoundingClientRect();
         const out: string[] = [];
-        track.querySelectorAll("p").forEach((p) => {
+        track.querySelectorAll("p, h2").forEach((p) => {
           const r = p.getBoundingClientRect();
           if (r.right > vr.left && r.left < vr.right) out.push(p.textContent ?? "");
         });
@@ -213,7 +239,7 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
   }
 
   const offsetToElement = (offset: number): HTMLElement | null => {
-    const ps = trackRef.current?.querySelectorAll<HTMLElement>("p[data-start]");
+    const ps = trackRef.current?.querySelectorAll<HTMLElement>("[data-start]");
     if (!ps) return null;
     let hit: HTMLElement | null = null;
     ps.forEach((p) => {
@@ -221,6 +247,8 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
     });
     return hit;
   };
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
 
   useEffect(() => {
     cb.current.onReady?.(apiRef.current!);
@@ -264,7 +292,7 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
       const range = sel.getRangeAt(0);
       if (!track.contains(range.commonAncestorContainer)) return;
       const toOffset = (node: Node, off: number) => {
-        const p = (node.nodeType === 3 ? node.parentElement : (node as Element))?.closest<HTMLElement>("p[data-start]");
+        const p = (node.nodeType === 3 ? node.parentElement : (node as Element))?.closest<HTMLElement>("p[data-start], h2[data-start]");
         if (!p) return null;
         const r = document.createRange();
         r.selectNodeContents(p);
@@ -331,8 +359,6 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
     return nodes;
   };
 
-  const vpWidthNow = scroll ? 0 : vpWidth;
-
   return (
     <div
       ref={viewportRef}
@@ -342,38 +368,81 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
         if (document.getSelection()?.isCollapsed) cb.current.onTap?.();
       }}
     >
+      {/* Page frame: centred at a readable measure; top/bottom padding keeps text clear of the bars */}
       <div
-        ref={trackRef}
-        className={scroll ? "mx-auto max-w-3xl" : "h-full"}
+        ref={frameRef}
+        className={scroll ? "mx-auto" : "mx-auto h-full overflow-hidden"}
         style={{
-          transform: scroll ? undefined : `translateX(${-(page - 1) * vpWidthNow}px)`,
-          columnFill: scroll ? undefined : "auto",
-          fontFamily: font.family || 'Georgia, "Times New Roman", serif',
-          fontSize: settings.fontSize,
-          fontWeight: settings.bold || theme.weight ? 700 : 400,
-          lineHeight: settings.lineHeight,
-          letterSpacing: settings.letterSpacing,
-          wordSpacing: settings.wordSpacing,
-          textAlign: settings.justify ? "justify" : "left",
-          hyphens: settings.hyphenation ? "auto" : "manual",
-          paddingLeft: margins,
-          paddingRight: margins,
-          paddingTop: scroll ? 32 : 0,
-          paddingBottom: scroll ? 64 : 0,
+          maxWidth: "100%",
           boxSizing: "border-box",
+          paddingTop: "max(56px, calc(env(safe-area-inset-top) + 44px))",
+          paddingBottom: scroll ? "max(96px, calc(env(safe-area-inset-bottom) + 80px))" : "max(84px, calc(env(safe-area-inset-bottom) + 72px))",
         }}
       >
-        {paras.length === 0 ? (
-          <p className="pt-10 text-center text-sm" style={{ color: theme.muted }}>
-            This document is empty.
-          </p>
-        ) : (
-          paras.map((p) => (
-            <p key={p.start} data-start={p.start} style={{ margin: "0 0 1em", paddingTop: p.start === 0 && !scroll ? "6vh" : 0 }}>
-              {renderPara(p)}
+        <div
+          ref={trackRef}
+          lang="en"
+          className={scroll ? "" : "h-full"}
+          style={{
+            transform: scroll ? undefined : `translateX(${-(page - 1) * stride}px)`,
+            columnFill: scroll ? undefined : "auto",
+            fontFamily: font.family || 'Charter, "Charis SIL", Georgia, "Times New Roman", serif',
+            fontSize: settings.fontSize,
+            fontWeight: settings.bold || theme.weight ? 700 : 400,
+            lineHeight: settings.lineHeight,
+            letterSpacing: settings.letterSpacing,
+            wordSpacing: settings.wordSpacing,
+            textAlign: settings.justify ? "justify" : "left",
+            hyphens: settings.hyphenation ? "auto" : "manual",
+            WebkitHyphens: settings.hyphenation ? "auto" : "manual",
+            ...BODY_STYLE,
+          }}
+        >
+          {paras.length === 0 ? (
+            <p className="pt-10 text-center text-sm" style={{ color: theme.muted }}>
+              This document is empty.
             </p>
-          ))
-        )}
+          ) : (
+            paras.map((p, i) => {
+              if (p.heading) {
+                return (
+                  <h2
+                    key={p.start}
+                    data-start={p.start}
+                    style={{
+                      // Chapters open on a fresh page, a third of the way down, like a printed book
+                      breakBefore: i > 0 && !scroll ? "column" : "auto",
+                      breakAfter: "avoid",
+                      margin: 0,
+                      paddingTop: scroll ? (i > 0 ? "3em" : "0.5em") : "22%",
+                      paddingBottom: "1.6em",
+                      fontSize: "1.45em",
+                      fontWeight: settings.bold || theme.weight ? 700 : 400,
+                      lineHeight: 1.2,
+                      letterSpacing: "-0.005em",
+                      textAlign: "left",
+                      textIndent: 0,
+                      hyphens: "manual",
+                      WebkitHyphens: "manual",
+                    }}
+                  >
+                    {renderPara(p)}
+                  </h2>
+                );
+              }
+              const afterBody = i > 0 && !paras[i - 1].heading;
+              return (
+                <p
+                  key={p.start}
+                  data-start={p.start}
+                  style={{ margin: 0, textIndent: afterBody ? "1.4em" : 0, orphans: 2, widows: 2 }}
+                >
+                  {renderPara(p)}
+                </p>
+              );
+            })
+          )}
+        </div>
       </div>
     </div>
   );

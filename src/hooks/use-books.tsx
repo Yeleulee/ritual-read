@@ -101,7 +101,7 @@ export const useBooks = () => {
   };
 
   // Add a new book
-  const addBook = async (newBook: Omit<BookItem, 'id'>) => {
+  const addBook = async ({ file, ...newBook }: Omit<BookItem, 'id'> & { file?: File }) => {
     if (isLocal) {
       console.log('No user, saving book locally');
       const localBook: BookItem = {
@@ -144,12 +144,10 @@ export const useBooks = () => {
       let coverUrl = newBook.coverUrl;
 
       // Upload file to Supabase Storage for permanent storage
-      if (newBook.fileUrl && newBook.fileUrl.startsWith('blob:')) {
+      if (file || (newBook.fileUrl && newBook.fileUrl.startsWith('blob:'))) {
         try {
-          // Convert blob URL to actual file for upload
-          const response = await fetch(newBook.fileUrl);
-          const blob = await response.blob();
-          const uploadedUrl = await saveBookFile(blob, user.id);
+          const toUpload = file ?? (await (await fetch(newBook.fileUrl!)).blob());
+          const uploadedUrl = await saveBookFile(toUpload, user.id);
 
           if (uploadedUrl.startsWith('supabase://')) {
             fileUrl = uploadedUrl;
@@ -178,7 +176,8 @@ export const useBooks = () => {
         total_pages: newBook.totalPages || 0,
         cover_url: coverUrl || null,
         content: newBook.content || null,
-        file_url: fileUrl || null,
+        // blob: URLs die with the tab, so never persist one
+        file_url: fileUrl && !fileUrl.startsWith('blob:') ? fileUrl : null,
         file_type: newBook.fileType || null,
         last_read: newBook.lastRead?.toISOString() || new Date().toISOString(),
       };
@@ -235,7 +234,8 @@ export const useBooks = () => {
         totalPages: data.total_pages,
         coverUrl: data.cover_url,
         content: data.content,
-        fileUrl: data.file_url,
+        // Keep the in-memory blob URL for this session if the upload failed
+        fileUrl: data.file_url ?? fileUrl,
         fileType: data.file_type,
         lastRead: data.last_read ? new Date(data.last_read) : undefined,
       };
@@ -366,6 +366,15 @@ export const useBooks = () => {
           return;
         }
         throw error;
+      }
+
+      // Row is gone; drop the uploaded file too so storage doesn't accumulate orphans
+      const storedUrl = books.find((b) => b.id === bookId)?.fileUrl;
+      if (storedUrl?.startsWith('supabase://books/')) {
+        const { error: rmError } = await supabase.storage
+          .from('books')
+          .remove([storedUrl.replace('supabase://books/', '')]);
+        if (rmError) console.warn('Book row deleted but file removal failed:', rmError);
       }
 
       setBooks((prev) => {
