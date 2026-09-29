@@ -33,7 +33,12 @@ serve(async (req) => {
       relevanceLanguage: 'en'
     });
 
-    const yt = await fetch(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`);
+    // The key is HTTP-referrer restricted in Google Cloud; forward the caller's origin so
+    // Google applies the same allow-list it would for a direct browser request.
+    const referer = req.headers.get('origin') || req.headers.get('referer') || Deno.env.get('YOUTUBE_REFERER') || '';
+    const yt = await fetch(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`, {
+      headers: referer ? { Referer: referer.endsWith('/') ? referer : `${referer}/` } : {},
+    });
     const data = await yt.json();
     return new Response(JSON.stringify(data), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (e) {

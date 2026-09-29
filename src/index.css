@@ -395,15 +395,41 @@ Colors are in HSL format for proper theming.
     @apply border-border;
   }
 
-  /* Sign-in illustration: lamp breathes, steam rises, stars twinkle */
-  .auth-scene__glow { animation: auth-glow 5s ease-in-out infinite; transform-origin: 716px 300px; }
+  /* Sign-in illustration: the room fades in, the lamp clicks on, then it quietly lives —
+     breathing glow, rising steam, twinkling stars, dust in the light, a swinging pull chain,
+     a swaying plant, an occasional shooting star and a page that turns on the open book. */
+  .auth-scene { animation: auth-scene-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .auth-scene__glow { transform-origin: 716px 300px; animation: auth-lamp-on 1.6s ease-out both, auth-glow 5s ease-in-out 1.6s infinite; }
+  .auth-scene__shade { animation: auth-shade-on 1.6s ease-out both; }
   .auth-scene__steam { animation: auth-steam 3.2s ease-in-out infinite; transform-origin: 905px 480px; }
   .auth-scene__steam--2 { animation-delay: -1.1s; }
   .auth-scene__steam--3 { animation-delay: -2.2s; }
   .auth-scene__star { animation: auth-twinkle 2.8s ease-in-out infinite; }
   .auth-scene__star--2 { animation-delay: -0.9s; animation-duration: 3.6s; }
   .auth-scene__star--3 { animation-delay: -1.8s; animation-duration: 2.2s; }
+  .auth-scene__chain { transform-origin: 734px 300px; animation: auth-chain 3.8s ease-in-out -1s infinite alternate; }
+  .auth-scene__plant { transform-origin: 712px 340px; animation: auth-sway 5.5s ease-in-out infinite alternate; }
+  .auth-scene__mote { opacity: 0; animation-name: auth-mote; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+  .auth-scene__comet { opacity: 0; animation: auth-comet 13s ease-in 4s infinite; }
+  .auth-scene__page { transform-box: fill-box; transform-origin: 0% 50%; animation: auth-page 9s ease-in-out 3s infinite; }
 
+  @keyframes auth-scene-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes auth-lamp-on {
+    0%, 35% { opacity: 0; transform: scale(0.9); }
+    48% { opacity: 0.9; transform: scale(0.98); }
+    56% { opacity: 0.35; transform: scale(0.94); }
+    68% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0.8; transform: scale(0.96); }
+  }
+  @keyframes auth-shade-on {
+    0%, 35% { fill: #3a2418; }
+    48% { fill: #E9752F; }
+    56% { fill: #8a4a26; }
+    68%, 100% { fill: #E9752F; }
+  }
   @keyframes auth-glow {
     0%, 100% { opacity: 0.8; transform: scale(0.96); }
     50% { opacity: 1; transform: scale(1.04); }
@@ -417,20 +443,50 @@ Colors are in HSL format for proper theming.
     0%, 100% { opacity: 0.35; }
     50% { opacity: 1; }
   }
+  @keyframes auth-chain {
+    from { transform: rotate(-5deg); }
+    to { transform: rotate(5deg); }
+  }
+  @keyframes auth-sway {
+    from { transform: rotate(-3deg); }
+    to { transform: rotate(3deg); }
+  }
+  @keyframes auth-mote {
+    0% { opacity: 0; transform: translate(0, 0); }
+    20% { opacity: 0.7; }
+    50% { transform: translate(4px, -22px); }
+    80% { opacity: 0.5; }
+    100% { opacity: 0; transform: translate(-3px, -46px); }
+  }
+  @keyframes auth-comet {
+    0% { opacity: 0; transform: translate(700px, 110px); }
+    2% { opacity: 1; }
+    9% { opacity: 0; transform: translate(905px, 200px); }
+    100% { opacity: 0; transform: translate(905px, 200px); }
+  }
+  @keyframes auth-page {
+    0%, 70% { opacity: 1; transform: scaleX(1); }
+    80% { transform: scaleX(0.04); }
+    89% { opacity: 1; transform: scaleX(-1); }
+    90%, 100% { opacity: 0; transform: scaleX(-1); }
+  }
   @media (prefers-reduced-motion: reduce) {
-    .auth-scene__glow, .auth-scene__steam, .auth-scene__star { animation: none; }
+    .auth-scene, .auth-scene__glow, .auth-scene__shade, .auth-scene__steam, .auth-scene__star, .auth-scene__chain,
+    .auth-scene__plant, .auth-scene__mote, .auth-scene__comet, .auth-scene__page { animation: none; }
     .auth-scene__steam { opacity: 0.6; }
+    .auth-scene__glow { opacity: 0.9; }
+    .auth-scene__mote, .auth-scene__comet, .auth-scene__page { display: none; }
   }
 
-  /* Breathing affects the torso artwork only, leaving the seated pose anchored. */
+  /* Landing hero figure: slow breath layered over the Lottie transforms */
   .hero-breathe {
     transform-box: fill-box;
     transform-origin: 50% 100%;
-    animation: hero-breathe 6.5s ease-in-out infinite;
+    animation: hero-breathe 3.8s ease-in-out infinite;
   }
   @keyframes hero-breathe {
     0%, 100% { transform: scale(1, 1); }
-    50% { transform: scale(1, 1.004); }
+    50% { transform: scale(1.002, 1.008); }
   }
 
   /* Animated open-book logo — sized by font-size (1em ≈ one glyph) */

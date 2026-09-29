@@ -13,11 +13,11 @@ const GLOBE = { cx: 906.75, cy: 880.75, r: 80.75 };
 const GLOBE_PERIOD = 161.5; // continents texture repeats every globe diameter
 const IDLE_SPIN = 0.45; // comp px per frame the globe drifts on its own
 
+// The clip is 180 frames: 0–30 picks the book up, 30–150 reads, 150–179 puts it down.
+// We loop the reading section only, so the character never closes the book.
 const CLIP_FRAMES = 179;
-const READ_START = 60;
-const READ_END = 120;
-const READING_PAUSE_MIN = 10;
-const READING_PAUSE_MAX = 16;
+const READ_START = 30;
+const READ_END = 150;
 
 // Open-book page corners in the book layer's local space: [innerTop, outerTop, outerBottom, innerBottom]
 type Pt = [number, number];
@@ -25,65 +25,15 @@ const NEAR_PAGE: Pt[] = [[563.2, 837.1], [620.9, 810.5], [605, 852.8], [543.1, 8
 const FAR_PAGE: Pt[] = [[582.6, 816.8], [521.4, 845.9], [543.1, 872], [602.4, 846.8]];
 // Projected "up off the page" direction; shorter than the page width because the book faces the viewer
 const NORMAL: Pt = [-6, -36];
-const FLIPS: Array<[number, number]> = [[66, 90]];
+// Frame windows where the hand sweeps down across the book (arm keyframes at 60→90 and 120→150)
+const FLIPS: Array<[number, number]> = [[60, 90], [120, 150]];
+
+// Playback is scheduled by hand instead of looping: only the two reading beats ever play
+// (never the 0–30 pick-up or 150–179 put-down), alternating in order because the book tilts
+// at 90, with short reading pauses and slight tempo changes between them.
+const BEATS: Array<[number, number]> = [[READ_START, 90], [90, READ_END]];
+const HOVER_SPEED = 1.25;
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
-
-interface ReadingClipData {
-  assets?: Array<{
-    id: string;
-    layers?: Array<{ nm: string; ks?: Record<string, unknown>; shapes?: unknown }>;
-  }>;
-}
-
-interface SvgLayer {
-  data?: { nm?: string };
-  layerElement?: SVGGElement;
-  elements?: SvgLayer[];
-  shapesData?: Array<{ nm?: string }>;
-  itemsData?: Array<{ gr?: SVGGElement }>;
-}
-
-function holdReadingPose(value: unknown, frame: number): void {
-  if (!value || typeof value !== "object") return;
-  const property = value as Record<string, unknown>;
-  if (property.a === 1 && Array.isArray(property.k)) {
-    const keyframes = property.k as Array<{ t: number; s?: unknown[] }>;
-    const resting = keyframes.filter((keyframe) => keyframe.t <= frame && keyframe.s).at(-1);
-    if (resting?.s) {
-      property.a = 0;
-      property.k = structuredClone(resting.s.length === 1 ? resting.s[0] : resting.s);
-      return;
-    }
-  }
-  Object.values(value).forEach((child) => holdReadingPose(child, frame));
-}
-
-function prepareReadingClip(data: ReadingClipData): void {
-  const layers = data.assets?.find((asset) => asset.id === "comp_0")?.layers ?? [];
-  const heldLayers = new Set(["leg1", "leg2", "body", "arm1", "arm2", "book", "head"]);
-  for (const layer of layers) {
-    if (!heldLayers.has(layer.nm)) continue;
-    const restingFrame = layer.nm.startsWith("leg") ? 30 : READ_START;
-    holdReadingPose(layer.ks, restingFrame);
-    holdReadingPose(layer.shapes, restingFrame);
-    if (!layer.ks || (layer.nm !== "arm1" && layer.nm !== "head")) continue;
-    const rotation = layer.ks.r as { k: number; ix?: number };
-    const restingAngle = rotation.k;
-    const poses = layer.nm === "arm1"
-      ? [[READ_START, restingAngle], [66, restingAngle], [90, restingAngle + 4], [112, restingAngle], [READ_END, restingAngle]]
-      : [[READ_START, restingAngle], [90, restingAngle + 0.8], [106, restingAngle + 1.5], [READ_END, restingAngle]];
-    layer.ks.r = {
-      a: 1,
-      ix: rotation.ix,
-      k: poses.map(([time, angle]) => ({
-        t: time,
-        s: [angle],
-        i: { x: [0.667], y: [1] },
-        o: { x: [0.333], y: [0] },
-      })),
-    };
-  }
-}
 
 const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 const sub = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
@@ -124,13 +74,54 @@ export function ReaderIllustration({ className }: { className?: string }) {
   const spin = useRef({ offset: 0, velocity: 0, dragging: false, lastX: 0, frame: 0 });
   const globeGroup = useRef<SVGGElement | null>(null);
   const animRef = useRef<AnimationItem | null>(null);
-  const play = useRef({ visible: false, started: false, waiting: true, remaining: READING_PAUSE_MIN });
+  // Playback scheduler: reading beats with short holds between them
+  const play = useRef({ visible: false, started: false, beat: 0, phase: "idle" as "idle" | "playing", base: 1, hover: 1, timer: 0 });
 
-  const resume = () => {
-    if (play.current.started && !play.current.waiting && !document.hidden) animRef.current?.play();
+  const applySpeed = () => animRef.current?.setSpeed(play.current.base * play.current.hover);
+
+  const startSegment = (seg: [number, number]) => {
+    const anim = animRef.current;
+    if (!anim) return;
+    play.current.phase = "playing";
+    applySpeed();
+    anim.playSegments(seg, true);
   };
 
-  const suspend = () => animRef.current?.pause();
+  const playNextBeat = () => {
+    const p = play.current;
+    p.base = rand(0.85, 1.05);
+    const seg = BEATS[p.beat];
+    p.beat = (p.beat + 1) % BEATS.length;
+    startSegment(seg);
+  };
+
+  const scheduleNext = () => {
+    const p = play.current;
+    window.clearTimeout(p.timer);
+    if (!p.visible) return;
+    // A reading pause between page turns — the book stays open and up the whole time
+    const hold = Math.random() < 0.8 ? rand(300, 1400) : rand(1800, 2800);
+    p.timer = window.setTimeout(playNextBeat, hold);
+  };
+
+  const resume = () => {
+    const p = play.current;
+    const anim = animRef.current;
+    if (!anim) return;
+    if (!p.started) {
+      p.started = true;
+      playNextBeat();
+    } else if (p.phase === "playing") {
+      anim.play();
+    } else {
+      scheduleNext();
+    }
+  };
+
+  const suspend = () => {
+    window.clearTimeout(play.current.timer);
+    animRef.current?.pause();
+  };
 
   const applySpin = () => {
     const g = globeGroup.current;
@@ -153,7 +144,6 @@ export function ReaderIllustration({ className }: { className?: string }) {
 
   useEffect(() => {
     if (!host.current) return;
-    const playback = play.current;
     let anim: AnimationItem | null = null;
     let cancelled = false;
     let globeRaf = 0;
@@ -163,24 +153,21 @@ export function ReaderIllustration({ className }: { className?: string }) {
     let pageOnTop = true;
 
     const onLoaded = () => {
-      if (!anim || playback.started) return;
+      if (!anim) return;
+      // Park on the reading pose (frame 0 is the book lowered); beats start once we're on screen
       anim.goToAndStop(READ_START, true);
-      play.current.started = true;
-      play.current.waiting = true;
-      play.current.remaining = rand(READING_PAUSE_MIN, READING_PAUSE_MAX);
 
       const svg = host.current?.querySelector("svg");
       if (!svg) return;
       svg.setAttribute("viewBox", `${VIEW.x} ${VIEW.y} ${VIEW.w} ${VIEW.h}`);
 
       // renderer.elements: [0] = people precomp, [1] = room precomp
-      const renderer = (anim as AnimationItem & { renderer?: { elements?: SvgLayer[] } }).renderer;
-      const people = renderer?.elements?.[0];
-      const room = renderer?.elements?.[1];
+      const people = anim.renderer?.elements?.[0];
+      const room = anim.renderer?.elements?.[1];
 
-      const torso = people?.elements?.find((layer) => layer.data?.nm === "body");
-      if (torso?.layerElement) {
-        const layer: SVGGElement = torso.layerElement;
+      // Breathing: wrap the whole figure so a CSS transform can ride on top of Lottie's
+      if (people?.layerElement) {
+        const layer: SVGGElement = people.layerElement;
         const breath = document.createElementNS(SVG_NS, "g");
         breath.setAttribute("class", "hero-breathe");
         while (layer.firstChild) breath.appendChild(layer.firstChild);
@@ -188,7 +175,7 @@ export function ReaderIllustration({ className }: { className?: string }) {
       }
 
       // Turning page: appended inside the book layer so it inherits arm + book motion
-      const book = people?.elements?.find((layer) => layer.data?.nm === "book");
+      const book = people?.elements?.find((e: any) => e.data?.nm === "book");
       if (book?.layerElement) {
         page = document.createElementNS(SVG_NS, "path");
         page.setAttribute("fill", "#FFFFFF");
@@ -198,12 +185,12 @@ export function ReaderIllustration({ className }: { className?: string }) {
         page.setAttribute("opacity", "0");
         book.layerElement.appendChild(page);
         // Group 6 is the white fill of the near page (shapes render first-on-top)
-        const idx = book.shapesData?.findIndex((shape) => shape.nm === "Group 6") ?? -1;
+        const idx = book.shapesData?.findIndex((s: any) => s.nm === "Group 6") ?? -1;
         nearPage = idx >= 0 ? book.itemsData?.[idx]?.gr ?? null : null;
       }
 
       // Globe: wrap the continents so we can add our own rotation, and tile them so it spins forever
-      const continents = room?.elements?.find((layer) => layer.data?.nm === "shape");
+      const continents = room?.elements?.find((e: any) => e.data?.nm === "shape");
       if (continents?.layerElement) {
         const layer: SVGGElement = continents.layerElement;
         const inner = document.createElementNS(SVG_NS, "g");
@@ -220,26 +207,13 @@ export function ReaderIllustration({ className }: { className?: string }) {
         applySpin();
       }
 
-      let previousTime: number | null = null;
-      const tickGlobe = (now: number) => {
-        const elapsed = previousTime === null ? 0 : Math.min(50, now - previousTime) / 1000;
-        previousTime = now;
+      // Globe runs on its own clock so it keeps turning while the reader pauses between flips
+      const tickGlobe = () => {
         const s = spin.current;
-        if (play.current.visible && !document.hidden) {
-          if (play.current.waiting) {
-            play.current.remaining -= elapsed;
-            if (play.current.remaining <= 0 && anim) {
-              play.current.waiting = false;
-              anim.setSpeed(0.8);
-              anim.playSegments([READ_START, READ_END], true);
-            }
-          }
-          if (!s.dragging) {
-            const frameDelta = elapsed * 60;
-            s.velocity += (IDLE_SPIN - s.velocity) * (1 - Math.pow(0.97, frameDelta));
-            s.offset += s.velocity * frameDelta;
-            applySpin();
-          }
+        if (play.current.visible && !s.dragging) {
+          s.velocity += (IDLE_SPIN - s.velocity) * 0.03;
+          s.offset += s.velocity;
+          applySpin();
         }
         globeRaf = requestAnimationFrame(tickGlobe);
       };
@@ -256,7 +230,7 @@ export function ReaderIllustration({ className }: { className?: string }) {
       spin.current.frame = f;
       applySpin();
       if (!page) return;
-      const win = FLIPS.find(([a, b]) => f > a && f < b);
+      const win = FLIPS.find(([a, b]) => f >= a && f <= b);
       if (!win) {
         page.setAttribute("opacity", "0");
         return;
@@ -277,22 +251,28 @@ export function ReaderIllustration({ className }: { className?: string }) {
     };
 
     const onComplete = () => {
-      play.current.waiting = true;
-      play.current.remaining = rand(READING_PAUSE_MIN, READING_PAUSE_MAX);
-      anim?.goToAndStop(READ_START, true);
+      play.current.phase = "idle";
+      scheduleNext();
     };
 
-    const onVisibilityChange = () => {
-      if (document.hidden || !play.current.visible) suspend();
-      else resume();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
+    // Fetch + patch the clip so beats can be chained: leg1 ends the reading section at 7° but
+    // starts it at 0°, so re-time it to the arms' 60-frame cadence (0° at 30/90/150).
     fetch(SRC)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled || !host.current) return;
-        prepareReadingClip(data);
+        try {
+          const people = data.assets?.find((a: any) => a.id === "comp_0");
+          const leg = people?.layers?.find((l: any) => l.nm === "leg1");
+          const kfs: any[] = leg?.ks?.r?.k;
+          if (Array.isArray(kfs) && kfs.length > 1) {
+            const ease = { i: kfs[1].i, o: kfs[1].o };
+            leg.ks.r.k = [
+              { ...ease, t: 0, s: [7] }, { ...ease, t: 30, s: [0] }, { ...ease, t: 60, s: [7] }, { ...ease, t: 90, s: [0] },
+              { ...ease, t: 120, s: [7] }, { ...ease, t: 150, s: [0] }, { t: CLIP_FRAMES, s: [7] },
+            ];
+          }
+        } catch {}
 
         anim = lottie.loadAnimation({
           container: host.current,
@@ -306,25 +286,23 @@ export function ReaderIllustration({ className }: { className?: string }) {
         anim.addEventListener("DOMLoaded", onLoaded);
         anim.addEventListener("enterFrame", onFrame);
         anim.addEventListener("complete", onComplete);
-        // Inline animationData can finish building the DOM inside loadAnimation(), before the listener exists
-        if (anim.isLoaded) onLoaded();
       })
-      .catch((error) => console.error("Hero illustration failed to load", error));
+      .catch(() => {});
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(globeRaf);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.clearTimeout(play.current.timer);
       if (anim) {
         anim.removeEventListener("DOMLoaded", onLoaded);
         anim.removeEventListener("enterFrame", onFrame);
         anim.removeEventListener("complete", onComplete);
         anim.destroy();
       }
-      playback.started = false;
       animRef.current = null;
       globeGroup.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Only run while visible
@@ -341,6 +319,7 @@ export function ReaderIllustration({ className }: { className?: string }) {
     );
     io.observe(wrap.current);
     return () => io.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
   // Pointer → composition coordinates
@@ -397,7 +376,13 @@ export function ReaderIllustration({ className }: { className?: string }) {
   const onPointerLeave = () => {
     rawX.set(0);
     rawY.set(0);
+    play.current.hover = 1;
+    applySpeed();
     if (!spin.current.dragging) setCursor("default");
+  };
+  const onPointerEnter = () => {
+    play.current.hover = HOVER_SPEED;
+    applySpeed();
   };
 
   return (
@@ -405,6 +390,7 @@ export function ReaderIllustration({ className }: { className?: string }) {
       ref={wrap}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
+      onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
       style={{ cursor, aspectRatio: `${VIEW.w} / ${VIEW.h}`, touchAction: "pan-y" }}
       className={cn("relative select-none [perspective:1200px]", className)}

@@ -7,13 +7,20 @@ const INK = "#0F0E0D";
 const EMBER = "#E9752F";
 const STROKE = { stroke: PAPER, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
-// [x, width, height, fill, lean?]
+// [x, width, height, fill, lean?]  — top shelf runs from x=136 to the lamp
 const TOP_SHELF: Array<[number, number, number, string, boolean?]> = [
   [150, 22, 78, INK], [174, 30, 70, EMBER], [206, 20, 84, INK], [228, 26, 66, INK], [256, 34, 74, PAPER],
-  [292, 22, 80, INK], [316, 28, 60, INK], [346, 24, 72, EMBER], [372, 20, 82, INK], [412, 26, 70, INK, true],
+  [292, 22, 80, INK], [316, 28, 60, INK], [346, 24, 72, EMBER], [372, 20, 82, INK], [394, 26, 68, INK],
+  [422, 30, 76, PAPER], [454, 22, 64, INK], [478, 26, 80, EMBER], [506, 20, 70, INK], [528, 32, 74, INK],
+  [562, 24, 66, PAPER], [588, 22, 78, INK, true],
 ];
 const LOW_SHELF: Array<[number, number, number, string]> = [
   [150, 30, 58, INK], [182, 22, 66, PAPER], [206, 26, 62, INK], [234, 20, 70, EMBER], [256, 32, 56, INK],
+];
+// Dust motes drifting up through the lamp light: [cx, cy, r, delay s, duration s]
+const MOTES: Array<[number, number, number, number, number]> = [
+  [688, 470, 1.6, 0, 7], [742, 520, 1.2, -2.3, 8.5], [704, 400, 1.4, -4.1, 6.5], [758, 440, 1.1, -1.2, 9],
+  [676, 560, 1.3, -5.6, 7.5], [728, 360, 1.5, -3.4, 8], [772, 500, 1.0, -6.8, 6.8], [712, 600, 1.2, -0.7, 9.5],
 ];
 
 export function ReadingNookIllustration({ className }: { className?: string }) {
@@ -35,6 +42,13 @@ export function ReadingNookIllustration({ className }: { className?: string }) {
           <stop offset="60%" stopColor={PAPER} stopOpacity="0.12" />
           <stop offset="100%" stopColor={PAPER} stopOpacity="0" />
         </radialGradient>
+        <linearGradient id="nook-comet" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor={PAPER} stopOpacity="0" />
+          <stop offset="1" stopColor={PAPER} stopOpacity="0.9" />
+        </linearGradient>
+        <clipPath id="nook-window">
+          <rect x="691" y="91" width="238" height="248" rx="4" />
+        </clipPath>
       </defs>
 
       {/* Lamp glow (behind everything) */}
@@ -44,6 +58,10 @@ export function ReadingNookIllustration({ className }: { className?: string }) {
       <g>
         <circle cx="810" cy="190" r="120" fill="url(#nook-moon)" />
         <rect x="690" y="90" width="240" height="250" rx="4" fill={INK} {...STROKE} />
+        {/* Shooting star, every so often, kept inside the panes */}
+        <g clipPath="url(#nook-window)">
+          <line className="auth-scene__comet" x1="-34" y1="-12" x2="0" y2="0" stroke="url(#nook-comet)" strokeWidth="1.6" strokeLinecap="round" />
+        </g>
         <line x1="810" y1="90" x2="810" y2="340" {...STROKE} strokeOpacity="0.6" />
         <line x1="690" y1="215" x2="930" y2="215" {...STROKE} strokeOpacity="0.6" />
         {/* Crescent moon */}
@@ -59,12 +77,12 @@ export function ReadingNookIllustration({ className }: { className?: string }) {
         {/* Sill */}
         <rect x="676" y="340" width="268" height="12" rx="2" fill={PAPER} />
         {/* Small plant on the sill */}
-        <path d="M712 340v-18M712 326c-10-4-16-14-14-26 12 2 18 10 14 26zM712 322c8-8 20-8 26 0-8 6-18 6-26 0z" fill="none" {...STROKE} />
+        <path className="auth-scene__plant" d="M712 340v-18M712 326c-10-4-16-14-14-26 12 2 18 10 14 26zM712 322c8-8 20-8 26 0-8 6-18 6-26 0z" fill="none" {...STROKE} />
       </g>
 
       {/* Bookshelves */}
       <g>
-        <rect x="136" y="250" width="320" height="10" rx="2" fill={PAPER} />
+        <rect x="136" y="250" width="484" height="10" rx="2" fill={PAPER} />
         {TOP_SHELF.map(([x, w, h, fill, lean], i) =>
           lean ? (
             <g key={i} transform={`translate(${x} 250) rotate(-16) translate(${-x} -250)`}>
@@ -109,18 +127,29 @@ export function ReadingNookIllustration({ className }: { className?: string }) {
           <path d="M-48 0c16-8 32-8 48 0v-30c-16-8-32-8-48 0zM0 0c16-8 32-8 48 0v-30c-16-8-32-8-48 0z" fill={PAPER} {...STROKE} stroke={INK} strokeWidth="1.5" />
           <line x1="0" y1="-30" x2="0" y2="0" stroke={INK} strokeWidth="1.5" />
           <path d="M-36-20h24M-36-13h24M-36-6h18M12-20h24M12-13h24M12-6h18" stroke={INK} strokeWidth="1" strokeOpacity="0.55" />
+          {/* a leaf that turns over now and then */}
+          <path className="auth-scene__page" d="M0 0c16-8 32-8 48 0v-30c-16-8-32-8-48 0z" fill={PAPER} stroke={INK} strokeWidth="1.5" strokeLinejoin="round" />
         </g>
+      </g>
+
+      {/* Dust in the lamp light */}
+      <g fill={PAPER}>
+        {MOTES.map(([cx, cy, r, delay, dur], i) => (
+          <circle key={i} className="auth-scene__mote" cx={cx} cy={cy} r={r} style={{ animationDelay: `${delay}s`, animationDuration: `${dur}s` }} />
+        ))}
       </g>
 
       {/* Floor lamp */}
       <g>
         <ellipse cx="716" cy="636" rx="34" ry="6" fill={INK} {...STROKE} />
         <line x1="716" y1="636" x2="716" y2="300" {...STROKE} />
-        <path d="M660 300l18-70h76l18 70z" fill={EMBER} {...STROKE} />
+        <path className="auth-scene__shade" d="M660 300l18-70h76l18 70z" fill={EMBER} {...STROKE} />
         <line x1="660" y1="300" x2="772" y2="300" {...STROKE} />
         {/* pull chain */}
-        <line x1="734" y1="300" x2="734" y2="322" {...STROKE} strokeOpacity="0.7" />
-        <circle cx="734" cy="325" r="2.5" fill={PAPER} />
+        <g className="auth-scene__chain">
+          <line x1="734" y1="300" x2="734" y2="322" {...STROKE} strokeOpacity="0.7" />
+          <circle cx="734" cy="325" r="2.5" fill={PAPER} />
+        </g>
       </g>
 
       {/* Side table with tea and a stack of books */}
