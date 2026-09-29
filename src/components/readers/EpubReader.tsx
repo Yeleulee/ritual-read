@@ -1,173 +1,547 @@
 import { useEffect, useRef, useState } from "react";
+import { toCanvas } from "html-to-image";
+import type { Highlight } from "@/hooks/use-reader-store";
+import { fontById, fontFaceCss, HIGHLIGHT_COLORS, themeToEpubRules, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
+
+/* Shared contract every format reader exposes to the shell / PageTurner. */
+export interface ReaderApi {
+  next(): Promise<boolean>;
+  prev(): Promise<boolean>;
+  display(target: string | number): Promise<void>;
+  snapshot(): Promise<HTMLCanvasElement | null>;
+  currentLocation(): string | null;
+  search?(query: string): Promise<SearchHit[]>;
+  clearSelection?(): void;
+  visibleText?(): string;
+}
+
+export interface TocItem {
+  label: string;
+  href?: string;
+  cfi?: string;
+  subitems?: TocItem[];
+}
+
+export interface RelocatedInfo {
+  location: string; // cfi (epub) | page number as string (others)
+  percent: number; // 0..1 through the whole book
+  page: number; // 1-based, whole-book
+  totalPages: number;
+  chapter?: { label: string; href?: string };
+  pagesLeftInChapter: number;
+  atStart: boolean;
+  atEnd: boolean;
+}
+
+export interface SelectionInfo {
+  cfiRange: string;
+  text: string;
+  rect: { left: number; top: number; width: number; height: number };
+}
+
+export interface SearchHit {
+  cfi: string;
+  excerpt: string;
+  href: string;
+  chapter?: string;
+}
 
 interface EpubReaderProps {
   fileUrl: string;
-  page: number; // 1-indexed from parent
-  onPageCount?: (count: number) => void;
-  onToc?: (toc: Array<{ label: string; href?: string; cfi?: string }>) => void;
-  goto?: { cfi?: string; href?: string } | null;
-  onRenderedText?: (text: string) => void;
+  settings: ReaderSettings;
+  theme: ReaderTheme;
+  initialLocation?: string | null;
+  highlights: Highlight[];
+  onReady?: (api: ReaderApi) => void;
+  onToc?: (toc: TocItem[]) => void;
+  onRelocated?: (info: RelocatedInfo) => void;
+  onSelected?: (sel: SelectionInfo | null) => void;
+  onHighlightClick?: (id: string, rect: DOMRect) => void;
+  onTap?: () => void;
+  onKeyDown?: (e: KeyboardEvent) => void;
+  onError?: (message: string) => void;
 }
 
-export const EpubReader = ({ fileUrl, page, onPageCount, onToc, goto, onRenderedText }: EpubReaderProps) => {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+const stripHash = (href = "") => href.split("#")[0];
+const basename = (href = "") => stripHash(href).split("/").pop() ?? "";
+
+function flattenToc(items: any[] = []): TocItem[] {
+  return items.map((t) => ({ label: (t.label ?? "").trim(), href: t.href, cfi: t.cfi, subitems: t.subitems?.length ? flattenToc(t.subitems) : undefined }));
+}
+function findChapter(toc: TocItem[], href: string): TocItem | undefined {
+  const target = stripHash(href);
+  const base = basename(href);
+  let hit: TocItem | undefined;
+  const walk = (list: TocItem[]) => {
+    for (const t of list) {
+      if (t.href && (stripHash(t.href) === target || basename(t.href) === base)) hit = hit ?? t;
+      if (t.subitems) walk(t.subitems);
+    }
+  };
+  walk(toc);
+  return hit;
+}
+
+/* Rules object → CSS string for a single <style> we own inside the iframe. */
+function rulesToCss(rules: Record<string, Record<string, string>>, fontSize: number) {
+  const body = Object.entries(rules)
+    .map(([sel, decl]) => `${sel}{${Object.entries(decl).map(([k, v]) => `${k}:${v}`).join(";")}}`)
+    .join("\n");
+  return `html{font-size:${fontSize}px !important}\n${body}`;
+}
+
+const fontDataCache = new Map<string, Promise<string>>();
+/* html-to-image renders into an <img>, which cannot load external fonts — inline them. */
+async function embeddedFontCss(fontId: string) {
+  const f = fontById(fontId);
+  if (!f.faces) return "";
+  const parts = await Promise.all(
+    f.faces.map(async ([w, st, file]) => {
+      const url = `${location.origin}/fonts/${file}`;
+      if (!fontDataCache.has(url)) {
+        fontDataCache.set(
+          url,
+          fetch(url)
+            .then((r) => r.blob())
+            .then(
+              (b) =>
+                new Promise<string>((res) => {
+                  const fr = new FileReader();
+                  fr.onload = () => res(fr.result as string);
+                  fr.readAsDataURL(b);
+                }),
+            ),
+        );
+      }
+      const data = await fontDataCache.get(url)!;
+      return `@font-face{font-family:${f.family.split(",")[0]};font-style:${st};font-weight:${w};src:url(${data}) format("woff2")}`;
+    }),
+  );
+  return parts.join("\n");
+}
+
+export const EpubReader = ({
+  fileUrl,
+  settings,
+  theme,
+  initialLocation,
+  highlights,
+  onReady,
+  onToc,
+  onRelocated,
+  onSelected,
+  onHighlightClick,
+  onTap,
+  onKeyDown,
+  onError,
+}: EpubReaderProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const bookRef = useRef<any>(null);
   const renditionRef = useRef<any>(null);
-  const lastPageRef = useRef<number>(page);
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [locationsCount, setLocationsCount] = useState<number | null>(null);
-  const [tocReady, setTocReady] = useState<boolean>(false);
+  const tocRef = useRef<TocItem[]>([]);
+  const lastLocRef = useRef<any>(null);
+  const cssRef = useRef("");
+  const settingsRef = useRef(settings);
+  const themeRef = useRef(theme);
+  const highlightsRef = useRef(highlights);
+  const renderedHl = useRef(new Map<string, { cfiRange: string; type: "highlight" | "underline"; color: string }>());
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Init book
+  // Latest callbacks without re-creating the rendition
+  const cb = useRef({ onReady, onToc, onRelocated, onSelected, onHighlightClick, onTap, onKeyDown, onError });
+  cb.current = { onReady, onToc, onRelocated, onSelected, onHighlightClick, onTap, onKeyDown, onError };
+
+  settingsRef.current = settings;
+  themeRef.current = theme;
+  highlightsRef.current = highlights;
+  cssRef.current = `${fontFaceCss()}\n${rulesToCss(themeToEpubRules(theme, settings), settings.fontSize)}`;
+
+  const flow = settings.pageTurn === "scroll" ? "scrolled-doc" : "paginated";
+
+  /* ---------- relocation → shell ---------- */
+  const emitRelocated = (loc: any) => {
+    const book = bookRef.current;
+    if (!book || !loc?.start) return;
+    const cfi: string = loc.start.cfi;
+    const total = book.locations?.length?.() || 0;
+    let percent = 0;
+    let page = 1;
+    if (total > 0) {
+      percent = Number(book.locations.percentageFromCfi(cfi)) || 0;
+      page = Math.max(1, (book.locations.locationFromCfi(cfi) || 0) + 1);
+    } else {
+      const spineLen = book.spine?.length || 1;
+      const inSection = loc.start.displayed?.total ? (loc.start.displayed.page - 1) / loc.start.displayed.total : 0;
+      percent = Math.min(1, (loc.start.index + inSection) / spineLen);
+    }
+    const chapter = findChapter(tocRef.current, loc.start.href);
+    const end = loc.end?.displayed;
+    cb.current.onRelocated?.({
+      location: cfi,
+      percent,
+      page,
+      totalPages: total,
+      chapter: chapter ? { label: chapter.label, href: chapter.href } : undefined,
+      pagesLeftInChapter: end ? Math.max(0, end.total - end.page) : 0,
+      atStart: !!loc.atStart,
+      atEnd: !!loc.atEnd,
+    });
+  };
+
+  /* ---------- highlights ---------- */
+  const hlStyles = (color: string) => {
+    const c = HIGHLIGHT_COLORS[color] ?? HIGHLIGHT_COLORS.yellow;
+    if (color === "underline") return { stroke: c.fill, "stroke-width": "2px", "stroke-opacity": "0.9" };
+    return { fill: c.fill, "fill-opacity": themeRef.current.dark ? "0.45" : "0.4", "mix-blend-mode": themeRef.current.dark ? "screen" : "multiply" };
+  };
+  const addHl = (h: Highlight) => {
+    const rendition = renditionRef.current;
+    if (!rendition) return;
+    const type = h.color === "underline" ? "underline" : "highlight";
+    const handler = (e: MouseEvent) => {
+      const el = e.target as Element | null;
+      cb.current.onHighlightClick?.(h.id, el?.getBoundingClientRect?.() ?? new DOMRect());
+    };
+    try {
+      if (type === "underline") rendition.annotations.underline(h.cfi_range, { id: h.id }, handler, "rr-ul", hlStyles(h.color));
+      else rendition.annotations.highlight(h.cfi_range, { id: h.id }, handler, "rr-hl", hlStyles(h.color));
+      renderedHl.current.set(h.id, { cfiRange: h.cfi_range, type, color: h.color });
+    } catch {
+      /* CFI may not resolve in this rendition */
+    }
+  };
+  const removeHl = (id: string) => {
+    const r = renderedHl.current.get(id);
+    if (!r) return;
+    try {
+      renditionRef.current?.annotations.remove(r.cfiRange, r.type);
+    } catch {
+      /* ignore */
+    }
+    renderedHl.current.delete(id);
+  };
+  const applyHighlights = (list: Highlight[]) => {
+    const want = new Set(list.map((h) => h.id));
+    for (const id of Array.from(renderedHl.current.keys())) if (!want.has(id)) removeHl(id);
+    for (const h of list) {
+      const cur = renderedHl.current.get(h.id);
+      if (cur && (cur.cfiRange !== h.cfi_range || cur.color !== h.color)) removeHl(h.id);
+      if (!renderedHl.current.has(h.id)) addHl(h);
+    }
+  };
+  const reapplyHighlights = () => {
+    Array.from(renderedHl.current.keys()).forEach(removeHl);
+    applyHighlights(highlightsRef.current);
+  };
+
+  /* ---------- imperative API (stable object) ---------- */
+  const apiRef = useRef<ReaderApi>();
+  if (!apiRef.current) {
+    apiRef.current = {
+      async next() {
+        const r = renditionRef.current;
+        if (!r || lastLocRef.current?.atEnd) return false;
+        await r.next();
+        return true;
+      },
+      async prev() {
+        const r = renditionRef.current;
+        if (!r || lastLocRef.current?.atStart) return false;
+        await r.prev();
+        return true;
+      },
+      async display(target) {
+        const r = renditionRef.current;
+        const book = bookRef.current;
+        if (!r || !book) return;
+        if (typeof target === "number") {
+          const cfi = book.locations?.cfiFromPercentage?.(Math.min(1, Math.max(0, target)));
+          if (cfi) await r.display(cfi);
+          return;
+        }
+        await r.display(target);
+      },
+      currentLocation() {
+        return lastLocRef.current?.start?.cfi ?? null;
+      },
+      clearSelection() {
+        renditionRef.current?.getContents().forEach((c: any) => {
+          try {
+            c.window.getSelection()?.removeAllRanges();
+          } catch {
+            /* ignore */
+          }
+        });
+      },
+      visibleText() {
+        try {
+          const r = renditionRef.current;
+          const loc = lastLocRef.current;
+          const c = r?.getContents()[0];
+          if (!c || !loc) return "";
+          const a = c.range(loc.start.cfi);
+          const b = c.range(loc.end.cfi);
+          if (!a || !b) return "";
+          const range = c.document.createRange();
+          range.setStart(a.startContainer, a.startOffset);
+          range.setEnd(b.endContainer, b.endOffset);
+          return range.toString();
+        } catch {
+          return "";
+        }
+      },
+      async snapshot() {
+        try {
+          const r = renditionRef.current;
+          const container = containerRef.current;
+          const c = r?.getContents()[0];
+          if (!r || !c || !container) return null;
+          const frame = c.document.defaultView.frameElement as HTMLElement;
+          const fr = frame.getBoundingClientRect();
+          const cr = container.getBoundingClientRect();
+          const offsetX = Math.max(0, cr.left - fr.left);
+          const offsetY = Math.max(0, cr.top - fr.top);
+          const fontCss = await embeddedFontCss(settingsRef.current.fontId);
+          return await toCanvas(c.document.documentElement as HTMLElement, {
+            width: Math.round(cr.width),
+            height: Math.round(cr.height),
+            pixelRatio: Math.min(2, window.devicePixelRatio || 1),
+            backgroundColor: themeRef.current.bg,
+            cacheBust: false,
+            fontEmbedCSS: fontCss,
+            style: { transform: `translate(${-offsetX}px, ${-offsetY}px)`, transformOrigin: "top left" },
+          });
+        } catch (e) {
+          console.warn("snapshot failed", e);
+          return null;
+        }
+      },
+      async search(query) {
+        const book = bookRef.current;
+        if (!book || !query.trim()) return [];
+        const q = query.trim();
+        const hits: SearchHit[] = [];
+        const items: any[] = book.spine?.spineItems ?? [];
+        for (const item of items) {
+          if (hits.length >= 200) break;
+          try {
+            await item.load(book.load.bind(book));
+            const found: Array<{ cfi: string; excerpt: string }> = item.find(q) ?? [];
+            const chapter = findChapter(tocRef.current, item.href)?.label;
+            for (const f of found) hits.push({ cfi: f.cfi, excerpt: f.excerpt, href: item.href, chapter });
+          } catch {
+            /* skip section */
+          } finally {
+            try {
+              item.unload();
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+        return hits;
+      },
+    };
+  }
+
+  /* ---------- lifecycle ---------- */
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      console.log('EpubReader: Starting to load EPUB from URL:', fileUrl);
-      const ePub = (await import("epubjs")).default;
-      setLoading(true);
-      setError(null);
+    const container = containerRef.current;
+    if (!container) return;
+    setStatus("loading");
+    setErrorMsg(null);
 
-      // Handle different URL types
+    (async () => {
+      const ePub = (await import("epubjs")).default;
       let resource: any = fileUrl;
       try {
-        if (fileUrl.startsWith('blob:') || fileUrl.startsWith('https://')) {
+        if (fileUrl.startsWith("blob:") || fileUrl.startsWith("http")) {
           const resp = await fetch(fileUrl);
-          const ab = await resp.arrayBuffer();
-          resource = ab;
+          resource = await resp.arrayBuffer();
         }
-      } catch (e) {
-        console.warn('Falling back to direct URL for EPUB load');
+      } catch {
+        /* fall back to URL */
       }
+      if (cancelled) return;
 
       const book = ePub(resource);
       bookRef.current = book;
-      const rendition = book.renderTo(containerRef.current!, { width: "100%", height: "100%", flow: "paginated", spread: "none" });
+      const rendition = book.renderTo(container, {
+        width: "100%",
+        height: "100%",
+        flow,
+        spread: "none",
+        allowScriptedContent: false,
+      });
       renditionRef.current = rendition;
 
-      await book.ready;
-      // TOC
-      try {
-        const toc = (book as any).navigation?.toc || [];
-        if (toc && Array.isArray(toc)) {
-          onToc?.(toc.map((t: any) => ({ label: t.label, href: t.href, cfi: t.cfi }))); 
-          setTocReady(true);
-        }
-      } catch {}
-      try {
-        await rendition.display();
-        if (!cancelled) {
-          setReady(true);
-          setLoading(false);
-        }
+      // Our stylesheet + gesture listeners go into every section as it loads
+      rendition.hooks.content.register((contents: any) => {
         try {
-          rendition.on('rendered', async (_section: any) => {
-            try {
-              const currentLoc = rendition.currentLocation();
-              const cfi = (currentLoc as any)?.start?.cfi;
-              if (cfi && book.getRange) {
-                const range = await (book as any).getRange(cfi);
-                const text = range?.toString?.() || '';
-                if (text) onRenderedText?.(text);
-              }
-            } catch {}
+          contents.addStylesheetCss(cssRef.current, "rr");
+          const doc: Document = contents.document;
+          doc.addEventListener("selectionchange", () => {
+            const sel = contents.window.getSelection();
+            if (!sel || sel.isCollapsed) cb.current.onSelected?.(null);
           });
-        } catch {}
-      } catch (e) {
-        console.error('EPUB display error:', e);
-        setError('Failed to display EPUB.');
-        setLoading(false);
-      }
+          doc.addEventListener("click", (e) => {
+            const sel = contents.window.getSelection();
+            if (sel && !sel.isCollapsed) return;
+            if ((e.target as HTMLElement | null)?.closest?.("a")) return;
+            cb.current.onTap?.();
+          });
+        } catch {
+          /* ignore */
+        }
+      });
 
-      // Generate locations after initial display so UI is not blocked
+      await book.ready;
+      if (cancelled) return;
+
+      const toc = flattenToc(book.navigation?.toc ?? []);
+      tocRef.current = toc;
+      cb.current.onToc?.(toc);
+
+      rendition.on("relocated", (loc: any) => {
+        lastLocRef.current = loc;
+        emitRelocated(loc);
+      });
+      rendition.on("selected", (cfiRange: string, contents: any) => {
+        try {
+          const sel = contents.window.getSelection();
+          if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+          const r = sel.getRangeAt(0).getBoundingClientRect();
+          const f = (contents.document.defaultView.frameElement as HTMLElement).getBoundingClientRect();
+          cb.current.onSelected?.({
+            cfiRange,
+            text: sel.toString(),
+            rect: { left: r.left + f.left, top: r.top + f.top, width: r.width, height: r.height },
+          });
+        } catch {
+          /* ignore */
+        }
+      });
+      rendition.on("keydown", (e: KeyboardEvent) => cb.current.onKeyDown?.(e));
+      rendition.on("displayError", () => setErrorMsg("Failed to display this section."));
+
+      try {
+        await rendition.display(lastLocRef.current?.start?.cfi ?? initialLocation ?? undefined);
+      } catch (e) {
+        console.error("EPUB display error", e);
+        if (!cancelled) {
+          setStatus("error");
+          setErrorMsg("Failed to display EPUB.");
+          cb.current.onError?.("Failed to display EPUB.");
+        }
+        return;
+      }
+      if (cancelled) return;
+      container.style.background = themeRef.current.bg;
+      setStatus("ready");
+      cb.current.onReady?.(apiRef.current!);
+      applyHighlights(highlightsRef.current);
+
+      // Whole-book locations for percent / page counts; not blocking first paint
       try {
         await book.locations.generate(1024);
-        const total = (book.locations as any)?.length?.() || 100;
-        setLocationsCount(total);
-        onPageCount?.(total);
+        if (!cancelled && lastLocRef.current) emitRelocated(lastLocRef.current);
       } catch {
-        setLocationsCount(100);
-        onPageCount?.(100);
+        /* ignore */
       }
     })().catch((e) => {
-      console.error("EPUB load error:", e);
-      setError("Failed to load EPUB. Try re-importing the book.");
-      setLoading(false);
+      console.error("EPUB load error", e);
+      if (cancelled) return;
+      setStatus("error");
+      setErrorMsg("Failed to load EPUB. Try re-importing the book.");
+      cb.current.onError?.("Failed to load EPUB.");
     });
 
-    return () => {
-      try { renditionRef.current?.destroy?.(); } catch {}
-      try { bookRef.current?.destroy?.(); } catch {}
-    };
-  }, [fileUrl, onPageCount]);
-
-  // Respond to parent page changes (support both incremental and direct jumps)
-  useEffect(() => {
-    if (!ready || !renditionRef.current) return;
-    const delta = page - lastPageRef.current;
-    if (delta === 0) return;
-    const runner = async () => {
-      // If the jump is large and we have locations, compute CFI and display directly
-      if (Math.abs(delta) > 5 && locationsCount && bookRef.current?.locations) {
-        try {
-          const total = locationsCount;
-          const targetIndex = Math.max(0, Math.min(total - 1, page - 1));
-          const percentage = total > 1 ? targetIndex / (total - 1) : 0;
-          const cfi = (bookRef.current.locations as any).cfiFromPercentage(percentage);
-          await renditionRef.current.display(cfi);
-          lastPageRef.current = page;
-          return;
-        } catch (e) {
-          // fallback to step navigation
-        }
-      }
-      const steps = Math.min(Math.abs(delta), 20);
-      for (let i = 0; i < steps; i++) {
-        if (delta > 0) await renditionRef.current.next();
-        else await renditionRef.current.prev();
-      }
-      lastPageRef.current = page;
-    };
-    runner();
-  }, [page, ready]);
-
-  // Respond to external goto requests (cfi or href)
-  useEffect(() => {
-    if (!goto || !renditionRef.current || !bookRef.current) return;
-    (async () => {
+    const ro = new ResizeObserver(() => {
       try {
-        if (goto.cfi) {
-          await renditionRef.current.display(goto.cfi);
-        } else if (goto.href) {
-          const loc = await bookRef.current?.cfiFromHref?.(goto.href);
-          if (loc) await renditionRef.current.display(loc);
-          else await renditionRef.current.display(goto.href);
-        }
-      } catch (e) {
-        console.warn('EPUB goto failed', e);
+        renditionRef.current?.resize?.(container.clientWidth, container.clientHeight);
+      } catch {
+        /* ignore */
       }
-    })();
-  }, [goto]);
+    });
+    ro.observe(container);
 
-  // Resize handler to ensure the content lays out correctly
-  useEffect(() => {
-    if (!renditionRef.current) return;
-    const handleResize = () => {
-      try { renditionRef.current.resize?.(containerRef.current?.clientWidth, containerRef.current?.clientHeight); } catch {}
+    return () => {
+      cancelled = true;
+      ro.disconnect();
+      renderedHl.current.clear();
+      try {
+        renditionRef.current?.destroy?.();
+      } catch {
+        /* ignore */
+      }
+      try {
+        bookRef.current?.destroy?.();
+      } catch {
+        /* ignore */
+      }
+      renditionRef.current = null;
+      bookRef.current = null;
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [ready]);
+    // Re-created only when the file or the flow changes; position carries over via lastLocRef
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileUrl, flow]);
+
+  /* ---------- appearance ---------- */
+  const layoutKey = [settings.fontId, settings.fontSize, settings.bold, settings.lineHeight, settings.letterSpacing, settings.wordSpacing, settings.justify, settings.hyphenation, settings.margins, theme.weight].join("|");
+
+  const pushCss = () => {
+    const css = cssRef.current;
+    renditionRef.current?.getContents().forEach((c: any) => {
+      try {
+        c.addStylesheetCss(css, "rr");
+      } catch {
+        /* ignore */
+      }
+    });
+  };
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    pushCss();
+    if (containerRef.current) containerRef.current.style.background = theme.bg;
+    reapplyHighlights(); // blend mode depends on light/dark paper
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [theme.id, status]);
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    const cfi = lastLocRef.current?.start?.cfi;
+    pushCss();
+    // Reflow moved the text; land back on the same spot like Apple Books does
+    const t = window.setTimeout(() => {
+      if (cfi && renditionRef.current) renditionRef.current.display(cfi).catch(() => {});
+    }, 60);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutKey, status]);
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    applyHighlights(highlights);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlights, status]);
 
   return (
-    <div className="w-full h-full relative">
-      {error ? (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-destructive px-4">{error}</div>
-      ) : loading ? (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground px-4">Loading EPUB…</div>
+    <div className="relative h-full w-full" style={{ background: theme.bg }}>
+      {status === "error" ? (
+        <div className="absolute inset-0 flex items-center justify-center px-4 text-sm" style={{ color: theme.fg }}>
+          {errorMsg}
+        </div>
+      ) : status === "loading" ? (
+        <div className="absolute inset-0 flex items-center justify-center px-4 text-sm" style={{ color: theme.muted }}>
+          Opening book…
+        </div>
       ) : null}
-      <div ref={containerRef} className="w-full h-full" />
+      <div ref={containerRef} className="h-full w-full" />
     </div>
   );
 };

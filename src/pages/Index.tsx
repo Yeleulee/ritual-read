@@ -86,7 +86,7 @@ const Index = () => {
         <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between gap-4">
           <Tooltip>
             <TooltipTrigger asChild>
-              <span><Wordmark size="md" /></span>
+              <span><Wordmark iconOnly /></span>
             </TooltipTrigger>
             <TooltipContent side="bottom" align="start" className="text-xs">
               {minutesLeft > 0 ? `Read ${minutesLeft} min today to keep your streak` : 'Daily goal met'}
