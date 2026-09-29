@@ -28,10 +28,8 @@ const NORMAL: Pt = [-6, -36];
 // Frame windows where the hand sweeps down across the book (arm keyframes at 60→90 and 120→150)
 const FLIPS: Array<[number, number]> = [[60, 90], [120, 150]];
 
-// Playback is scheduled by hand instead of looping: only the two reading beats ever play
-// (never the 0–30 pick-up or 150–179 put-down), alternating in order because the book tilts
-// at 90, with short reading pauses and slight tempo changes between them.
-const BEATS: Array<[number, number]> = [[READ_START, 90], [90, READ_END]];
+// Only the reading section (30–150) plays, as one continuous loop — every layer matches at
+// 30 and 150, so the wrap is invisible. Tempo drifts slightly each cycle so it never feels metronomic.
 const HOVER_SPEED = 1.25;
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -74,35 +72,9 @@ export function ReaderIllustration({ className }: { className?: string }) {
   const spin = useRef({ offset: 0, velocity: 0, dragging: false, lastX: 0, frame: 0 });
   const globeGroup = useRef<SVGGElement | null>(null);
   const animRef = useRef<AnimationItem | null>(null);
-  // Playback scheduler: reading beats with short holds between them
-  const play = useRef({ visible: false, started: false, beat: 0, phase: "idle" as "idle" | "playing", base: 1, hover: 1, timer: 0 });
+  const play = useRef({ visible: false, started: false, base: 1, hover: 1 });
 
   const applySpeed = () => animRef.current?.setSpeed(play.current.base * play.current.hover);
-
-  const startSegment = (seg: [number, number]) => {
-    const anim = animRef.current;
-    if (!anim) return;
-    play.current.phase = "playing";
-    applySpeed();
-    anim.playSegments(seg, true);
-  };
-
-  const playNextBeat = () => {
-    const p = play.current;
-    p.base = rand(0.85, 1.05);
-    const seg = BEATS[p.beat];
-    p.beat = (p.beat + 1) % BEATS.length;
-    startSegment(seg);
-  };
-
-  const scheduleNext = () => {
-    const p = play.current;
-    window.clearTimeout(p.timer);
-    if (!p.visible) return;
-    // A reading pause between page turns — the book stays open and up the whole time
-    const hold = Math.random() < 0.8 ? rand(300, 1400) : rand(1800, 2800);
-    p.timer = window.setTimeout(playNextBeat, hold);
-  };
 
   const resume = () => {
     const p = play.current;
@@ -110,18 +82,14 @@ export function ReaderIllustration({ className }: { className?: string }) {
     if (!anim) return;
     if (!p.started) {
       p.started = true;
-      playNextBeat();
-    } else if (p.phase === "playing") {
-      anim.play();
+      applySpeed();
+      anim.playSegments([READ_START, READ_END], true);
     } else {
-      scheduleNext();
+      anim.play();
     }
   };
 
-  const suspend = () => {
-    window.clearTimeout(play.current.timer);
-    animRef.current?.pause();
-  };
+  const suspend = () => animRef.current?.pause();
 
   const applySpin = () => {
     const g = globeGroup.current;
@@ -154,7 +122,7 @@ export function ReaderIllustration({ className }: { className?: string }) {
 
     const onLoaded = () => {
       if (!anim) return;
-      // Park on the reading pose (frame 0 is the book lowered); beats start once we're on screen
+      // Park on the reading pose (frame 0 is the book lowered); the loop starts once on screen
       anim.goToAndStop(READ_START, true);
 
       const svg = host.current?.querySelector("svg");
@@ -250,13 +218,13 @@ export function ReaderIllustration({ className }: { className?: string }) {
       page.setAttribute("opacity", "1");
     };
 
-    const onComplete = () => {
-      play.current.phase = "idle";
-      scheduleNext();
+    const onLoopComplete = () => {
+      play.current.base = rand(0.9, 1.04);
+      applySpeed();
     };
 
-    // Fetch + patch the clip so beats can be chained: leg1 ends the reading section at 7° but
-    // starts it at 0°, so re-time it to the arms' 60-frame cadence (0° at 30/90/150).
+    // Patch the clip before rendering: the artwork kicks leg1 0°↔7° every two seconds, which reads
+    // as a mechanical loop, so hold it at its resting angle.
     fetch(SRC)
       .then((r) => r.json())
       .then((data) => {
@@ -264,20 +232,13 @@ export function ReaderIllustration({ className }: { className?: string }) {
         try {
           const people = data.assets?.find((a: any) => a.id === "comp_0");
           const leg = people?.layers?.find((l: any) => l.nm === "leg1");
-          const kfs: any[] = leg?.ks?.r?.k;
-          if (Array.isArray(kfs) && kfs.length > 1) {
-            const ease = { i: kfs[1].i, o: kfs[1].o };
-            leg.ks.r.k = [
-              { ...ease, t: 0, s: [7] }, { ...ease, t: 30, s: [0] }, { ...ease, t: 60, s: [7] }, { ...ease, t: 90, s: [0] },
-              { ...ease, t: 120, s: [7] }, { ...ease, t: 150, s: [0] }, { t: CLIP_FRAMES, s: [7] },
-            ];
-          }
+          if (leg?.ks?.r) leg.ks.r = { a: 0, k: 0, ix: leg.ks.r.ix };
         } catch {}
 
         anim = lottie.loadAnimation({
           container: host.current,
           renderer: "svg",
-          loop: false,
+          loop: true,
           autoplay: false,
           animationData: data,
           rendererSettings: { preserveAspectRatio: "xMidYMid meet", progressiveLoad: false },
@@ -285,18 +246,17 @@ export function ReaderIllustration({ className }: { className?: string }) {
         animRef.current = anim;
         anim.addEventListener("DOMLoaded", onLoaded);
         anim.addEventListener("enterFrame", onFrame);
-        anim.addEventListener("complete", onComplete);
+        anim.addEventListener("loopComplete", onLoopComplete);
       })
       .catch(() => {});
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(globeRaf);
-      window.clearTimeout(play.current.timer);
       if (anim) {
         anim.removeEventListener("DOMLoaded", onLoaded);
         anim.removeEventListener("enterFrame", onFrame);
-        anim.removeEventListener("complete", onComplete);
+        anim.removeEventListener("loopComplete", onLoopComplete);
         anim.destroy();
       }
       animRef.current = null;
