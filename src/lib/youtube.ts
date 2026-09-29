@@ -5,63 +5,46 @@ export interface YouTubeSearchResult {
   thumbnailUrl: string;
 }
 
-const YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search";
-const SUPABASE_EDGE_URL = (import.meta.env.VITE_SUPABASE_FUNCTIONS_URL as string | undefined) || "";
+// Search always goes through the youtube-search edge function so the API key never
+// reaches the browser. Defaults to the project's functions endpoint.
+const FUNCTIONS_URL = (
+  (import.meta.env.VITE_SUPABASE_FUNCTIONS_URL as string | undefined) ||
+  (import.meta.env.VITE_SUPABASE_URL ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1` : "")
+).replace(/\/$/, "");
+const ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || "";
+
+// Defensive: strip anything that looks like a Google API key from text shown to users
+const scrub = (s: string) => s.replace(/AIza[\w-]+/g, "[redacted]");
 
 export async function searchYouTube(query: string): Promise<YouTubeSearchResult[]> {
-  // Prefer server-side proxy, but fall back gracefully to client API key
-  if (SUPABASE_EDGE_URL) {
-    try {
-      const base = SUPABASE_EDGE_URL.replace(/\/$/, "");
-      const response = await fetch(`${base}/youtube-search?q=${encodeURIComponent(query)}`);
-      if (response.ok) {
-        const data = await response.json();
-        const items = (data?.items ?? []) as any[];
-        return items.map((item) => ({
-          id: item?.id?.videoId,
-          title: item?.snippet?.title,
-          channelTitle: item?.snippet?.channelTitle,
-          thumbnailUrl: item?.snippet?.thumbnails?.medium?.url || item?.snippet?.thumbnails?.default?.url,
-        })).filter((r) => !!r.id);
-      }
-      // If proxy responds with error, fall through to client key path
-    } catch {
-      // Network or other failure – fall through to client key path
-    }
+  if (!FUNCTIONS_URL) throw new Error("Music search is not configured.");
+
+  let response: Response;
+  try {
+    response = await fetch(`${FUNCTIONS_URL}/youtube-search?q=${encodeURIComponent(query)}`, {
+      headers: ANON_KEY ? { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } : {},
+    });
+  } catch {
+    throw new Error("Couldn't reach music search. Check your connection.");
   }
 
-  const key = (import.meta.env.VITE_YOUTUBE_API_KEY as string | undefined)
-    || (import.meta.env.NEXT_PUBLIC_YOUTUBE_API_KEY as string | undefined);
-  if (!key) throw new Error("YouTube search not configured: missing VITE_YOUTUBE_API_KEY.");
-  const params = new URLSearchParams({
-    part: "snippet",
-    q: query,
-    type: "video",
-    maxResults: "10",
-    key,
-    safeSearch: "none",
-    relevanceLanguage: "en",
-  });
+  let data: any = null;
+  try {
+    data = await response.json();
+  } catch { /* fall through to status handling */ }
 
-  const response = await fetch(`${YOUTUBE_SEARCH_URL}?${params.toString()}`);
   if (!response.ok) {
-    try {
-      const err = await response.json();
-      // Surface helpful API error messages
-      const msg = err?.error?.message || `YouTube API error (${response.status})`;
-      throw new Error(msg);
-    } catch {
-      throw new Error(`YouTube API error (${response.status})`);
-    }
+    const msg = typeof data?.error === "string" ? scrub(data.error) : "";
+    throw new Error(msg || (response.status === 429 ? "Music search quota reached. Try again later." : "Music search failed. Try again later."));
   }
-  const data = await response.json();
+
   const items = (data?.items ?? []) as any[];
-  return items.map((item) => ({
-    id: item?.id?.videoId,
-    title: item?.snippet?.title,
-    channelTitle: item?.snippet?.channelTitle,
-    thumbnailUrl: item?.snippet?.thumbnails?.medium?.url || item?.snippet?.thumbnails?.default?.url,
-  })).filter((r) => !!r.id);
+  return items
+    .map((item) => ({
+      id: item?.id ?? item?.id?.videoId,
+      title: item?.title ?? item?.snippet?.title,
+      channelTitle: item?.channelTitle ?? item?.snippet?.channelTitle,
+      thumbnailUrl: item?.thumbnailUrl ?? item?.snippet?.thumbnails?.medium?.url ?? item?.snippet?.thumbnails?.default?.url,
+    }))
+    .filter((r) => typeof r.id === "string" && r.id);
 }
-
-

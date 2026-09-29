@@ -35,7 +35,8 @@ export const RitualMusicSearch = () => {
       if (items.length === 0) setError("No results. Try a different query.");
     } catch (e: any) {
       setResults([]);
-      setError(e?.message || "Search failed.");
+      // Never echo raw upstream text; keys or internals must not reach the UI
+      setError(String(e?.message || "Search failed.").replace(/AIza[\w-]+/g, "[redacted]"));
     } finally {
       setLoading(false);
     }

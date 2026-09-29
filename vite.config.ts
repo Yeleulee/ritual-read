@@ -19,8 +19,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     define: {
-      "import.meta.env.VITE_YOUTUBE_API_KEY": JSON.stringify(env.VITE_YOUTUBE_API_KEY || env.NEXT_PUBLIC_YOUTUBE_API_KEY || ""),
-      "import.meta.env.NEXT_PUBLIC_YOUTUBE_API_KEY": JSON.stringify(env.NEXT_PUBLIC_YOUTUBE_API_KEY || env.VITE_YOUTUBE_API_KEY || ""),
+      // Only the proxy URL is exposed; the YouTube key lives solely in the edge function secret.
       "import.meta.env.VITE_SUPABASE_FUNCTIONS_URL": JSON.stringify(env.VITE_SUPABASE_FUNCTIONS_URL || ""),
     },
   };
