@@ -21,8 +21,6 @@ interface PageTurnerProps {
   theme: ReaderTheme;
   canNext: boolean;
   canPrev: boolean;
-  /** Changes whenever the rendered page could look different (location, theme, typography, size) */
-  snapshotKey: string;
   disabled?: boolean;
   onTapCenter?: () => void;
   onTurned?: (dir: 1 | -1) => void;
@@ -102,7 +100,7 @@ function foldGeometry(W: number, H: number, C: Pt, P: Pt): Geometry {
 }
 
 export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function PageTurner(
-  { api, mode, theme, canNext, canPrev, snapshotKey, disabled, onTapCenter, onTurned, children },
+  { api, mode, theme, canNext, canPrev, disabled, onTapCenter, onTurned, children },
   ref,
 ) {
   const rootRef = useRef<HTMLDivElement>(null);

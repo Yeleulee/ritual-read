@@ -111,7 +111,6 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
   const onRelocated = useCallback((next: RelocatedInfo) => setRelocation(next), []);
   const onReaderReady = useCallback((readerApi: ReaderApi) => setApi(readerApi), []);
   const onPptPageCount = useCallback((count: number) => setRelocation((r) => ({ ...r, totalPages: count })), []);
-  const snapshotKey = `${relocation.location}|${theme.id}|${settings.fontId}|${settings.fontSize}|${settings.lineHeight}|${settings.letterSpacing}|${settings.bold}`;
 
   const toggleBookmark = () => {
     if (!location) return;
@@ -198,7 +197,7 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
   return createPortal(<>
     <ReaderChromeStyles />
     <div ref={shellRef} className="fixed inset-0 z-50 overflow-hidden" style={{ background: theme.bg, color: theme.fg }}>
-      {resolveError ? <div className="flex h-full items-center justify-center p-6 text-sm">{resolveError}</div> : <PageTurner ref={pageTurnerRef} api={api} mode={settings.pageTurn} theme={theme} canNext={!relocation.atEnd} canPrev={!relocation.atStart} snapshotKey={snapshotKey} disabled={menuOpen || settingsOpen || contentsOpen || searchOpen || !!lookUp || !!selection} onTapCenter={readerTap} onTurned={showChrome}>{reader}</PageTurner>}
+      {resolveError ? <div className="flex h-full items-center justify-center p-6 text-sm">{resolveError}</div> : <PageTurner ref={pageTurnerRef} api={api} mode={settings.pageTurn} theme={theme} canNext={!relocation.atEnd} canPrev={!relocation.atStart} disabled={menuOpen || settingsOpen || contentsOpen || searchOpen || !!lookUp || !!selection} onTapCenter={readerTap} onTurned={showChrome}>{reader}</PageTurner>}
       {settings.brightness < 1 && <div className="pointer-events-none absolute inset-0 z-40 bg-black" style={{ opacity: 1 - settings.brightness }} />}
       <ReaderTopBar title={book.title} author={book.author} theme={theme} visible={chromeVisible && !selection} bookmarked={isBookmarked} onClose={onBackToLibrary} onBookmark={toggleBookmark} />
       <ReaderFooter theme={theme} visible={chromeVisible && !selection} location={location} relocation={relocation} onSeek={(p) => { void api?.display(p); }} onMenu={() => { setMenuOpen(true); setChromeVisible(true); }} />
