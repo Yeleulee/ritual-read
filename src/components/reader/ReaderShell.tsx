@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 import { useBookmarks, useHighlights, useReaderSettings, useReadingPosition, type HighlightColor } from "@/hooks/use-reader-store";
@@ -124,6 +125,11 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
     catch { setFullscreen((v) => !v); }
   };
   useEffect(() => { const onChange = () => setFullscreen(!!document.fullscreenElement); document.addEventListener("fullscreenchange", onChange); return () => document.removeEventListener("fullscreenchange", onChange); }, []);
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   const openSearch = (query = "") => {
     setMenuOpen(false); setSearchOpen(true);
@@ -188,7 +194,8 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
 
   if (resolving && book.fileType) return <div className="flex h-[75vh] items-center justify-center text-sm text-muted-foreground">Preparing book…</div>;
 
-  return <>
+  // Portal: a transformed ancestor (tab fade) would otherwise become the containing block for `fixed`
+  return createPortal(<>
     <ReaderChromeStyles />
     <div ref={shellRef} className="fixed inset-0 z-50 overflow-hidden" style={{ background: theme.bg, color: theme.fg }}>
       {resolveError ? <div className="flex h-full items-center justify-center p-6 text-sm">{resolveError}</div> : <PageTurner ref={pageTurnerRef} api={api} mode={settings.pageTurn} theme={theme} canNext={!relocation.atEnd} canPrev={!relocation.atStart} snapshotKey={snapshotKey} disabled={menuOpen || settingsOpen || contentsOpen || searchOpen || !!lookUp || !!selection} onTapCenter={readerTap} onTurned={showChrome}>{reader}</PageTurner>}
@@ -204,5 +211,5 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
       {lookUp && <LookUpSheet open word={lookUp.word} context={lookUp.context} theme={theme} onClose={() => setLookUp(null)} onAskAI={() => toast({ title: "Ask the assistant", description: "Open the Assistant tab to continue with this passage." })} />}
       <span className="sr-only" aria-live="polite">Page {relocation.page} of {relocation.totalPages || "unknown"}</span>
     </div>
-  </>;
+  </>, document.body);
 }

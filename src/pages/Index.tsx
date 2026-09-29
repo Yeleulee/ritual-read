@@ -14,6 +14,7 @@ import { Link } from "react-router-dom";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/Wordmark";
+import { UserMenu } from "@/components/UserMenu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 
@@ -122,7 +123,7 @@ const Index = () => {
               <span className="hidden lg:inline">Sign out</span>
             </Button>
 
-            <span className="hidden xl:inline-flex ml-3 eyebrow">{user?.email?.split('@')[0]}</span>
+            <UserMenu className="ml-2" />
           </div>
         </div>
       </header>

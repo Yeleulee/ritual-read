@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/Wordmark";
 import { ArrowRight, ArrowUpRight, Moon, Sun } from "lucide-react";
 import { ReadingHero } from "@/components/landing/ReadingHero";
+import { UserMenu } from "@/components/UserMenu";
+import { useAuth } from "@/hooks/use-auth";
 
 const features = [
   {
@@ -35,6 +37,7 @@ const features = [
 const Landing = () => {
   const { resolvedTheme, setTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
+  const { user, loading: authLoading } = useAuth();
 
   return (
     <div className="theme-paper min-h-screen bg-background text-foreground">
@@ -57,9 +60,18 @@ const Landing = () => {
             >
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
-            <Button asChild size="sm" variant="outline" className="rounded-full px-5">
-              <Link to="/app">Sign in</Link>
-            </Button>
+            {user ? (
+              <>
+                <Button asChild size="sm" variant="outline" className="hidden sm:inline-flex rounded-full px-5">
+                  <Link to="/app">Open library</Link>
+                </Button>
+                <UserMenu context="landing" className="ml-1" />
+              </>
+            ) : (
+              <Button asChild size="sm" variant="outline" className="rounded-full px-5" style={{ visibility: authLoading ? "hidden" : undefined }}>
+                <Link to="/app">Sign in</Link>
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -148,7 +160,7 @@ const Landing = () => {
           <span className="sm:text-right flex sm:justify-end gap-6">
             <a href="#features" className="hover:text-foreground transition-colors">Inside</a>
             <Link to="/app" className="hover:text-foreground transition-colors inline-flex items-center gap-1">
-              Log in <ArrowUpRight className="w-3 h-3" />
+              {user ? "Library" : "Log in"} <ArrowUpRight className="w-3 h-3" />
             </Link>
           </span>
         </div>

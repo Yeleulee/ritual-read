@@ -142,7 +142,6 @@ export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onR
     let cancelled = false;
     (async () => {
       const pdfjsLib = await import("pdfjs-dist");
-      // @ts-expect-error worker options are untyped for the CDN path
       pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
       setLoading(true);
       setError(null);

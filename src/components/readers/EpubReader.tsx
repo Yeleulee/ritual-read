@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { toCanvas } from "html-to-image";
 import type { Highlight } from "@/hooks/use-reader-store";
-import { fontById, fontFaceCss, HIGHLIGHT_COLORS, themeToEpubRules, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
+import { fontFaceCss, HIGHLIGHT_COLORS, themeToEpubRules, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
+import { embeddedFontCss } from "@/lib/reader-snapshot";
 
 /* Shared contract every format reader exposes to the shell / PageTurner. */
 export interface ReaderApi {
@@ -90,36 +91,6 @@ function rulesToCss(rules: Record<string, Record<string, string>>, fontSize: num
     .map(([sel, decl]) => `${sel}{${Object.entries(decl).map(([k, v]) => `${k}:${v}`).join(";")}}`)
     .join("\n");
   return `html{font-size:${fontSize}px !important}\n${body}`;
-}
-
-const fontDataCache = new Map<string, Promise<string>>();
-/* html-to-image renders into an <img>, which cannot load external fonts — inline them. */
-async function embeddedFontCss(fontId: string) {
-  const f = fontById(fontId);
-  if (!f.faces) return "";
-  const parts = await Promise.all(
-    f.faces.map(async ([w, st, file]) => {
-      const url = `${location.origin}/fonts/${file}`;
-      if (!fontDataCache.has(url)) {
-        fontDataCache.set(
-          url,
-          fetch(url)
-            .then((r) => r.blob())
-            .then(
-              (b) =>
-                new Promise<string>((res) => {
-                  const fr = new FileReader();
-                  fr.onload = () => res(fr.result as string);
-                  fr.readAsDataURL(b);
-                }),
-            ),
-        );
-      }
-      const data = await fontDataCache.get(url)!;
-      return `@font-face{font-family:${f.family.split(",")[0]};font-style:${st};font-weight:${w};src:url(${data}) format("woff2")}`;
-    }),
-  );
-  return parts.join("\n");
 }
 
 export const EpubReader = ({
@@ -527,7 +498,6 @@ export const EpubReader = ({
   useEffect(() => {
     if (status !== "ready") return;
     pushCss();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutKey, status]);
 
   useEffect(() => {

@@ -120,24 +120,30 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
 
   // Snapshot cache of the current page, refreshed a moment after each relocation
   const cache = useRef<{ key: string; canvas: HTMLCanvasElement } | null>(null);
+  const validCanvas = (c: HTMLCanvasElement | null | undefined) => (c && c.width > 0 && c.height > 0 ? c : null);
+  const cacheKey = () => `${snapshotKey}|${sizeRef.current.W}x${sizeRef.current.H}`;
   useEffect(() => {
     if (!api || effectiveMode === "none" || effectiveMode === "scroll") return;
     let cancelled = false;
     const id = window.setTimeout(async () => {
-      const c = await api.snapshot();
-      if (!cancelled && c) cache.current = { key: snapshotKey, canvas: c };
+      const key = cacheKey();
+      const c = validCanvas(await api.snapshot());
+      if (!cancelled && c) cache.current = { key, canvas: c };
     }, 180);
     return () => {
       cancelled = true;
       window.clearTimeout(id);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, snapshotKey, effectiveMode]);
 
   const getSnapshot = useCallback(async () => {
-    if (cache.current?.key === snapshotKey) return cache.current.canvas;
-    const c = await api?.snapshot();
-    if (c) cache.current = { key: snapshotKey, canvas: c };
-    return c ?? null;
+    const key = cacheKey();
+    if (cache.current?.key === key) return cache.current.canvas;
+    const c = validCanvas(await api?.snapshot());
+    if (c) cache.current = { key, canvas: c };
+    return c;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, snapshotKey]);
 
   useLayoutEffect(() => {
@@ -224,39 +230,45 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       }
 
       const kind = effectiveMode === "slide" ? "slide" : "curl";
-      const current = await getSnapshot();
-      // Mount the right overlay variant now so its refs exist for painting
-      flushSync(() => {
-        activeRef.current = { dir, kind };
-        setActive({ dir, kind });
-      });
-      if (dir === 1) {
-        // Outgoing page rides the sheet; the live reader already shows the next page underneath
-        paintCanvas(staticRef.current, null);
-        if (staticRef.current) staticRef.current.style.display = "none";
-        paintCanvas(kind === "slide" ? slideRef.current : frontRef.current, current);
-        if (kind === "curl") paintCanvas(backImgRef.current, current ? cloneCanvas(current) : null);
-        t.set(0);
-        render();
-        await api.next();
-      } else {
-        // Current page stays as a static layer; the previous page unfolds over it (t from 1 → 0)
-        if (staticRef.current) staticRef.current.style.display = "block";
-        paintCanvas(staticRef.current, current);
-        paintCanvas(kind === "slide" ? slideRef.current : frontRef.current, null);
-        if (kind === "curl") paintCanvas(backImgRef.current, null);
-        t.set(1);
-        render();
-        await api.prev();
-        // Give the live reader a frame to paint, then capture the incoming page for the sheet
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-        const prevCanvas = await api.snapshot();
-        paintCanvas(kind === "slide" ? slideRef.current : frontRef.current, prevCanvas);
-        if (kind === "curl") paintCanvas(backImgRef.current, prevCanvas ? cloneCanvas(prevCanvas) : null);
+      try {
+        const current = await getSnapshot();
+        // Mount the right overlay variant now so its refs exist for painting
+        flushSync(() => {
+          activeRef.current = { dir, kind };
+          setActive({ dir, kind });
+        });
+        if (dir === 1) {
+          // Outgoing page rides the sheet; the live reader already shows the next page underneath
+          paintCanvas(staticRef.current, null);
+          if (staticRef.current) staticRef.current.style.display = "none";
+          paintCanvas(kind === "slide" ? slideRef.current : frontRef.current, current);
+          if (kind === "curl") paintCanvas(backImgRef.current, current ? cloneCanvas(current) : null);
+          t.set(0);
+          render();
+          await api.next();
+        } else {
+          // Current page stays as a static layer; the previous page unfolds over it (t from 1 → 0)
+          if (staticRef.current) staticRef.current.style.display = "block";
+          paintCanvas(staticRef.current, current);
+          paintCanvas(kind === "slide" ? slideRef.current : frontRef.current, null);
+          if (kind === "curl") paintCanvas(backImgRef.current, null);
+          t.set(1);
+          render();
+          await api.prev();
+          // Give the live reader a frame to paint, then capture the incoming page for the sheet
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const prevCanvas = validCanvas(await api.snapshot());
+          paintCanvas(kind === "slide" ? slideRef.current : frontRef.current, prevCanvas);
+          if (kind === "curl") paintCanvas(backImgRef.current, prevCanvas ? cloneCanvas(prevCanvas) : null);
+        }
+        return true;
+      } catch (e) {
+        console.warn("page turn failed", e);
+        finish();
+        return false;
       }
-      return true;
     },
-    [api, disabled, canNext, canPrev, effectiveMode, getSnapshot, onTurned, t],
+    [api, disabled, canNext, canPrev, effectiveMode, getSnapshot, onTurned, t, finish],
   );
 
   const settle = useCallback(
@@ -381,6 +393,9 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
 
   const showZones = effectiveMode !== "scroll" && !disabled;
   const sheetShadow = theme.dark ? "rgba(0,0,0,.6)" : "rgba(0,0,0,.28)";
+  if (import.meta.env.DEV) {
+    (window as unknown as { __rrTurner?: () => unknown }).__rrTurner = () => ({ mode, effectiveMode, reduced, api: !!api, disabled, turning: turning.current, canNext, canPrev, active: activeRef.current, t: t.get() });
+  }
 
   return (
     <div ref={rootRef} className="relative h-full w-full select-none overflow-hidden" style={{ touchAction: effectiveMode === "scroll" ? "pan-y" : "none" }}>
@@ -395,7 +410,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       )}
 
       {/* Overlay */}
-      <div ref={overlayRef} className="pointer-events-none absolute inset-0 z-30" style={{ display: active ? "block" : "none" }} aria-hidden>
+      <div className="pointer-events-none absolute inset-0 z-30" style={{ display: active ? "block" : "none" }} aria-hidden>
         <div ref={staticRef} className="absolute inset-0" style={{ background: theme.bg, display: "none" }} />
         {active?.kind === "slide" ? (
           <div ref={slideRef} className="absolute inset-0 will-change-transform" style={{ background: theme.bg, boxShadow: `8px 0 24px ${sheetShadow}` }} />

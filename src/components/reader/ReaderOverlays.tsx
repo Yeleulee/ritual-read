@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Bookmark, BookOpen, Check, Minus, Moon, Plus, Search, Settings2, Trash2, X } from "lucide-react";
 import type { Bookmark as ReaderBookmark, Highlight } from "@/hooks/use-reader-store";
-import { FONT_SIZE_MAX, FONT_SIZE_MIN, FONTS, THEME_ORDER, THEMES, type ReaderSettings, type ThemeId } from "@/lib/reader-themes";
+import { FONT_SIZE_MAX, FONT_SIZE_MIN, FONTS, HIGHLIGHT_COLORS, THEME_ORDER, THEMES, type ReaderSettings, type ThemeId } from "@/lib/reader-themes";
 import type { ReaderApi, SearchHit, TocItem } from "@/components/readers/EpubReader";
 
 type Relocation = { page: number; totalPages: number; percent: number; pagesLeftInChapter: number; chapter?: { label: string } };

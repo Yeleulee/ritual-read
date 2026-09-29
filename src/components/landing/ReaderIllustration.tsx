@@ -13,38 +13,43 @@ const GLOBE = { cx: 906.75, cy: 880.75, r: 80.75 };
 const GLOBE_PERIOD = 161.5; // continents texture repeats every globe diameter
 const IDLE_SPIN = 0.45; // comp px per frame the globe drifts on its own
 
+// The clip is 180 frames: 0–30 picks the book up, 30–150 reads, 150–179 puts it down.
+// We loop the reading section only, so the character never closes the book.
+const CLIP_FRAMES = 179;
+const READ_START = 30;
+const READ_END = 150;
+
 // Open-book page corners in the book layer's local space: [innerTop, outerTop, outerBottom, innerBottom]
 type Pt = [number, number];
-const RIGHT_PAGE: Pt[] = [[563.2, 837.1], [620.9, 810.5], [605, 852.8], [543.1, 877.7]];
-const LEFT_PAGE: Pt[] = [[582.6, 816.8], [521.4, 845.9], [543.1, 872], [602.4, 846.8]];
-const HINGE_TOP: Pt = [572.9, 827];
-const HINGE_BOTTOM: Pt = [572.8, 862.3];
-const LIFT: Pt = [-5, -34];
-// Frame windows where the hand rises off the page (arm keyframes at 60→90 and 120→150)
+const NEAR_PAGE: Pt[] = [[563.2, 837.1], [620.9, 810.5], [605, 852.8], [543.1, 877.7]];
+const FAR_PAGE: Pt[] = [[582.6, 816.8], [521.4, 845.9], [543.1, 872], [602.4, 846.8]];
+// Projected "up off the page" direction; shorter than the page width because the book faces the viewer
+const NORMAL: Pt = [-6, -36];
+// Frame windows where the hand sweeps down across the book (arm keyframes at 60→90 and 120→150)
 const FLIPS: Array<[number, number]> = [[60, 90], [120, 150]];
 
 const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-// Quadratic curve from a to b that passes through m at t = 0.5
-const arc = (a: Pt, m: Pt, b: Pt, t: number): Pt => {
-  const c: Pt = [2 * m[0] - (a[0] + b[0]) / 2, 2 * m[1] - (a[1] + b[1]) / 2];
-  const u = 1 - t;
-  return [u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2 * u * t * c[1] + t * t * b[1]];
-};
+const sub = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const smooth = (t: number) => t * t * (3 - 2 * t);
-// The two drawn pages don't share a spine, so the hinge has to travel; do it only
-// while the page is edge-on (t ≈ 0.33–0.67) where the slide can't be seen.
-const slide = (t: number) => smooth(Math.min(1, Math.max(0, (t - 0.5) * 3 + 0.5)));
+const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
 
+// Leaf rotating about the spine: width vector swings from the near page's, through the normal,
+// to the far page's. The two drawn pages don't share an inner edge, so the hinge slides across
+// only after the leaf has dropped behind the near page (t > 0.5), where the move is hidden.
 function pagePath(t: number) {
-  const liftTop: Pt = [HINGE_TOP[0] + LIFT[0], HINGE_TOP[1] + LIFT[1]];
-  const liftBottom: Pt = [HINGE_BOTTOM[0] + LIFT[0], HINGE_BOTTOM[1] + LIFT[1] + 6];
-  const h = slide(t);
+  const c = Math.cos(Math.PI * t);
+  const s = Math.sin(Math.PI * t);
+  const h = smooth(clamp01((t - 0.5) / 0.3));
+  const hingeTop = lerp(NEAR_PAGE[0], FAR_PAGE[0], h);
+  const hingeBot = lerp(NEAR_PAGE[3], FAR_PAGE[3], h);
+  const wTop = t < 0.5 ? sub(NEAR_PAGE[1], NEAR_PAGE[0]) : sub(FAR_PAGE[0], FAR_PAGE[1]);
+  const wBot = t < 0.5 ? sub(NEAR_PAGE[2], NEAR_PAGE[3]) : sub(FAR_PAGE[3], FAR_PAGE[2]);
   const pts: Pt[] = [
-    lerp(RIGHT_PAGE[0], LEFT_PAGE[0], h),
-    arc(RIGHT_PAGE[1], liftTop, LEFT_PAGE[1], t),
-    arc(RIGHT_PAGE[2], liftBottom, LEFT_PAGE[2], t),
-    lerp(RIGHT_PAGE[3], LEFT_PAGE[3], h),
+    hingeTop,
+    [hingeTop[0] + c * wTop[0] + s * NORMAL[0], hingeTop[1] + c * wTop[1] + s * NORMAL[1]],
+    [hingeBot[0] + c * wBot[0] + s * NORMAL[0], hingeBot[1] + c * wBot[1] + s * NORMAL[1]],
+    hingeBot,
   ];
   return `M${pts.map((p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("L")}Z`;
 }
@@ -59,14 +64,18 @@ export function ReaderIllustration({ className }: { className?: string }) {
   const reduced = useReducedMotion();
 
   // Globe spin state (composition px)
-  const spin = useRef({ offset: 0, velocity: 0, dragging: false, lastX: 0 });
+  const spin = useRef({ offset: 0, velocity: 0, dragging: false, lastX: 0, frame: 0 });
   const globeGroup = useRef<SVGGElement | null>(null);
   const animRef = useRef<AnimationItem | null>(null);
+  const visible = useRef(true);
 
   const applySpin = () => {
     const g = globeGroup.current;
     if (!g) return;
-    const o = ((spin.current.offset % GLOBE_PERIOD) + GLOBE_PERIOD) % GLOBE_PERIOD;
+    // The artist's continents slide one period over the full 0–179 clip; cancel that so the
+    // shorter reading loop never jumps, then apply our own continuous rotation.
+    const drift = (GLOBE_PERIOD * spin.current.frame) / CLIP_FRAMES;
+    const o = (((spin.current.offset - drift) % GLOBE_PERIOD) + GLOBE_PERIOD) % GLOBE_PERIOD;
     g.setAttribute("transform", `translate(${o.toFixed(2)} 0)`);
   };
 
@@ -81,22 +90,19 @@ export function ReaderIllustration({ className }: { className?: string }) {
 
   useEffect(() => {
     if (!host.current) return;
-    const anim = lottie.loadAnimation({
-      container: host.current,
-      renderer: "svg",
-      loop: true,
-      autoplay: false,
-      path: SRC,
-      rendererSettings: { preserveAspectRatio: "xMidYMid meet", progressiveLoad: false },
-    });
-    animRef.current = anim;
-
+    let anim: AnimationItem | null = null;
+    let cancelled = false;
     let page: SVGPathElement | null = null;
     // Near (right) page group; the turning leaf drops behind it once past vertical
     let nearPage: SVGGElement | null = null;
     let pageOnTop = true;
 
     const onLoaded = () => {
+      if (!anim) return;
+      // Loop only the reading pose. Frames 0–30 / 150–179 are the artist's "pick up / put down".
+      anim.playSegments([READ_START, READ_END], true);
+      if (!visible.current) anim.pause();
+
       const svg = host.current?.querySelector("svg");
       if (!svg) return;
       svg.setAttribute("viewBox", `${VIEW.x} ${VIEW.y} ${VIEW.w} ${VIEW.h}`);
@@ -111,7 +117,7 @@ export function ReaderIllustration({ className }: { className?: string }) {
         page = document.createElementNS(SVG_NS, "path");
         page.setAttribute("fill", "#FFFFFF");
         page.setAttribute("stroke", "#1A1A1A");
-        page.setAttribute("stroke-width", "1.6");
+        page.setAttribute("stroke-width", "1.2");
         page.setAttribute("stroke-linejoin", "round");
         page.setAttribute("opacity", "0");
         book.layerElement.appendChild(page);
@@ -142,15 +148,18 @@ export function ReaderIllustration({ className }: { className?: string }) {
     };
 
     const onFrame = () => {
-      // Idle drift; a flick's momentum eases back into it instead of stopping
+      if (!anim) return;
+      // Absolute clip frame (currentFrame is relative to the playing segment)
+      const f = anim.currentFrame + (anim.firstFrame || 0);
       const s = spin.current;
+      s.frame = f;
+      // Idle drift; a flick's momentum eases back into it instead of stopping
       if (!s.dragging) {
         s.velocity += (IDLE_SPIN - s.velocity) * 0.03;
         s.offset += s.velocity;
-        applySpin();
       }
+      applySpin();
       if (!page) return;
-      const f = anim.currentFrame;
       const win = FLIPS.find(([a, b]) => f >= a && f <= b);
       if (!win) {
         page.setAttribute("opacity", "0");
@@ -171,13 +180,50 @@ export function ReaderIllustration({ className }: { className?: string }) {
       page.setAttribute("opacity", "1");
     };
 
-    anim.addEventListener("DOMLoaded", onLoaded);
-    anim.addEventListener("enterFrame", onFrame);
+    // Fetch + patch the clip so the 30–150 loop is seamless: leg1 ends the loop at 7° but
+    // starts it at 0°, so we re-time its last keyframe and keep the rhythm with a mid-beat.
+    fetch(SRC)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !host.current) return;
+        try {
+          const people = data.assets?.find((a: any) => a.id === "comp_0");
+          const leg = people?.layers?.find((l: any) => l.nm === "leg1");
+          const kfs: any[] = leg?.ks?.r?.k;
+          if (Array.isArray(kfs)) {
+            const beat = kfs.find((k) => k.t === 70);
+            const last = kfs.find((k) => k.t === READ_END);
+            if (beat && last) {
+              last.s = [0];
+              const mid = JSON.parse(JSON.stringify(beat));
+              mid.t = 130;
+              mid.s = [4];
+              kfs.splice(kfs.indexOf(last), 0, mid);
+            }
+          }
+        } catch {}
+
+        anim = lottie.loadAnimation({
+          container: host.current,
+          renderer: "svg",
+          loop: true,
+          autoplay: false,
+          animationData: data,
+          rendererSettings: { preserveAspectRatio: "xMidYMid meet", progressiveLoad: false },
+        });
+        animRef.current = anim;
+        anim.addEventListener("DOMLoaded", onLoaded);
+        anim.addEventListener("enterFrame", onFrame);
+      })
+      .catch(() => {});
 
     return () => {
-      anim.removeEventListener("DOMLoaded", onLoaded);
-      anim.removeEventListener("enterFrame", onFrame);
-      anim.destroy();
+      cancelled = true;
+      if (anim) {
+        anim.removeEventListener("DOMLoaded", onLoaded);
+        anim.removeEventListener("enterFrame", onFrame);
+        anim.destroy();
+      }
       animRef.current = null;
       globeGroup.current = null;
     };
@@ -187,7 +233,11 @@ export function ReaderIllustration({ className }: { className?: string }) {
   useEffect(() => {
     if (!wrap.current) return;
     const io = new IntersectionObserver(
-      ([e]) => (e.isIntersecting ? animRef.current?.play() : animRef.current?.pause()),
+      ([e]) => {
+        visible.current = e.isIntersecting;
+        if (e.isIntersecting) animRef.current?.play();
+        else animRef.current?.pause();
+      },
       { threshold: 0.15 },
     );
     io.observe(wrap.current);

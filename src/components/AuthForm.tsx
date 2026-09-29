@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Wordmark } from '@/components/Wordmark';
+import { Logo } from '@/components/Logo';
+import { ReadingNookIllustration } from '@/components/auth/ReadingNookIllustration';
 import { useAuth, DEV_AUTH_BYPASS } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Loader2 } from 'lucide-react';
@@ -35,8 +37,13 @@ export const AuthForm = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [tab, setTab] = useState<'signin' | 'signup'>('signin');
   const { signIn, signUp, signInWithGoogle } = useAuth();
   const { toast } = useToast();
+
+  const hour = new Date().getHours();
+  const greeting = hour < 5 ? 'Late night' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const heading = tab === 'signin' ? 'Welcome back.' : 'Begin your ritual.';
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,37 +118,43 @@ export const AuthForm = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground grid lg:grid-cols-12">
-      {/* Statement panel */}
-      <aside className="hidden lg:flex lg:col-span-7 flex-col justify-between border-r border-border px-10 py-8">
-        <Wordmark size="md" />
-
-        <div>
-          <p className="eyebrow">Sign in</p>
-          <h1 className="display text-6xl xl:text-7xl mt-6 max-w-2xl">
-            The book is waiting <em className="italic text-muted-foreground">where you left it.</em>
-          </h1>
+      {/* Statement panel — same colour block as the landing hero */}
+      <aside className="hidden lg:flex lg:col-span-7 flex-col justify-between border-r border-white/10 bg-[linear-gradient(135deg,#0B0B0B_0%,#161514_55%,#242220_100%)] text-white px-10 xl:px-14 py-8">
+        <div className="flex items-center justify-between">
+          <Link to="/" aria-label="Ritual Reader — home" className="inline-flex">
+            <Logo label="" className="text-3xl text-white" />
+          </Link>
+          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-white/60">Sign in</p>
         </div>
 
-        <dl className="grid grid-cols-3 gap-6 border-t border-border pt-5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-          <div>
-            <dt>Library</dt>
-            <dd className="mt-1 text-foreground">Synced or local</dd>
-          </div>
-          <div>
-            <dt>Streak</dt>
-            <dd className="mt-1 text-foreground">Kept across devices</dd>
-          </div>
-          <div>
-            <dt>Privacy</dt>
-            <dd className="mt-1 text-foreground">Your books stay yours</dd>
-          </div>
-        </dl>
+        <div className="flex-1 flex flex-col items-center justify-center py-6">
+          <ReadingNookIllustration className="w-full max-w-[min(660px,72vh)]" />
+        </div>
+
+        <div>
+          <p className="display text-5xl xl:text-6xl max-w-xl text-balance">
+            The book is waiting <em className="italic text-white/55">where you left it.</em>
+          </p>
+
+          <dl className="mt-8 grid grid-cols-3 gap-6 border-t border-white/15 pt-5">
+            {[
+              ['Library', 'Synced to your account'],
+              ['Streak', 'Kept across devices'],
+              ['Privacy', 'Your books stay yours'],
+            ].map(([k, v]) => (
+              <div key={k}>
+                <dt className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/50">{k}</dt>
+                <dd className="mt-1.5 text-sm leading-snug text-white/85">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       </aside>
 
       {/* Form panel */}
       <section className="lg:col-span-5 flex flex-col px-4 sm:px-8 py-6 lg:py-8">
         <div className="flex items-center justify-between lg:justify-end">
-          <span className="lg:hidden"><Wordmark size="sm" /></span>
+          <span className="lg:hidden"><Wordmark iconOnly /></span>
           <Button asChild variant="ghost" size="sm" className="text-muted-foreground -mr-2">
             <Link to="/">
               <ArrowLeft className="w-4 h-4" />
@@ -152,9 +165,25 @@ export const AuthForm = () => {
 
         <div className="flex-1 flex items-center">
           <div className="w-full max-w-sm mx-auto">
-            <div className="lg:hidden mb-10">
-              <p className="eyebrow">Sign in</p>
-              <h1 className="display text-4xl mt-3">The book is waiting where you left it.</h1>
+            {/* Below lg the statement panel is hidden, so carry the illustration into a compact banner */}
+            <div className="lg:hidden mb-8 overflow-hidden rounded-sm bg-[linear-gradient(135deg,#0B0B0B_0%,#161514_55%,#242220_100%)] text-white">
+              <div className="relative h-44 sm:h-52 overflow-hidden">
+                <ReadingNookIllustration className="absolute left-1/2 top-1/2 w-[104%] max-w-none -translate-x-1/2 -translate-y-[48%]" />
+              </div>
+              <div className="flex items-center justify-between border-t border-white/10 px-4 py-2.5">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/55">Ritual Reader</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/55">One book · Twenty minutes</p>
+              </div>
+            </div>
+
+            <div className="mb-8 lg:mb-10">
+              <p className="eyebrow">{greeting}</p>
+              <h1 className="display text-4xl lg:text-[2.75rem] mt-3 text-balance">{heading}</h1>
+              <p className="mt-3 text-sm text-muted-foreground max-w-[34ch]">
+                {tab === 'signin'
+                  ? 'Pick up where you left off — your shelf and streak are waiting.'
+                  : 'One book, twenty minutes a day. Your library syncs to every device.'}
+              </p>
             </div>
 
             {DEV_AUTH_BYPASS && (
@@ -169,7 +198,7 @@ export const AuthForm = () => {
               </div>
             )}
 
-            <Tabs defaultValue="signin" className="space-y-8">
+            <Tabs value={tab} onValueChange={(v) => setTab(v as 'signin' | 'signup')} className="space-y-8">
               <TabsList className="grid w-full grid-cols-2 gap-0">
                 <TabsTrigger value="signin" className="justify-start">Sign in</TabsTrigger>
                 <TabsTrigger value="signup" className="justify-start">Create account</TabsTrigger>

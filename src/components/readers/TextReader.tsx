@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { toCanvas } from "html-to-image";
 import type { Highlight } from "@/hooks/use-reader-store";
 import { fontById, HIGHLIGHT_COLORS, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
+import { embeddedFontCss } from "@/lib/reader-snapshot";
 import type { ReaderApi, RelocatedInfo, SearchHit, SelectionInfo } from "./EpubReader";
 
 /* Plain-text / DOCX reader. The whole text is laid out once in CSS columns the size of the
@@ -55,6 +56,8 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
   cb.current = { onReady, onRelocated, onSelected, onHighlightClick, onTap };
   const themeRef = useRef(theme);
   themeRef.current = theme;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   const scroll = settings.pageTurn === "scroll";
   const font = fontById(settings.fontId);
@@ -186,7 +189,8 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
         const vp = viewportRef.current;
         if (!vp) return null;
         try {
-          return await toCanvas(vp, { pixelRatio: Math.min(2, window.devicePixelRatio || 1), backgroundColor: themeRef.current.bg, cacheBust: false });
+          const fontEmbedCSS = await embeddedFontCss(settingsRef.current.fontId);
+          return await toCanvas(vp, { pixelRatio: Math.min(2, window.devicePixelRatio || 1), backgroundColor: themeRef.current.bg, cacheBust: false, fontEmbedCSS });
         } catch {
           return null;
         }
@@ -220,7 +224,6 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
 
   useEffect(() => {
     cb.current.onReady?.(apiRef.current!);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
