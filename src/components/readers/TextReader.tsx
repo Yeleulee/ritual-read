@@ -373,7 +373,7 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
           maxWidth: "100%",
           boxSizing: "border-box",
           paddingTop: "max(56px, calc(env(safe-area-inset-top) + 44px))",
-          paddingBottom: scroll ? "max(96px, calc(env(safe-area-inset-bottom) + 80px))" : "max(84px, calc(env(safe-area-inset-bottom) + 72px))",
+          paddingBottom: scroll ? "max(96px, calc(env(safe-area-inset-bottom) + 80px))" : "max(100px, calc(env(safe-area-inset-bottom) + 88px))",
         }}
       >
         <div

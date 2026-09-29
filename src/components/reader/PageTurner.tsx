@@ -130,37 +130,16 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   const turning = useRef(false);
   const sizeRef = useRef({ W: 0, H: 0 });
 
-  // Snapshot cache of the current page, refreshed a moment after each relocation
-  const cache = useRef<{ key: string; face: PageFace } | null>(null);
   const validFace = (f: PageFace | null | undefined): PageFace | null => {
     if (!f) return null;
     if (f instanceof HTMLCanvasElement) return f.width > 0 && f.height > 0 ? f : null;
     return f;
   };
-  const cacheKey = () => `${snapshotKey}|${sizeRef.current.W}x${sizeRef.current.H}`;
-  useEffect(() => {
-    if (!api || effectiveMode === "none" || effectiveMode === "scroll") return;
-    let cancelled = false;
-    const id = window.setTimeout(async () => {
-      const key = cacheKey();
-      const f = validFace(await api.snapshot());
-      if (!cancelled && f) cache.current = { key, face: f };
-    }, 180);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(id);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, snapshotKey, effectiveMode]);
-
-  const getSnapshot = useCallback(async () => {
-    const key = cacheKey();
-    if (cache.current?.key === key) return cache.current.face;
-    const f = validFace(await withTimeout(api?.snapshot() ?? Promise.resolve(null), SNAPSHOT_BUDGET_MS, null));
-    if (f) cache.current = { key, face: f };
-    return f;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, snapshotKey]);
+  // Faces are DOM clones / canvases produced in a few ms, so always take a fresh one at turn start
+  const getSnapshot = useCallback(
+    async () => validFace(await withTimeout(api?.snapshot() ?? Promise.resolve(null), SNAPSHOT_BUDGET_MS, null)),
+    [api],
+  );
 
   useLayoutEffect(() => {
     const el = rootRef.current;
@@ -496,7 +475,8 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
             </svg>
             <div ref={frontRef} className="absolute inset-0 will-change-[clip-path]" style={{ background: theme.bg }} />
             <div ref={backRef} className="absolute inset-0 will-change-[clip-path]" style={{ background: theme.bg }}>
-              <div ref={backImgRef} className="absolute inset-0 origin-top-left" style={{ background: theme.bg }} />
+              {/* Faint show-through of the page, like thin paper, rather than legible mirrored text */}
+              <div ref={backImgRef} className="absolute inset-0 origin-top-left" style={{ background: theme.bg, opacity: theme.dark ? 0.28 : 0.16 }} />
             </div>
             <svg className="absolute inset-0 h-full w-full overflow-visible">
               <polygon ref={shadeRef} fill="url(#rr-fold-shade)" />
