@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toCanvas } from "html-to-image";
 import type { Highlight } from "@/hooks/use-reader-store";
 import { fontById, HIGHLIGHT_COLORS, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
@@ -42,7 +42,9 @@ const parseRange = (s: string) => {
 export const TextReader = ({ content, settings, theme, initialLocation, highlights, onReady, onRelocated, onSelected, onHighlightClick, onTap }: TextReaderProps) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
-  const pageRef = useRef(Math.max(1, parseInt((initialLocation ?? "").replace("txt:", ""), 10) || 1));
+  const initialTextPage = /^txt:\d+$/.test(initialLocation ?? "") ? parseInt((initialLocation ?? "").slice(4), 10) : 1;
+  const pageRef = useRef(Math.max(1, initialTextPage));
+  const initialAppliedRef = useRef(false);
   const [page, setPage] = useState(pageRef.current);
   const [pages, setPages] = useState(1);
   const [vpWidth, setVpWidth] = useState(0);
@@ -58,10 +60,11 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
   const font = fontById(settings.fontId);
   const margins = { narrow: "4%", normal: "8%", wide: "14%" }[settings.margins];
 
-  const emit = (p: number, n: number) => {
+  const emit = (p: number, n: number, percentOverride?: number) => {
+    const percent = percentOverride ?? (n > 1 ? (p - 1) / (n - 1) : 0);
     cb.current.onRelocated?.({
-      location: `txt:${p}`,
-      percent: n > 1 ? (p - 1) / (n - 1) : 0,
+      location: scroll ? `txt:pct:${percent.toFixed(5)}` : `txt:${p}`,
+      percent,
       page: p,
       totalPages: n,
       chapter: undefined,
@@ -87,7 +90,12 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
     if (!vp || !track) return;
     const measure = () => {
       if (scroll) {
-        setPages(1);
+        track.style.columnWidth = "auto";
+        track.style.columnGap = "normal";
+        track.style.height = "auto";
+        const n = Math.max(1, Math.ceil(track.scrollHeight / Math.max(1, vp.clientHeight)));
+        setPages(n);
+        pagesRef.current = n;
         return;
       }
       const w = vp.clientWidth;
@@ -113,18 +121,38 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
   if (!apiRef.current) {
     apiRef.current = {
       async next() {
+        if (scroll) {
+          const vp = viewportRef.current;
+          if (!vp || vp.scrollTop + vp.clientHeight >= vp.scrollHeight - 2) return false;
+          vp.scrollBy({ top: vp.clientHeight * 0.85, behavior: "smooth" });
+          return true;
+        }
         if (pageRef.current >= pagesRef.current) return false;
         goTo(pageRef.current + 1);
         return true;
       },
       async prev() {
+        if (scroll) {
+          const vp = viewportRef.current;
+          if (!vp || vp.scrollTop <= 1) return false;
+          vp.scrollBy({ top: -vp.clientHeight * 0.85, behavior: "smooth" });
+          return true;
+        }
         if (pageRef.current <= 1) return false;
         goTo(pageRef.current - 1);
         return true;
       },
       async display(target) {
-        if (typeof target === "number") goTo(Math.round(target * (pagesRef.current - 1)) + 1);
-        else if (target.startsWith("txt:")) {
+        if (typeof target === "number") {
+          if (scroll) {
+            const vp = viewportRef.current;
+            if (vp) vp.scrollTo({ top: Math.max(0, Math.min(1, target)) * Math.max(0, vp.scrollHeight - vp.clientHeight), behavior: "smooth" });
+          } else goTo(Math.round(target * (pagesRef.current - 1)) + 1);
+        } else if (target.startsWith("txt:pct:")) {
+          const vp = viewportRef.current;
+          const percent = Number(target.slice(8));
+          if (vp && Number.isFinite(percent)) vp.scrollTo({ top: Math.max(0, Math.min(1, percent)) * Math.max(0, vp.scrollHeight - vp.clientHeight), behavior: "auto" });
+        } else if (target.startsWith("txt:")) {
           const r = parseRange(target);
           if (r) {
             // find the page containing this offset via the rendered mark/element
@@ -195,6 +223,31 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (initialAppliedRef.current || !initialLocation || !viewportRef.current) return;
+    if (scroll && initialLocation.startsWith("txt:pct:")) {
+      const percent = Number(initialLocation.slice(8));
+      if (Number.isFinite(percent)) viewportRef.current.scrollTop = Math.max(0, Math.min(1, percent)) * Math.max(0, viewportRef.current.scrollHeight - viewportRef.current.clientHeight);
+    } else if (!scroll && /^txt:\d+$/.test(initialLocation)) goTo(parseInt(initialLocation.slice(4), 10));
+    initialAppliedRef.current = true;
+  }, [initialLocation, scroll, pages]);
+
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp || !scroll) return;
+    const onScroll = () => {
+      const max = Math.max(1, vp.scrollHeight - vp.clientHeight);
+      const percent = Math.max(0, Math.min(1, vp.scrollTop / max));
+      const p = Math.min(pagesRef.current, Math.floor(vp.scrollTop / Math.max(1, vp.clientHeight)) + 1);
+      pageRef.current = p;
+      setPage(p);
+      emit(p, pagesRef.current, percent);
+    };
+    vp.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => vp.removeEventListener("scroll", onScroll);
+  }, [scroll, pages]);
+
   // Selection → offsets over the flat text
   useEffect(() => {
     const onChange = () => {
@@ -239,7 +292,7 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
     const end = p.start + p.text.length;
     const inside = marks.filter((m) => m.r.start < end && m.r.end > p.start).sort((a, b) => a.r.start - b.r.start);
     if (!inside.length) return p.text;
-    const nodes: React.ReactNode[] = [];
+    const nodes: ReactNode[] = [];
     let cursor = p.start;
     for (const m of inside) {
       const s = Math.max(m.r.start, p.start);

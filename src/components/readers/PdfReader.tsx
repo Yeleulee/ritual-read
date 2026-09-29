@@ -22,6 +22,7 @@ export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onR
   const renderTaskRef = useRef<any>(null);
   const outlineRef = useRef<Array<{ title: string; pageNumber: number }>>([]);
   const pageRef = useRef(Math.max(1, parseInt(initialLocation ?? "1", 10) || 1));
+  const initialAppliedRef = useRef(initialLocation ?? null);
   const [page, setPage] = useState(pageRef.current);
   const [numPages, setNumPages] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -102,6 +103,7 @@ export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onR
         // Match the on-screen CSS filter used for dark papers
         if (themeRef.current.dark) ctx.filter = "invert(0.92) hue-rotate(180deg)";
         ctx.drawImage(src, (r.left - c.left) * dpr, (r.top - c.top) * dpr, r.width * dpr, r.height * dpr);
+        ctx.filter = "none";
         return out;
       },
       visibleText() {
@@ -192,6 +194,12 @@ export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onR
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileUrl]);
+
+  useEffect(() => {
+    if (!initialLocation || initialLocation === initialAppliedRef.current || !docRef.current) return;
+    initialAppliedRef.current = initialLocation;
+    goTo(parseInt(initialLocation, 10) || 1);
+  }, [initialLocation]);
 
   useEffect(() => {
     const render = async () => {

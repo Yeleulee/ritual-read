@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { BookLibrary } from "@/components/BookLibrary";
-import { ReadingInterface } from "@/components/ReadingInterface";
+import { ReaderShell } from "@/components/reader/ReaderShell";
 import { StreakTracker } from "@/components/StreakTracker";
 import { ProgressDashboard } from "@/components/ProgressDashboard";
 import { RitualModeButton } from "@/components/RitualModeButton";
@@ -149,9 +149,10 @@ const Index = () => {
 
           <TabsContent value="reader" className="animate-page-fade">
             {currentBook ? (
-              <ReadingInterface
+              <ReaderShell
                 book={currentBook}
                 onBackToLibrary={handleBackToLibrary}
+                onProgress={updateBookProgress}
               />
             ) : (
               <div className="text-center py-24 border border-dashed border-border">

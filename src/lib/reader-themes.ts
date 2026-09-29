@@ -121,6 +121,7 @@ export function themeToEpubRules(theme: ReaderTheme, s: ReaderSettings) {
   const body: Record<string, string> = {
     background: `${theme.bg} !important`,
     color: `${theme.fg} !important`,
+    "font-size": `${s.fontSize}px !important`,
     "line-height": `${s.lineHeight} !important`,
     "letter-spacing": `${s.letterSpacing}px !important`,
     "word-spacing": `${s.wordSpacing}px !important`,

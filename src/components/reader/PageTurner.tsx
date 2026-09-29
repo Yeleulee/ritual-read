@@ -101,7 +101,6 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   const effectiveMode: PageTurnMode = reduced && mode !== "scroll" ? "none" : mode;
 
   // Overlay DOM (imperatively driven for 60fps)
-  const overlayRef = useRef<HTMLDivElement>(null);
   const staticRef = useRef<HTMLDivElement>(null);
   const frontRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLDivElement>(null);
@@ -295,7 +294,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   useImperativeHandle(ref, () => ({ turn }), [turn]);
 
   /* ---------- gestures ---------- */
-  const gesture = useRef<null | { dir: 1 | -1; startX: number; startY: number; startT: number; lastX: number; lastTime: number; vx: number; dragging: boolean; began: boolean }>(null);
+  const gesture = useRef<null | { dir: 1 | -1; startX: number; startY: number; startT: number; lastX: number; lastTime: number; vx: number; dragging: boolean; began: boolean; starting?: Promise<boolean> }>(null);
 
   const onPointerDown = (e: React.PointerEvent, zone: "left" | "right" | "center") => {
     if (disabled || e.button !== 0) return;
@@ -327,7 +326,8 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     if (effectiveMode === "none") return;
     if (!g.began) {
       g.began = true;
-      const ok = await beginTurn(g.dir);
+      g.starting = beginTurn(g.dir);
+      const ok = await g.starting;
       if (!ok) {
         gesture.current = null;
         return;
@@ -358,7 +358,9 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       }
       return;
     }
-    if (!g.began || !turning.current) return;
+    if (!g.began) return;
+    if (g.starting && !(await g.starting)) return;
+    if (!turning.current) return;
     const tv = t.get();
     const towardCommit = g.dir === 1 ? -g.vx : g.vx; // px/ms in the direction that completes the turn
     const progress = g.dir === 1 ? tv : 1 - tv;
@@ -373,7 +375,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     onPointerCancel: () => {
       const g = gesture.current;
       gesture.current = null;
-      if (g?.began && turning.current) settle(g.dir, false);
+      if (g?.began) void g.starting?.then((ok) => { if (ok && turning.current) return settle(g.dir, false); });
     },
   });
 

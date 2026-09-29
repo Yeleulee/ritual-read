@@ -19,7 +19,7 @@ const RIGHT_PAGE: Pt[] = [[563.2, 837.1], [620.9, 810.5], [605, 852.8], [543.1, 
 const LEFT_PAGE: Pt[] = [[582.6, 816.8], [521.4, 845.9], [543.1, 872], [602.4, 846.8]];
 const HINGE_TOP: Pt = [572.9, 827];
 const HINGE_BOTTOM: Pt = [572.8, 862.3];
-const LIFT: Pt = [-9, -58];
+const LIFT: Pt = [-5, -34];
 // Frame windows where the hand rises off the page (arm keyframes at 60→90 and 120→150)
 const FLIPS: Array<[number, number]> = [[60, 90], [120, 150]];
 
@@ -31,15 +31,20 @@ const arc = (a: Pt, m: Pt, b: Pt, t: number): Pt => {
   return [u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2 * u * t * c[1] + t * t * b[1]];
 };
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const smooth = (t: number) => t * t * (3 - 2 * t);
+// The two drawn pages don't share a spine, so the hinge has to travel; do it only
+// while the page is edge-on (t ≈ 0.33–0.67) where the slide can't be seen.
+const slide = (t: number) => smooth(Math.min(1, Math.max(0, (t - 0.5) * 3 + 0.5)));
 
 function pagePath(t: number) {
   const liftTop: Pt = [HINGE_TOP[0] + LIFT[0], HINGE_TOP[1] + LIFT[1]];
   const liftBottom: Pt = [HINGE_BOTTOM[0] + LIFT[0], HINGE_BOTTOM[1] + LIFT[1] + 6];
+  const h = slide(t);
   const pts: Pt[] = [
-    lerp(RIGHT_PAGE[0], LEFT_PAGE[0], t),
+    lerp(RIGHT_PAGE[0], LEFT_PAGE[0], h),
     arc(RIGHT_PAGE[1], liftTop, LEFT_PAGE[1], t),
     arc(RIGHT_PAGE[2], liftBottom, LEFT_PAGE[2], t),
-    lerp(RIGHT_PAGE[3], LEFT_PAGE[3], t),
+    lerp(RIGHT_PAGE[3], LEFT_PAGE[3], h),
   ];
   return `M${pts.map((p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("L")}Z`;
 }
@@ -50,6 +55,7 @@ export function ReaderIllustration({ className }: { className?: string }) {
   const wrap = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
+  // Only gates the pointer parallax; the scene itself always animates (product decision)
   const reduced = useReducedMotion();
 
   // Globe spin state (composition px)
@@ -86,6 +92,9 @@ export function ReaderIllustration({ className }: { className?: string }) {
     animRef.current = anim;
 
     let page: SVGPathElement | null = null;
+    // Near (right) page group; the turning leaf drops behind it once past vertical
+    let nearPage: SVGGElement | null = null;
+    let pageOnTop = true;
 
     const onLoaded = () => {
       const svg = host.current?.querySelector("svg");
@@ -106,6 +115,9 @@ export function ReaderIllustration({ className }: { className?: string }) {
         page.setAttribute("stroke-linejoin", "round");
         page.setAttribute("opacity", "0");
         book.layerElement.appendChild(page);
+        // Group 6 is the white fill of the near page (shapes render first-on-top)
+        const idx = book.shapesData?.findIndex((s: any) => s.nm === "Group 6") ?? -1;
+        nearPage = idx >= 0 ? book.itemsData?.[idx]?.gr ?? null : null;
       }
 
       // Globe: wrap the continents so we can add our own rotation, and tile them so it spins forever
@@ -126,14 +138,13 @@ export function ReaderIllustration({ className }: { className?: string }) {
         applySpin();
       }
 
-      if (reduced) anim.goToAndStop(45, true);
       setReady(true);
     };
 
     const onFrame = () => {
       // Idle drift; a flick's momentum eases back into it instead of stopping
       const s = spin.current;
-      if (!s.dragging && !reduced) {
+      if (!s.dragging) {
         s.velocity += (IDLE_SPIN - s.velocity) * 0.03;
         s.offset += s.velocity;
         applySpin();
@@ -141,12 +152,18 @@ export function ReaderIllustration({ className }: { className?: string }) {
       if (!page) return;
       const f = anim.currentFrame;
       const win = FLIPS.find(([a, b]) => f >= a && f <= b);
-      if (!win || reduced) {
+      if (!win) {
         page.setAttribute("opacity", "0");
         return;
       }
       const t = easeInOut((f - win[0]) / (win[1] - win[0]));
       page.setAttribute("d", pagePath(t));
+      const wantTop = t < 0.5;
+      if (wantTop !== pageOnTop && nearPage?.parentNode) {
+        if (wantTop) nearPage.parentNode.appendChild(page);
+        else nearPage.parentNode.insertBefore(page, nearPage);
+        pageOnTop = wantTop;
+      }
       // Back of the page reads slightly warmer while it stands up
       const shade = 1 - Math.sin(t * Math.PI) * 0.1;
       const c = Math.round(255 * shade);
@@ -164,18 +181,18 @@ export function ReaderIllustration({ className }: { className?: string }) {
       animRef.current = null;
       globeGroup.current = null;
     };
-  }, [reduced]);
+  }, []);
 
   // Only run while visible
   useEffect(() => {
-    if (!wrap.current || reduced) return;
+    if (!wrap.current) return;
     const io = new IntersectionObserver(
       ([e]) => (e.isIntersecting ? animRef.current?.play() : animRef.current?.pause()),
       { threshold: 0.15 },
     );
     io.observe(wrap.current);
     return () => io.disconnect();
-  }, [reduced, ready]);
+  }, [ready]);
 
   // Pointer → composition coordinates
   const toComp = (e: React.PointerEvent): Pt | null => {
@@ -234,7 +251,7 @@ export function ReaderIllustration({ className }: { className?: string }) {
     animRef.current?.setSpeed(1);
     if (!spin.current.dragging) setCursor("default");
   };
-  const onPointerEnter = () => { if (!reduced) animRef.current?.setSpeed(1.25); };
+  const onPointerEnter = () => { animRef.current?.setSpeed(1.25); };
 
   return (
     <div

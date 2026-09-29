@@ -474,12 +474,6 @@ Colors are in HSL format for proper theming.
     animation-delay: calc(var(--i) * 0.3s);
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .book-logo__leaf {
-      animation: none !important;
-    }
-  }
-
   /* Flat surfaces (legacy class names kept for existing components) */
   .glass,
   .glass-light,

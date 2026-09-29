@@ -142,6 +142,7 @@ export const EpubReader = ({
   const renditionRef = useRef<any>(null);
   const tocRef = useRef<TocItem[]>([]);
   const lastLocRef = useRef<any>(null);
+  const lastAppliedInitialRef = useRef<string | null>(null);
   const cssRef = useRef("");
   const settingsRef = useRef(settings);
   const themeRef = useRef(theme);
@@ -430,6 +431,7 @@ export const EpubReader = ({
 
       try {
         await rendition.display(lastLocRef.current?.start?.cfi ?? initialLocation ?? undefined);
+        lastAppliedInitialRef.current = initialLocation ?? null;
       } catch (e) {
         console.error("EPUB display error", e);
         if (!cancelled) {
@@ -490,6 +492,16 @@ export const EpubReader = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileUrl, flow]);
 
+  useEffect(() => {
+    if (status !== "ready" || !initialLocation || initialLocation === lastAppliedInitialRef.current) return;
+    if (initialLocation === lastLocRef.current?.start?.cfi) {
+      lastAppliedInitialRef.current = initialLocation;
+      return;
+    }
+    lastAppliedInitialRef.current = initialLocation;
+    renditionRef.current?.display(initialLocation).catch(() => {});
+  }, [initialLocation, status]);
+
   /* ---------- appearance ---------- */
   const layoutKey = [settings.fontId, settings.fontSize, settings.bold, settings.lineHeight, settings.letterSpacing, settings.wordSpacing, settings.justify, settings.hyphenation, settings.margins, theme.weight].join("|");
 
@@ -514,13 +526,7 @@ export const EpubReader = ({
 
   useEffect(() => {
     if (status !== "ready") return;
-    const cfi = lastLocRef.current?.start?.cfi;
     pushCss();
-    // Reflow moved the text; land back on the same spot like Apple Books does
-    const t = window.setTimeout(() => {
-      if (cfi && renditionRef.current) renditionRef.current.display(cfi).catch(() => {});
-    }, 60);
-    return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutKey, status]);
 

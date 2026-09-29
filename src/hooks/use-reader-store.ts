@@ -27,13 +27,21 @@ function writeLocal(key: string, value: unknown) {
 
 function useDebouncedCallback<A extends unknown[]>(fn: (...args: A) => void, ms: number) {
   const timer = useRef<number>();
+  const pending = useRef<A | null>(null);
   const latest = useRef(fn);
   latest.current = fn;
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(() => () => {
+    window.clearTimeout(timer.current);
+    if (pending.current) latest.current(...pending.current);
+  }, []);
   return useCallback(
     (...args: A) => {
+      pending.current = args;
       window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => latest.current(...args), ms);
+      timer.current = window.setTimeout(() => {
+        pending.current = null;
+        latest.current(...args);
+      }, ms);
     },
     [ms],
   );
@@ -47,13 +55,13 @@ function useCloudUser(bookId?: string) {
 
 /* ---------- Settings ---------- */
 
-const SETTINGS_KEY = "rr:settings";
 type Stored<T> = { value: T; updated_at: string };
 
 export function useReaderSettings() {
   const { user, cloud } = useCloudUser();
+  const key = `rr:settings:${user?.id ?? "guest"}`;
   const [state, setState] = useState<Stored<ReaderSettings>>(() => {
-    const local = readLocal<Stored<ReaderSettings>>(SETTINGS_KEY);
+    const local = readLocal<Stored<ReaderSettings>>(key);
     return local ? { ...local, value: { ...DEFAULT_SETTINGS, ...local.value } } : { value: DEFAULT_SETTINGS, updated_at: new Date(0).toISOString() };
   });
 
@@ -70,18 +78,18 @@ export function useReaderSettings() {
         setState((cur) => {
           if (new Date(data.updated_at) <= new Date(cur.updated_at)) return cur;
           const next = { value: { ...DEFAULT_SETTINGS, ...(data.settings as Partial<ReaderSettings>) }, updated_at: data.updated_at };
-          writeLocal(SETTINGS_KEY, next);
+          writeLocal(key, next);
           return next;
         });
       });
     return () => {
       cancelled = true;
     };
-  }, [cloud, user?.id]);
+  }, [cloud, user?.id, key]);
 
   const push = useDebouncedCallback((s: Stored<ReaderSettings>) => {
     if (!cloud) return;
-    supabase.from("reader_settings").upsert({ user_id: user!.id, settings: s.value, updated_at: s.updated_at }).then(() => {});
+    supabase.from("reader_settings").upsert({ user_id: user!.id, settings: { ...s.value }, updated_at: s.updated_at }).then(() => {});
   }, 800);
 
   const update = useCallback(
@@ -89,12 +97,12 @@ export function useReaderSettings() {
       setState((cur) => {
         const p = typeof patch === "function" ? patch(cur.value) : patch;
         const next = { value: { ...cur.value, ...p }, updated_at: new Date().toISOString() };
-        writeLocal(SETTINGS_KEY, next);
+        writeLocal(key, next);
         push(next);
         return next;
       });
     },
-    [push],
+    [push, key],
   );
 
   return { settings: state.value, update };
