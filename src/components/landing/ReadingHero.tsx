@@ -148,10 +148,10 @@ export function ReadingHero() {
 
           {/* Formats strip — where the reference shows partner logos */}
           <ul
-            className="animate-rise mt-12 md:mt-16 flex flex-wrap items-center justify-between gap-x-10 gap-y-4 border-t border-white/20 pt-6 font-mono text-[12px] uppercase tracking-[0.16em] text-white/70"
+            className="animate-rise mt-12 md:mt-16 flex flex-wrap items-center justify-center gap-x-14 gap-y-4 border-t border-white/20 pt-6 font-mono text-[12px] uppercase tracking-[0.16em] text-white/70"
             style={rise(360)}
           >
-            {["EPUB", "PDF", "TXT", "Gemini AI", "Supabase Sync", "Offline-first"].map((t) => (
+            {["EPUB", "PDF", "TXT"].map((t) => (
               <li key={t}>{t}</li>
             ))}
           </ul>
