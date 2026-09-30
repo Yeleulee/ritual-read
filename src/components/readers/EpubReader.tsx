@@ -73,6 +73,8 @@ interface EpubReaderProps {
   onGesture?: (phase: GesturePhase, p: GesturePoint) => void;
   onKeyDown?: (e: KeyboardEvent) => void;
   onError?: (message: string) => void;
+  /** Stable id used to cache the generated page index (e.g. the book id) */
+  locationsKey?: string;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -120,6 +122,7 @@ export const EpubReader = ({
   onGesture,
   onKeyDown,
   onError,
+  locationsKey,
 }: EpubReaderProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const bookRef = useRef<any>(null);
@@ -144,7 +147,7 @@ export const EpubReader = ({
   highlightsRef.current = highlights;
   cssRef.current = `${fontFaceCss()}\n${rulesToCss(themeToEpubRules(theme, settings), settings.fontSize)}`;
 
-  const flow = settings.pageTurn === "scroll" ? "scrolled-doc" : "paginated";
+  const flow = settings.pageTurn === "scroll" ? "scrolled" : "paginated";
 
   /* ---------- relocation → shell ---------- */
   const emitRelocated = (loc: any) => {
@@ -345,6 +348,7 @@ export const EpubReader = ({
   /* ---------- lifecycle ---------- */
   useEffect(() => {
     let cancelled = false;
+    let scrollNudgeCleanup: (() => void) | null = null;
     const container = containerRef.current;
     if (!container) return;
     setStatus("loading");
@@ -365,15 +369,19 @@ export const EpubReader = ({
 
       const book = ePub(resource);
       bookRef.current = book;
+      // Both modes use the continuous manager: it pre-renders the neighbouring chapter, so a page turn at
+      // a chapter boundary is a scroll instead of a full iframe layout (~1 s on long chapters).
       const rendition = book.renderTo(container, {
         width: "100%",
         height: "100%",
         flow,
-        spread: "auto",
+        manager: "continuous",
+        spread: flow === "scrolled" ? "none" : "auto",
         minSpreadWidth: SPREAD_MIN_WIDTH,
         allowScriptedContent: false,
       });
       renditionRef.current = rendition;
+      if (import.meta.env.DEV) (window as unknown as { __rrEpub?: unknown }).__rrEpub = { book, rendition };
 
       // Our stylesheet + gesture listeners go into every section as it loads
       rendition.hooks.content.register((contents: any) => {
@@ -436,7 +444,15 @@ export const EpubReader = ({
       rendition.on("displayError", () => setErrorMsg("Failed to display this section."));
 
       try {
-        await rendition.display(lastLocRef.current?.start?.cfi ?? initialLocation ?? undefined);
+        const target = lastLocRef.current?.start?.cfi ?? initialLocation ?? undefined;
+        try {
+          await rendition.display(target);
+        } catch (e) {
+          if (!target) throw e;
+          // A saved location that no longer resolves (edited file, other reader) shouldn't block the book
+          console.warn("EPUB: saved location unusable, opening at the start", e);
+          await rendition.display();
+        }
         lastAppliedInitialRef.current = initialLocation ?? null;
       } catch (e) {
         console.error("EPUB display error", e);
@@ -453,9 +469,45 @@ export const EpubReader = ({
       cb.current.onReady?.(apiRef.current!);
       applyHighlights(highlightsRef.current);
 
-      // Whole-book locations for percent / page counts; not blocking first paint
+      // Continuous scroll: epub.js appends the next chapter from its own scroll ticker, which
+      // doesn't wake up on the first chapter. Ask it to check whenever we're near an edge.
+      if (flow === "scrolled") {
+        const manager = (rendition as any).manager as { container?: HTMLElement; check?: () => Promise<unknown> } | undefined;
+        const scroller = manager?.container;
+        if (scroller) {
+          let pending = false;
+          const nudge = () => {
+            if (pending || cancelled) return;
+            const nearEnd = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 600;
+            const nearStart = scroller.scrollTop <= 600;
+            if (!nearEnd && !nearStart) return;
+            pending = true;
+            Promise.resolve(manager?.check?.()).catch(() => {}).finally(() => {
+              pending = false;
+            });
+          };
+          scroller.addEventListener("scroll", nudge, { passive: true });
+          scrollNudgeCleanup = () => scroller.removeEventListener("scroll", nudge);
+          nudge();
+        }
+      }
+
+      // Whole-book locations for percent / page counts; not blocking first paint.
+      // Generating them loads every chapter, so the result is cached per book.
       try {
-        await book.locations.generate(1024);
+        const cacheKey = locationsKey ? `rr:locations:${locationsKey}` : null;
+        const cached = cacheKey ? localStorage.getItem(cacheKey) : null;
+        if (cached) book.locations.load(cached);
+        else {
+          await book.locations.generate(1024);
+          if (cacheKey && !cancelled) {
+            try {
+              localStorage.setItem(cacheKey, book.locations.save());
+            } catch {
+              /* storage full */
+            }
+          }
+        }
         if (!cancelled && lastLocRef.current) emitRelocated(lastLocRef.current);
       } catch {
         /* ignore */
@@ -480,6 +532,7 @@ export const EpubReader = ({
     return () => {
       cancelled = true;
       ro.disconnect();
+      scrollNudgeCleanup?.();
       renderedHl.current.clear();
       try {
         renditionRef.current?.destroy?.();

@@ -22,6 +22,8 @@ interface PageTurnerProps {
   theme: ReaderTheme;
   canNext: boolean;
   canPrev: boolean;
+  /** Changes whenever the visible page could look different (location, theme, typography) */
+  pageKey?: string;
   disabled?: boolean;
   onTapCenter?: () => void;
   onTurned?: (dir: 1 | -1) => void;
@@ -46,7 +48,7 @@ const SWIPE_PX = 40; // "none" mode: a flick still turns
 const SNAPSHOT_BUDGET_MS = 450; // past this, turn without animation rather than feel stuck
 // The grabbed corner travels 2W to flip fully; the pointer moves it this many times its own
 // distance, so the sheet feels attached to the finger instead of racing ahead of it.
-const DRAG_GAIN = 1.25;
+const DRAG_GAIN = 2; // dragging the corner across the full page width flips it completely
 const DRAG_GAIN_NARROW = 1.7; // phones: a full swipe should still get most of the way
 const COMMIT_PROGRESS = 0.3; // release past this and the turn finishes
 const COMMIT_VELOCITY = 0.35; // px/ms flick that finishes a turn from anywhere
@@ -108,7 +110,7 @@ function foldGeometry(W: number, H: number, C: Pt, P: Pt): Geometry {
 }
 
 export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function PageTurner(
-  { api, mode, turnSpeed = "normal", theme, canNext, canPrev, disabled, onTapCenter, onTurned, children },
+  { api, mode, turnSpeed = "normal", theme, canNext, canPrev, pageKey, disabled, onTapCenter, onTurned, children },
   ref,
 ) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -123,7 +125,6 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   const staticRef = useRef<HTMLDivElement>(null);
   const frontRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLDivElement>(null);
-  const backImgRef = useRef<HTMLDivElement>(null);
   const shadowRef = useRef<SVGPolygonElement>(null);
   const shadeRef = useRef<SVGPolygonElement>(null);
   const shadeGradRef = useRef<SVGLinearGradientElement>(null);
@@ -183,6 +184,30 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     return c;
   };
 
+  // Warm faces: painted into the hidden overlay hosts ahead of time (iframes load while display:none),
+  // so a turn needs no snapshot or load at gesture start. Moving an iframe reloads it, so each host
+  // gets its own copy rather than sharing one. Each copy is a full chapter document, so only the two
+  // that every turn needs are kept warm; the back of the sheet is plain paper.
+  const warmKey = useRef<string | null>(null);
+  const [warmTick, setWarmTick] = useState(0);
+  useEffect(() => {
+    warmKey.current = null;
+    if (!api || !pageKey || effectiveMode === "none" || effectiveMode === "scroll") return;
+    let cancelled = false;
+    const id = window.setTimeout(async () => {
+      if (turning.current || activeRef.current) return;
+      const face = await getSnapshot();
+      if (cancelled || !face || turning.current || activeRef.current) return;
+      await Promise.all([paintFace(frontRef.current, face), paintFace(staticRef.current, cloneFace(face))]);
+      if (!cancelled && !turning.current) warmKey.current = pageKey;
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, pageKey, effectiveMode, warmTick]);
+
   const render = useCallback(() => {
     const a = activeRef.current;
     if (!a) return;
@@ -198,7 +223,6 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     const g = foldGeometry(W, H, C, P);
     if (frontRef.current) frontRef.current.style.clipPath = poly(g.front);
     if (backRef.current) backRef.current.style.clipPath = poly(g.back);
-    if (backImgRef.current) backImgRef.current.style.transform = g.matrix;
     if (shadowRef.current) shadowRef.current.setAttribute("points", pts(g.shadow));
     if (shadeRef.current) shadeRef.current.setAttribute("points", pts(g.back));
     if (shadeGradRef.current && g.fold) {
@@ -227,6 +251,8 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     setActive(null);
     t.set(0);
     py.set(0);
+    // The relocation that changed pageKey arrived mid-turn; warm the new page now that we're idle
+    setWarmTick((n) => n + 1);
   }, [t, py]);
 
   const beginTurn = useCallback(
@@ -245,8 +271,10 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
 
       const kind = effectiveMode === "slide" ? "slide" : "curl";
       try {
-        const current = await getSnapshot();
-        if (!current) {
+        const warm = !!pageKey && warmKey.current === pageKey && !!frontRef.current?.firstChild;
+        warmKey.current = null;
+        const current = warm ? null : await getSnapshot();
+        if (!warm && !current) {
           // Nothing to animate with — still turn, just without the sheet
           await (dir === 1 ? api.next() : api.prev());
           onTurned?.(dir);
@@ -261,29 +289,30 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
         const sheet = kind === "slide" ? slideRef.current : frontRef.current;
         if (dir === 1) {
           // Outgoing page rides the sheet; the live reader already shows the next page underneath
-          void paintFace(staticRef.current, null);
           if (staticRef.current) staticRef.current.style.display = "none";
-          const ready = [paintFace(sheet, current)];
-          if (kind === "curl") ready.push(paintFace(backImgRef.current, cloneFace(current)));
+          if (!warm) {
+            t.set(0);
+            render();
+            await paintFace(sheet, current);
+          } else if (kind === "slide" && slideRef.current && frontRef.current?.firstChild) {
+            // Warm faces live in the curl hosts; the slide sheet borrows the front one
+            await paintFace(slideRef.current, cloneFace(frontRef.current.firstChild as PageFace));
+          }
           t.set(0);
           render();
-          await Promise.all(ready);
           await api.next();
         } else {
           // Current page stays as a static layer; the previous page unfolds over it (t from 1 → 0)
           if (staticRef.current) staticRef.current.style.display = "block";
-          await paintFace(staticRef.current, current);
+          if (!warm) await paintFace(staticRef.current, current);
           void paintFace(sheet, null);
-          if (kind === "curl") void paintFace(backImgRef.current, null);
           t.set(1);
           render();
           await api.prev();
           // Give the live reader a frame to paint, then capture the incoming page for the sheet
           await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
           const prevFace = validFace(await withTimeout(api.snapshot(), SNAPSHOT_BUDGET_MS, null));
-          const ready = [paintFace(sheet, prevFace)];
-          if (kind === "curl") ready.push(paintFace(backImgRef.current, cloneFace(prevFace)));
-          await Promise.all(ready);
+          await paintFace(sheet, prevFace);
         }
         return true;
       } catch (e) {
@@ -292,7 +321,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
         return false;
       }
     },
-    [api, disabled, canNext, canPrev, effectiveMode, getSnapshot, onTurned, t, finish],
+    [api, disabled, canNext, canPrev, effectiveMode, getSnapshot, onTurned, t, finish, pageKey],
   );
 
   const settle = useCallback(
@@ -489,9 +518,9 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
               <polygon ref={shadowRef} fill={sheetShadow} filter="url(#rr-fold-blur)" />
             </svg>
             <div ref={frontRef} className="absolute inset-0 will-change-[clip-path]" style={{ background: theme.bg }} />
-            <div ref={backRef} className="absolute inset-0 will-change-[clip-path]" style={{ background: theme.bg }}>
-              {/* Faint show-through of the page, like thin paper, rather than legible mirrored text */}
-              <div ref={backImgRef} className="absolute inset-0 origin-top-left" style={{ background: theme.bg, opacity: theme.dark ? 0.28 : 0.16 }} />
+            {/* Back of the sheet: plain paper, slightly darker than the page so the fold reads as a surface */}
+            <div ref={backRef} className="absolute inset-0 will-change-[clip-path]" style={{ background: theme.dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.035)", backgroundColor: theme.bg }}>
+              <div className="absolute inset-0" style={{ background: theme.dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.035)" }} />
             </div>
             <svg className="absolute inset-0 h-full w-full overflow-visible">
               <polygon ref={shadeRef} fill="url(#rr-fold-shade)" />

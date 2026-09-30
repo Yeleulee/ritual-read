@@ -36,7 +36,9 @@ interface BookItem {
 interface BookLibraryProps {
   books: BookItem[];
   onBookSelect: (book: BookItem) => void;
-  onAddBook: (book: Omit<BookItem, "id"> & { file?: File }) => void | Promise<unknown>;
+  onAddBook: (book: Omit<BookItem, "id"> & { file?: File; storedUrl?: Promise<string> }) => void | Promise<unknown>;
+  /** Starts storing the file immediately; null when files stay on this device */
+  onPrepareUpload?: (file: File) => Promise<string> | null;
   onRemoveBook?: (bookId: string) => void;
 }
 
@@ -83,7 +85,7 @@ const flatCover = (label: string, small = false): string => {
   return canvas.toDataURL('image/png');
 };
 
-export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: BookLibraryProps) => {
+export const BookLibrary = ({ books, onBookSelect, onAddBook, onPrepareUpload, onRemoveBook }: BookLibraryProps) => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newBook, setNewBook] = useState({
     title: "",
@@ -93,10 +95,30 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
   const [draft, setDraft] = useState<Draft | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Upload runs from the moment a file is picked so it overlaps analysis and the title check
+  const upload = useRef<{ file: File; promise: Promise<string> } | null>(null);
+  const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "failed">("idle");
   const fileInput = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
+  const startUpload = (file: File) => {
+    const promise = onPrepareUpload?.(file) ?? null;
+    if (!promise) {
+      upload.current = null;
+      setUploadState("idle");
+      return;
+    }
+    upload.current = { file, promise };
+    setUploadState("uploading");
+    promise.then(
+      () => { if (upload.current?.file === file) setUploadState("done"); },
+      () => { if (upload.current?.file === file) setUploadState("failed"); },
+    );
+  };
+
   const resetDialog = () => {
+    upload.current = null;
+    setUploadState("idle");
     setNewBook({ title: "", author: "", totalPages: 0 });
     setDraft(null);
     setAnalyzing(false);
@@ -110,15 +132,22 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
     if (!open) resetDialog();
   };
 
+  // Covers are stored inline in the books row, so keep them small: fit into 320×480 and re-encode as JPEG
   const blobUrlToDataUrl = async (blobUrl: string): Promise<string> => {
-    const res = await fetch(blobUrl);
-    const blob = await res.blob();
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = reject;
+      img.src = blobUrl;
     });
+    const scale = Math.min(1, 320 / img.naturalWidth, 480 / img.naturalHeight);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas unavailable");
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.82);
   };
 
   // Read what we can from the file: title/author metadata, page count, cover, text
@@ -224,6 +253,7 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
     if (!file) return;
     setAnalyzing(true);
     setDraft(null);
+    startUpload(file);
     // A new file replaces whatever the previous file prefilled
     setNewBook({ title: "", author: "", totalPages: 0 });
     try {
@@ -262,6 +292,9 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
     if (!draft || saving) return;
     setSaving(true);
     try {
+      // A failed upload is retried here rather than silently dropping the file
+      if (uploadState === "failed") startUpload(draft.file);
+      const storedUrl = upload.current?.file === draft.file ? upload.current.promise : undefined;
       // The hook toasts success/failure once the upload and insert actually finish
       await onAddBook({
         title: newBook.title.trim() || draft.title,
@@ -274,6 +307,7 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
         coverUrl: draft.coverUrl,
         lastRead: new Date(),
         file: draft.file,
+        storedUrl,
       });
       setIsAddDialogOpen(false);
       resetDialog();
@@ -348,6 +382,9 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
                     <p className="text-xs text-muted-foreground">
                       {draft?.fileType?.toUpperCase()}
                       {draft?.totalPages ? ` · ~${draft.totalPages} pages` : ""}
+                      {uploadState === "uploading" && " · Uploading…"}
+                      {uploadState === "done" && " · Uploaded"}
+                      {uploadState === "failed" && <span className="text-destructive"> · Upload failed — Add retries it</span>}
                     </p>
                   </>
                 )}
@@ -393,7 +430,7 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onRemoveBook }: Bo
           </Button>
           <Button onClick={handleImport} disabled={!draft || analyzing || saving}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {saving ? "Adding…" : "Add to library"}
+            {saving ? (uploadState === "uploading" ? "Uploading…" : "Adding…") : "Add to library"}
           </Button>
         </DialogFooter>
       </DialogContent>

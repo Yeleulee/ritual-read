@@ -184,12 +184,19 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
   }, [menuOpen, settingsOpen, contentsOpen, searchOpen, lookUp, api, location, bookmarks, showChrome]);
 
   const reader = useMemo(() => {
-    if (isEpub && resolvedUrl) return <EpubReader fileUrl={resolvedUrl} settings={settings} theme={theme} initialLocation={hydrated ? position?.location : null} highlights={highlights} onReady={onReaderReady} onToc={setToc} onRelocated={onRelocated} onSelected={onSelection} onHighlightClick={(id, rect) => { const h = highlights.find((item) => item.id === id); if (h) setSelection({ cfiRange: h.cfi_range, text: h.text, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } }); }} onTap={readerTap} onGesture={(phase, p) => pageTurnerRef.current?.feed(phase, p)} />;
-    if (isPdf && resolvedUrl) return <PdfReader key={book.id} fileUrl={resolvedUrl} theme={theme} initialLocation={hydrated ? position?.location : String(Math.max(1, Math.round((book.progress / 100) * Math.max(1, book.totalPages))))} onReady={onReaderReady} onToc={setToc} onRelocated={onRelocated} onTap={readerTap} />;
+    // Only hand a reader a position saved by the same format; a stale one from another reader would fail to open
+    const saved = hydrated ? position?.location ?? null : null;
+    const epubStart = saved && saved.startsWith("epubcfi(") ? saved : null;
+    const pageStart = saved && /^\d+$/.test(saved) ? saved : null;
+    const textStart = saved && saved.startsWith("txt:") ? saved : null;
+    if (isEpub && resolvedUrl) return <EpubReader fileUrl={resolvedUrl} locationsKey={book.id} settings={settings} theme={theme} initialLocation={epubStart} highlights={highlights} onReady={onReaderReady} onToc={setToc} onRelocated={onRelocated} onSelected={onSelection} onHighlightClick={(id, rect) => { const h = highlights.find((item) => item.id === id); if (h) setSelection({ cfiRange: h.cfi_range, text: h.text, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } }); }} onTap={readerTap} onGesture={(phase, p) => pageTurnerRef.current?.feed(phase, p)} />;
+    if (isPdf && resolvedUrl) return <PdfReader key={book.id} fileUrl={resolvedUrl} theme={theme} initialLocation={pageStart ?? String(Math.max(1, Math.round((book.progress / 100) * Math.max(1, book.totalPages))))} onReady={onReaderReady} onToc={setToc} onRelocated={onRelocated} onTap={readerTap} />;
     if (isPpt && resolvedUrl) return <PptReader fileUrl={resolvedUrl} page={relocation.page} onPageCount={onPptPageCount} />;
+    // File-backed books wait for their URL rather than falling through to the text reader
+    if (book.fileUrl && (isEpub || isPdf || isPpt)) return <div className="flex h-full items-center justify-center text-sm" style={{ color: theme.muted }}>Preparing book…</div>;
     const text = book.content ?? SAMPLE;
-    return <TextReader key={book.id} content={text} settings={settings} theme={theme} initialLocation={hydrated ? position?.location : null} highlights={highlights} onReady={onReaderReady} onRelocated={onRelocated} onSelected={onSelection} onHighlightClick={(id, rect) => { const h = highlights.find((item) => item.id === id); if (h) setSelection({ cfiRange: h.cfi_range, text: h.text, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } }); }} onTap={readerTap} />;
-  }, [isEpub, isPdf, isPpt, resolvedUrl, book.id, book.content, book.progress, book.totalPages, settings, theme, hydrated, position?.location, highlights, onReaderReady, onPptPageCount, onRelocated, relocation.page, readerTap]);
+    return <TextReader key={book.id} content={text} settings={settings} theme={theme} initialLocation={textStart} highlights={highlights} onReady={onReaderReady} onRelocated={onRelocated} onSelected={onSelection} onHighlightClick={(id, rect) => { const h = highlights.find((item) => item.id === id); if (h) setSelection({ cfiRange: h.cfi_range, text: h.text, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } }); }} onTap={readerTap} />;
+  }, [isEpub, isPdf, isPpt, resolvedUrl, book.id, book.fileUrl, book.content, book.progress, book.totalPages, settings, theme, hydrated, position?.location, highlights, onReaderReady, onPptPageCount, onRelocated, relocation.page, readerTap]);
 
   if (resolving && book.fileType) return <div className="flex h-[75vh] items-center justify-center text-sm text-muted-foreground">Preparing book…</div>;
 
@@ -197,7 +204,7 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
   return createPortal(<>
     <ReaderChromeStyles />
     <div ref={shellRef} className="fixed inset-0 z-50 overflow-hidden" style={{ background: theme.bg, color: theme.fg }}>
-      {resolveError ? <div className="flex h-full items-center justify-center p-6 text-sm">{resolveError}</div> : <PageTurner ref={pageTurnerRef} api={api} mode={settings.pageTurn} turnSpeed={settings.turnSpeed} theme={theme} canNext={!relocation.atEnd} canPrev={!relocation.atStart} disabled={menuOpen || settingsOpen || contentsOpen || searchOpen || !!lookUp || !!selection} onTapCenter={readerTap} onTurned={showChrome}>{reader}</PageTurner>}
+      {resolveError ? <div className="flex h-full items-center justify-center p-6 text-sm">{resolveError}</div> : <PageTurner ref={pageTurnerRef} api={api} mode={settings.pageTurn} turnSpeed={settings.turnSpeed} theme={theme} canNext={!relocation.atEnd} canPrev={!relocation.atStart} pageKey={`${relocation.location}|${theme.id}|${settings.fontId}|${settings.fontSize}|${settings.lineHeight}|${settings.bold}|${settings.margins}`} disabled={menuOpen || settingsOpen || contentsOpen || searchOpen || !!lookUp || !!selection} onTapCenter={readerTap} onTurned={showChrome}>{reader}</PageTurner>}
       {settings.brightness < 1 && <div className="pointer-events-none absolute inset-0 z-40 bg-black" style={{ opacity: 1 - settings.brightness }} />}
       <ReaderTopBar title={book.title} author={book.author} theme={theme} visible={chromeVisible && !selection} bookmarked={isBookmarked} onClose={onBackToLibrary} onBookmark={toggleBookmark} />
       <ReaderFooter theme={theme} visible={chromeVisible && !selection} location={location} relocation={relocation} onSeek={(p) => { void api?.display(p); }} onMenu={() => { setMenuOpen(true); setChromeVisible(true); }} />

@@ -101,7 +101,7 @@ export const useBooks = () => {
   };
 
   // Add a new book
-  const addBook = async ({ file, ...newBook }: Omit<BookItem, 'id'> & { file?: File }) => {
+  const addBook = async ({ file, storedUrl, ...newBook }: Omit<BookItem, 'id'> & { file?: File; storedUrl?: Promise<string> }) => {
     if (isLocal) {
       console.log('No user, saving book locally');
       const localBook: BookItem = {
@@ -132,33 +132,19 @@ export const useBooks = () => {
     }
 
     console.log('Adding book for user:', user.id, 'Book:', newBook.title);
-    console.log('User object:', user);
-    console.log('Supabase client available:', !!supabase);
-
-    // Test authentication
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    console.log('Auth test:', { authData, authError });
 
     try {
       let fileUrl = newBook.fileUrl;
       let coverUrl = newBook.coverUrl;
 
-      // Upload file to Supabase Storage for permanent storage
-      if (file || (newBook.fileUrl && newBook.fileUrl.startsWith('blob:'))) {
+      // The file must live in storage before the row exists, otherwise the book can never open again.
+      // Usually the upload started when the file was picked; otherwise start it now.
+      if (storedUrl || file || (newBook.fileUrl && newBook.fileUrl.startsWith('blob:'))) {
         try {
-          const toUpload = file ?? (await (await fetch(newBook.fileUrl!)).blob());
-          const uploadedUrl = await saveBookFile(toUpload, user.id);
-
-          if (uploadedUrl.startsWith('supabase://')) {
-            fileUrl = uploadedUrl;
-            console.log('File uploaded to storage:', fileUrl);
-          } else {
-            console.warn('Storage upload failed, using blob URL as fallback');
-            fileUrl = newBook.fileUrl;
-          }
+          fileUrl = await (storedUrl ?? saveBookFile(file ?? (await (await fetch(newBook.fileUrl!)).blob()), user.id));
         } catch (uploadError) {
-          console.warn('Failed to upload file to storage, using blob URL:', uploadError);
-          fileUrl = newBook.fileUrl; // Fallback to blob URL
+          const reason = uploadError instanceof Error ? uploadError.message : 'storage error';
+          throw new Error(`Couldn't upload the file: ${reason}. Check your connection and try again.`);
         }
       }
 
@@ -399,10 +385,15 @@ export const useBooks = () => {
     loadBooks();
   }, [user]);
 
+  // Start storing a file before the user has finished the import dialog; resolves to the storage path.
+  // Returns null in local mode, where files stay in the browser.
+  const prepareUpload = (file: File): Promise<string> | null => (isLocal ? null : saveBookFile(file, user.id));
+
   return {
     books,
     loading,
     addBook,
+    prepareUpload,
     updateBookProgress,
     removeBook,
     loadBooks,

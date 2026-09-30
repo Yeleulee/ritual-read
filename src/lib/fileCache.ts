@@ -2,93 +2,54 @@ import { supabase } from '@/integrations/supabase/client';
 import { cacheFile, getCachedFile } from './indexedDBCache';
 
 export async function saveBookFile(file: Blob | File, userId: string): Promise<string> {
-  try {
-    const fileExt = file instanceof File ? file.name.split('.').pop()?.toLowerCase() : 'bin';
-    const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
-    
-    console.log('Uploading file to Supabase storage:', fileName);
-    
-    const { data, error } = await supabase.storage
-      .from('books')
-      .upload(fileName, file, { contentType: file.type || 'application/octet-stream', upsert: false });
-    
-    if (error) {
-      console.error('Supabase storage upload error:', error);
-      throw error;
-    }
-    
-    console.log('File uploaded successfully:', data.path);
-    
-    // Cache the file locally for faster access
-    const storagePath = `supabase://books/${data.path}`;
-    await cacheFile(storagePath, file, fileExt || 'bin');
-    
-    return storagePath;
-  } catch (error) {
-    console.error('Failed to upload to Supabase storage:', error);
-    // Fallback to blob URL for immediate use (but this won't persist)
-    const blobUrl = URL.createObjectURL(file instanceof File ? file : new Blob([file]));
-    console.warn('Using temporary blob URL as fallback:', blobUrl);
-    return blobUrl;
+  const fileExt = file instanceof File ? file.name.split('.').pop()?.toLowerCase() : 'bin';
+  const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 11)}.${fileExt}`;
+
+  const { data, error } = await supabase.storage
+    .from('books')
+    .upload(fileName, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+
+  if (error) {
+    console.error('Supabase storage upload error:', error);
+    // Surfaced to the user; a book row without a file would never open again
+    throw new Error(error.message || 'Upload failed');
   }
+
+  const storagePath = `supabase://books/${data.path}`;
+  // Cache locally so the first open doesn't download what we just uploaded
+  cacheFile(storagePath, file, fileExt || 'bin').catch(() => {});
+  return storagePath;
 }
 
 export async function getBookFile(keyOrUrl: string): Promise<string | undefined> {
   try {
-    console.log('Resolving file URL:', keyOrUrl);
-    
     if (keyOrUrl.startsWith('supabase://books/')) {
-      // Check IndexedDB cache first for faster access
       const cachedBlob = await getCachedFile(keyOrUrl);
-      if (cachedBlob) {
-        console.log('Using cached file from IndexedDB');
-        return URL.createObjectURL(cachedBlob);
-      }
-      
+      if (cachedBlob) return URL.createObjectURL(cachedBlob);
+
       const path = keyOrUrl.replace('supabase://books/', '');
-      console.log('Getting signed URL for path:', path);
-      
-      const { data } = await supabase.storage
-        .from('books')
-        .createSignedUrl(path, 7200); // 2 hour expiry
-      
-      if (data?.signedUrl) {
-        console.log('Successfully created signed URL');
-        
-        // Download and cache the file for faster future access
-        try {
-          const response = await fetch(data.signedUrl);
-          const blob = await response.blob();
-          const fileExt = path.split('.').pop()?.toLowerCase() || 'bin';
-          await cacheFile(keyOrUrl, blob, fileExt);
-          console.log('File cached for future use');
-        } catch (cacheError) {
-          console.warn('Failed to cache file:', cacheError);
-        }
-      } else {
-        console.warn('No signed URL returned from Supabase');
+      const { data, error } = await supabase.storage.from('books').createSignedUrl(path, 7200);
+      if (error || !data?.signedUrl) {
+        console.warn('No signed URL returned from Supabase', error);
+        return undefined;
       }
-      
-      return data?.signedUrl;
+
+      // Download once: the reader gets the bytes we just fetched, and the cache gets them too
+      try {
+        const response = await fetch(data.signedUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        const fileExt = path.split('.').pop()?.toLowerCase() || 'bin';
+        cacheFile(keyOrUrl, blob, fileExt).catch(() => {});
+        return URL.createObjectURL(blob);
+      } catch (downloadError) {
+        console.warn('Direct download failed, streaming from signed URL:', downloadError);
+        return data.signedUrl;
+      }
     }
-    
-    // Handle blob URLs
-    if (keyOrUrl.startsWith('blob:')) {
-      console.log('Using blob URL directly:', keyOrUrl);
-      return keyOrUrl;
-    }
-    
-    // Handle HTTP URLs
-    if (keyOrUrl.startsWith('http')) {
-      console.log('Using HTTP URL directly:', keyOrUrl);
-      return keyOrUrl;
-    }
-    
-    // Return as-is for other URLs
-    console.log('Using URL as-is:', keyOrUrl);
     return keyOrUrl;
   } catch (error) {
-    console.error('Failed to get signed URL:', error);
+    console.error('Failed to resolve stored file:', error);
     return undefined;
   }
 }
