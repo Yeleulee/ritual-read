@@ -2,7 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffec
 import { flushSync } from "react-dom";
 import { animate, useMotionValue, useReducedMotion } from "framer-motion";
 import type { GesturePhase, GesturePoint, PageFace, ReaderApi } from "@/components/readers/EpubReader";
-import type { PageTurnMode, ReaderTheme } from "@/lib/reader-themes";
+import { TURN_SPEED_SECONDS, type PageTurnMode, type ReaderTheme, type TurnSpeed } from "@/lib/reader-themes";
 
 /* Apple Books–style page turning on top of any ReaderApi.
    The live reader advances underneath; a still copy of the outgoing page is animated on top
@@ -18,6 +18,7 @@ export interface PageTurnerHandle {
 interface PageTurnerProps {
   api: ReaderApi | null;
   mode: PageTurnMode;
+  turnSpeed?: TurnSpeed;
   theme: ReaderTheme;
   canNext: boolean;
   canPrev: boolean;
@@ -40,9 +41,16 @@ const EDGE = 0.18;
 const EDGE_NARROW = 0.24; // phones: bigger tap targets
 const TAP_MS = 300;
 const TAP_PX = 10;
-const DRAG_PX = 12;
+const DRAG_PX = 8;
 const SWIPE_PX = 40; // "none" mode: a flick still turns
 const SNAPSHOT_BUDGET_MS = 450; // past this, turn without animation rather than feel stuck
+// The grabbed corner travels 2W to flip fully; the pointer moves it this many times its own
+// distance, so the sheet feels attached to the finger instead of racing ahead of it.
+const DRAG_GAIN = 1.25;
+const DRAG_GAIN_NARROW = 1.7; // phones: a full swipe should still get most of the way
+const COMMIT_PROGRESS = 0.3; // release past this and the turn finishes
+const COMMIT_VELOCITY = 0.35; // px/ms flick that finishes a turn from anywhere
+const TURN_EASE: [number, number, number, number] = [0.3, 0.05, 0.2, 1];
 
 const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T) => Promise.race([p, new Promise<T>((r) => window.setTimeout(() => r(fallback), ms))]);
 
@@ -100,7 +108,7 @@ function foldGeometry(W: number, H: number, C: Pt, P: Pt): Geometry {
 }
 
 export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function PageTurner(
-  { api, mode, theme, canNext, canPrev, disabled, onTapCenter, onTurned, children },
+  { api, mode, turnSpeed = "normal", theme, canNext, canPrev, disabled, onTapCenter, onTurned, children },
   ref,
 ) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -108,7 +116,8 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   // reduced-motion hint only shortens the animation instead of silently disabling it.
   const reduced = useReducedMotion();
   const effectiveMode: PageTurnMode = mode;
-  const speed = reduced ? 0.6 : 1;
+  const fullTurnSec = TURN_SPEED_SECONDS[turnSpeed] * (reduced ? 0.6 : 1);
+  const [dragging, setDragging] = useState(false);
 
   // Overlay DOM (imperatively driven for 60fps)
   const staticRef = useRef<HTMLDivElement>(null);
@@ -291,9 +300,13 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       const target = dir === 1 ? (commit ? 1 : 0) : commit ? 0 : 1;
       const from = t.get();
       const dist = Math.abs(target - from);
+      // Remaining distance at the chosen pace, with a floor so short releases still read as motion;
+      // a flick shaves off up to a third.
+      const flick = Math.min(0.33, Math.abs(velocity) * 0.25);
+      const duration = Math.max(0.28, fullTurnSec * (0.35 + 0.65 * dist)) * (1 - flick);
       await Promise.all([
-        animate(t, target, { duration: speed * Math.max(0.16, Math.min(0.55, 0.5 * dist + 0.1 - Math.min(0.2, Math.abs(velocity) * 0.1))), ease: [0.22, 1, 0.36, 1] }).finished,
-        animate(py, 0, { duration: speed * 0.35, ease: "easeOut" }).finished,
+        animate(t, target, { duration, ease: TURN_EASE }).finished,
+        animate(py, 0, { duration: Math.min(duration, 0.45), ease: "easeOut" }).finished,
       ]);
       if (!commit) {
         // Put the live reader back where the sheet says it is
@@ -302,7 +315,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       } else onTurned?.(dir);
       finish();
     },
-    [api, finish, onTurned, t, py, speed],
+    [api, finish, onTurned, t, py, fullTurnSec],
   );
 
   const turn = useCallback(
@@ -312,10 +325,10 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       if (effectiveMode === "none" || effectiveMode === "scroll") return;
       // Programmatic turn: add a little lift so the fold runs diagonally like a thumb flick
       const { H } = sizeRef.current;
-      animate(py, -H * 0.22, { duration: speed * 0.25, ease: "easeOut" });
+      animate(py, -H * 0.22, { duration: fullTurnSec * 0.4, ease: "easeOut" });
       await settle(dir, true);
     },
-    [beginTurn, settle, effectiveMode, py, speed],
+    [beginTurn, settle, effectiveMode, py, fullTurnSec],
   );
 
   /* ---------- gestures ----------
@@ -368,17 +381,19 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       if ((dir === 1 && !canNext) || (dir === -1 && !canPrev)) { gesture.current = null; return; }
       g.dragging = true;
       g.dir = dir;
+      setDragging(true);
       try { rootRef.current?.setPointerCapture(p.id); g.captured = true; } catch { /* fed from an iframe */ }
       g.began = true;
       g.starting = beginTurn(dir);
-      if (!(await g.starting)) { releaseCapture(g); gesture.current = null; return; }
+      if (!(await g.starting)) { releaseCapture(g); gesture.current = null; setDragging(false); return; }
     }
     if (!turning.current) return;
     const { W } = sizeRef.current;
-    // Enough travel that a mid-page swipe feels like dragging a real sheet, not a hair trigger
-    const travel = Math.max(W * 0.5, g.dir === 1 ? g.startX - W * 0.12 : W * 0.88 - g.startX);
+    // Corner displacement = pointer displacement × gain; the corner needs 2W to flip fully
+    const travel = (2 * W) / (W < 600 ? DRAG_GAIN_NARROW : DRAG_GAIN);
     t.set(Math.max(0, Math.min(1, g.dir === 1 ? (g.startX - p.x) / travel : 1 - (p.x - g.startX) / travel)));
-    py.set(dy * 0.5);
+    // Fold angle follows the finger's height 1:1
+    py.set(dy);
   };
 
   const gUp = async (p: GesturePoint) => {
@@ -386,6 +401,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     if (!g || g.id !== p.id) return;
     gesture.current = null;
     releaseCapture(g);
+    setDragging(false);
     const elapsed = performance.now() - g.startT;
     const dx = p.x - g.startX;
     const dy = p.y - g.startY;
@@ -403,7 +419,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     const tv = t.get();
     const towardCommit = g.dir === 1 ? -g.vx : g.vx; // px/ms in the direction that completes the turn
     const progress = g.dir === 1 ? tv : 1 - tv;
-    const commit = progress > 0.4 || (progress > 0.08 && towardCommit > 0.45);
+    const commit = progress > COMMIT_PROGRESS || (progress > 0.05 && towardCommit > COMMIT_VELOCITY);
     await settle(g.dir, commit, towardCommit);
   };
 
@@ -412,6 +428,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     if (!g || (p && g.id !== p.id)) return;
     gesture.current = null;
     releaseCapture(g);
+    setDragging(false);
     if (g.began) void g.starting?.then((ok) => { if (ok && turning.current) return settle(g.dir, false); });
   };
 
@@ -440,14 +457,14 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   }
 
   return (
-    <div ref={rootRef} className="relative h-full w-full select-none overflow-hidden" style={{ touchAction: effectiveMode === "scroll" ? "pan-y" : "none" }} {...rootPointer}>
+    <div ref={rootRef} className="relative h-full w-full select-none overflow-hidden" style={{ touchAction: effectiveMode === "scroll" ? "pan-y" : "none", cursor: dragging ? "grabbing" : undefined }} {...rootPointer}>
       <div className="absolute inset-0">{children}</div>
 
       {/* Edge zones: tap targets that keep edge touches away from the text; the middle belongs to the reader */}
       {showZones && (
         <>
-          <div className="absolute inset-y-0 left-0 z-20" style={{ width: `${edgeFraction() * 100}%`, cursor: canPrev ? "w-resize" : "default" }} aria-hidden />
-          <div className="absolute inset-y-0 right-0 z-20" style={{ width: `${edgeFraction() * 100}%`, cursor: canNext ? "e-resize" : "default" }} aria-hidden />
+          <div className="absolute inset-y-0 left-0 z-20" style={{ width: `${edgeFraction() * 100}%`, cursor: dragging ? "grabbing" : canPrev ? "grab" : "default" }} aria-hidden />
+          <div className="absolute inset-y-0 right-0 z-20" style={{ width: `${edgeFraction() * 100}%`, cursor: dragging ? "grabbing" : canNext ? "grab" : "default" }} aria-hidden />
         </>
       )}
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import lottie, { type AnimationItem } from "lottie-web";
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { createShelfDirector, type ShelfDirector } from "./shelf-director";
 
 // "Reading book" by Abdul Latif — LottieFiles, Lottie Simple License (free for commercial use).
 // Rendered with lottie-web's SVG renderer so individual layers can be driven by hand.
@@ -29,11 +30,28 @@ const NORMAL: Pt = [-6, -36];
 const FLIPS: Array<[number, number]> = [[60, 90], [120, 150]];
 
 // Playback is scheduled by hand instead of looping: only the two reading beats ever play
-// (never the 0–30 pick-up or 150–179 put-down), alternating in order because the book tilts
-// at 90, with short reading pauses and slight tempo changes between them.
+// (never the 0–30 pick-up or 150–179 put-down). Every beat starts and ends in the same pose
+// (arms down, book level, legs still), so pauses between them are just quiet reading.
 const BEATS: Array<[number, number]> = [[READ_START, 90], [90, READ_END]];
-const HOVER_SPEED = 1.25;
+const ARM_DAMP = 0.6; // the artist's hand sweep is a big "rub"; keep it a small adjustment
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// Replace every animated property under `node` with its value at `frame`
+function holdAt(node: any, frame: number) {
+  if (!node || typeof node !== "object") return;
+  if (node.a === 1 && Array.isArray(node.k)) {
+    let pick = node.k[0];
+    for (const k of node.k) if (k.t <= frame && k.s) pick = k;
+    if (pick?.s) {
+      node.a = 0;
+      node.k = pick.s.length === 1 ? pick.s[0] : pick.s;
+    }
+    return;
+  }
+  Object.values(node).forEach((child) => holdAt(child, frame));
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 const sub = (a: Pt, b: Pt): Pt => [a[0] - b[0], a[1] - b[1]];
@@ -74,10 +92,12 @@ export function ReaderIllustration({ className }: { className?: string }) {
   const spin = useRef({ offset: 0, velocity: 0, dragging: false, lastX: 0, frame: 0 });
   const globeGroup = useRef<SVGGElement | null>(null);
   const animRef = useRef<AnimationItem | null>(null);
-  // Playback scheduler: reading beats with short holds between them
-  const play = useRef({ visible: false, started: false, beat: 0, phase: "idle" as "idle" | "playing", base: 1, hover: 1, timer: 0 });
+  const director = useRef<ShelfDirector | null>(null);
+  const [shelf, setShelf] = useState<{ books: Array<{ index: number; name: string }>; held: number } | null>(null);
+  // Playback scheduler: reading beats with long quiet holds between them
+  const play = useRef({ visible: false, started: false, beat: 0, phase: "idle" as "idle" | "playing" | "away", base: 1, timer: 0, pendingBook: null as number | null });
 
-  const applySpeed = () => animRef.current?.setSpeed(play.current.base * play.current.hover);
+  const applySpeed = () => animRef.current?.setSpeed(play.current.base);
 
   const startSegment = (seg: [number, number]) => {
     const anim = animRef.current;
@@ -89,33 +109,43 @@ export function ReaderIllustration({ className }: { className?: string }) {
 
   const playNextBeat = () => {
     const p = play.current;
-    p.base = rand(0.85, 1.05);
+    p.base = rand(0.7, 0.85);
     const seg = BEATS[p.beat];
     p.beat = (p.beat + 1) % BEATS.length;
     startSegment(seg);
   };
 
-  const scheduleNext = () => {
+  const scheduleNext = (minMs = 6000, maxMs = 14000) => {
     const p = play.current;
     window.clearTimeout(p.timer);
     if (!p.visible) return;
-    // A reading pause between page turns — the book stays open and up the whole time
-    const hold = Math.random() < 0.8 ? rand(300, 1400) : rand(1800, 2800);
-    p.timer = window.setTimeout(playNextBeat, hold);
+    // A real reader sits still for a while between page turns
+    p.timer = window.setTimeout(playNextBeat, rand(minMs, maxMs));
   };
 
   const resume = () => {
     const p = play.current;
     const anim = animRef.current;
-    if (!anim) return;
+    if (!anim || p.phase === "away") return;
     if (!p.started) {
       p.started = true;
-      playNextBeat();
+      scheduleNext(2500, 6000);
     } else if (p.phase === "playing") {
       anim.play();
     } else {
       scheduleNext();
     }
+  };
+
+  // Trips start only from the rest pose; mid-beat clicks wait for the beat to finish
+  const requestBook = (index: number) => {
+    const d = director.current;
+    if (!d) return;
+    if (play.current.phase === "playing" && !d.busy()) {
+      play.current.pendingBook = index;
+      return;
+    }
+    d.request(index);
   };
 
   const suspend = () => {
@@ -151,9 +181,11 @@ export function ReaderIllustration({ className }: { className?: string }) {
     // Near (right) page group; the turning leaf drops behind it once past vertical
     let nearPage: SVGGElement | null = null;
     let pageOnTop = true;
+    let loaded = false;
 
     const onLoaded = () => {
-      if (!anim) return;
+      if (!anim || loaded) return;
+      loaded = true;
       // Park on the reading pose (frame 0 is the book lowered); beats start once we're on screen
       anim.goToAndStop(READ_START, true);
 
@@ -219,6 +251,31 @@ export function ReaderIllustration({ className }: { className?: string }) {
       };
       globeRaf = requestAnimationFrame(tickGlobe);
 
+      if (svg && people && room) {
+        director.current = createShelfDirector({
+          svg,
+          people,
+          room,
+          onBegin: () => {
+            window.clearTimeout(play.current.timer);
+            play.current.phase = "away";
+            // Idle always rests on this pose; pin it so the puppet fades in over an identical figure
+            anim?.goToAndStop(READ_START, true);
+          },
+          // Park the hidden figure on the reading frame the puppet returns to
+          onHidden: () => anim?.goToAndStop(READ_START, true),
+          onEnd: (held) => {
+            play.current.phase = "idle";
+            play.current.beat = 0;
+            setShelf((s) => (s ? { ...s, held } : s));
+            // Settle into the new book before the first page turn
+            if (play.current.visible) scheduleNext(4000, 8000);
+          },
+        });
+        const d = director.current;
+        if (d) setShelf({ books: d.books.map((b) => ({ index: b.index, name: b.name })), held: d.held() });
+      }
+
       setReady(true);
       if (play.current.visible) resume();
     };
@@ -251,26 +308,37 @@ export function ReaderIllustration({ className }: { className?: string }) {
     };
 
     const onComplete = () => {
+      if (play.current.phase === "away") return;
       play.current.phase = "idle";
+      const pending = play.current.pendingBook;
+      play.current.pendingBook = null;
+      if (pending !== null) {
+        director.current?.request(pending);
+        return;
+      }
       scheduleNext();
     };
 
-    // Fetch + patch the clip so beats can be chained: leg1 ends the reading section at 7° but
-    // starts it at 0°, so re-time it to the arms' 60-frame cadence (0° at 30/90/150).
+    // Patch the clip so every beat starts and ends in one rest pose: legs and the book's tilt are
+    // frozen at the reading frame (the artist rocked the leg and dipped the book every 2 s), and
+    // the hand sweep is damped so a page turn reads as a small gesture rather than a rub.
     fetch(SRC)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled || !host.current) return;
         try {
           const people = data.assets?.find((a: any) => a.id === "comp_0");
-          const leg = people?.layers?.find((l: any) => l.nm === "leg1");
-          const kfs: any[] = leg?.ks?.r?.k;
-          if (Array.isArray(kfs) && kfs.length > 1) {
-            const ease = { i: kfs[1].i, o: kfs[1].o };
-            leg.ks.r.k = [
-              { ...ease, t: 0, s: [7] }, { ...ease, t: 30, s: [0] }, { ...ease, t: 60, s: [7] }, { ...ease, t: 90, s: [0] },
-              { ...ease, t: 120, s: [7] }, { ...ease, t: 150, s: [0] }, { t: CLIP_FRAMES, s: [7] },
-            ];
+          const layer = (nm: string) => people?.layers?.find((l: any) => l.nm === nm);
+          for (const nm of ["leg1", "leg2"]) {
+            const l = layer(nm);
+            holdAt(l?.ks, READ_START);
+            holdAt(l?.shapes, READ_START);
+          }
+          const book = layer("book");
+          if (book?.ks?.r) book.ks.r = { a: 0, k: 0, ix: book.ks.r.ix };
+          for (const nm of ["arm1", "arm2"]) {
+            const kfs: any[] = layer(nm)?.ks?.r?.k;
+            if (Array.isArray(kfs)) for (const k of kfs) if (k.t >= READ_START && k.t <= READ_END && Array.isArray(k.s)) k.s = [k.s[0] * ARM_DAMP];
           }
         } catch {}
 
@@ -286,13 +354,17 @@ export function ReaderIllustration({ className }: { className?: string }) {
         anim.addEventListener("DOMLoaded", onLoaded);
         anim.addEventListener("enterFrame", onFrame);
         anim.addEventListener("complete", onComplete);
+        // Inline animationData can finish building the DOM inside loadAnimation(), before the listener exists
+        if (anim.isLoaded) onLoaded();
       })
-      .catch(() => {});
+      .catch((error) => console.error("Hero illustration failed to load", error));
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(globeRaf);
       window.clearTimeout(play.current.timer);
+      director.current?.destroy();
+      director.current = null;
       if (anim) {
         anim.removeEventListener("DOMLoaded", onLoaded);
         anim.removeEventListener("enterFrame", onFrame);
@@ -330,11 +402,17 @@ export function ReaderIllustration({ className }: { className?: string }) {
   };
   const overGlobe = (p: Pt | null) => !!p && Math.hypot(p[0] - GLOBE.cx, p[1] - GLOBE.cy) <= GLOBE.r * 1.1;
 
-  const [cursor, setCursor] = useState<"default" | "grab" | "grabbing">("default");
+  const [cursor, setCursor] = useState<"default" | "grab" | "grabbing" | "pointer">("default");
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const book = director.current?.bookAt(e.clientX, e.clientY);
+    if (book !== null && book !== undefined) {
+      requestBook(book);
+      return;
+    }
     const p = toComp(e);
-    if (!overGlobe(p) || e.button !== 0) return;
+    if (!overGlobe(p)) return;
     e.preventDefault();
     const s = spin.current;
     s.dragging = true;
@@ -367,7 +445,9 @@ export function ReaderIllustration({ className }: { className?: string }) {
     if (spin.current.dragging) return;
     const r = wrap.current?.getBoundingClientRect();
     if (!r) return;
-    setCursor(overGlobe(toComp(e)) ? "grab" : "default");
+    const book = director.current?.bookAt(e.clientX, e.clientY) ?? null;
+    director.current?.hover(book);
+    setCursor(book !== null ? "pointer" : overGlobe(toComp(e)) ? "grab" : "default");
     if (!reduced) {
       rawX.set(((e.clientX - r.left) / r.width) * 2 - 1);
       rawY.set(((e.clientY - r.top) / r.height) * 2 - 1);
@@ -376,13 +456,8 @@ export function ReaderIllustration({ className }: { className?: string }) {
   const onPointerLeave = () => {
     rawX.set(0);
     rawY.set(0);
-    play.current.hover = 1;
-    applySpeed();
+    director.current?.hover(null);
     if (!spin.current.dragging) setCursor("default");
-  };
-  const onPointerEnter = () => {
-    play.current.hover = HOVER_SPEED;
-    applySpeed();
   };
 
   return (
@@ -390,11 +465,10 @@ export function ReaderIllustration({ className }: { className?: string }) {
       ref={wrap}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
       style={{ cursor, aspectRatio: `${VIEW.w} / ${VIEW.h}`, touchAction: "pan-y" }}
       className={cn("relative select-none [perspective:1200px]", className)}
-      aria-label="Illustration of a person reading. Drag the globe to spin it."
+      aria-label="Illustration of a person reading. Click a book on the shelf and they'll fetch it; drag the globe to spin it."
       role="img"
     >
       <motion.div
@@ -408,6 +482,20 @@ export function ReaderIllustration({ className }: { className?: string }) {
       >
         <div ref={host} className="h-full w-full [&_svg]:h-full [&_svg]:w-full" />
       </motion.div>
+      {shelf && (
+        <div className="sr-only">
+          {shelf.books.map((b, i) => (
+            <button
+              key={b.index}
+              type="button"
+              disabled={b.index === shelf.held}
+              onClick={() => requestBook(b.index)}
+            >
+              Fetch the {b.name} book ({i + 1} of {shelf.books.length} on the shelf)
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

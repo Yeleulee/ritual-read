@@ -65,9 +65,14 @@ export interface ReaderSettings {
   justify: boolean;
   hyphenation: boolean;
   pageTurn: PageTurnMode;
+  turnSpeed: TurnSpeed;
   brightness: number; // 0.3 – 1
   margins: "narrow" | "normal" | "wide";
 }
+
+export type TurnSpeed = "slow" | "normal" | "fast";
+/** Full-page turn duration in seconds for a tap or key press; drags scale from the remaining distance. */
+export const TURN_SPEED_SECONDS: Record<TurnSpeed, number> = { slow: 1.15, normal: 0.8, fast: 0.5 };
 
 // Apple Books' 100% size is ~17px on phones and ~19px on larger screens
 const defaultFontSize = () => (typeof window !== "undefined" && window.innerWidth < 640 ? 17 : 19);
@@ -84,6 +89,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   justify: true,
   hyphenation: true,
   pageTurn: "curl",
+  turnSpeed: "normal",
   brightness: 1,
   margins: "normal",
 };
