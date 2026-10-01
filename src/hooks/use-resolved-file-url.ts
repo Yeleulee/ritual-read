@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getBookFile } from '@/lib/fileCache';
+import { getBookFile, LOCAL_FILE_PREFIX } from '@/lib/fileCache';
 
 interface UseResolvedFileUrlResult {
   url?: string;
@@ -34,21 +34,20 @@ export function useResolvedFileUrl(fileUrl?: string): UseResolvedFileUrlResult {
         return;
       }
 
-      // Resolve from Supabase Storage
-      if (fileUrl.startsWith('supabase://books/')) {
-        console.log('Resolving Supabase storage URL');
+      // Resolve from Supabase Storage or this device's IndexedDB
+      if (fileUrl.startsWith('supabase://books/') || fileUrl.startsWith(LOCAL_FILE_PREFIX)) {
+        const local = fileUrl.startsWith(LOCAL_FILE_PREFIX);
         setResolving(true);
         try {
-          const signedUrl = await getBookFile(fileUrl);
-          if (!signedUrl) {
-            throw new Error('Could not get signed URL for stored file. File may not exist or access denied.');
+          const resolved = await getBookFile(fileUrl);
+          if (!resolved) {
+            throw new Error(local
+              ? 'This book was stored only on this device and its file is no longer here. Remove it and import the file again.'
+              : 'Could not get signed URL for stored file. File may not exist or access denied.');
           }
-          if (!cancelled) {
-            console.log('Successfully resolved Supabase URL');
-            setUrl(signedUrl);
-          }
+          if (!cancelled) setUrl(resolved);
         } catch (e: any) {
-          console.error('Error resolving Supabase URL:', e);
+          console.error('Error resolving stored file:', e);
           if (!cancelled) {
             setError(e?.message || 'Failed to load stored file');
           }
@@ -58,10 +57,9 @@ export function useResolvedFileUrl(fileUrl?: string): UseResolvedFileUrlResult {
         return;
       }
 
-      // Legacy IndexedDB support (migrate to Supabase)
+      // Older local-only entries have no file behind them any more
       if (fileUrl.startsWith('idb://')) {
-        console.warn('Legacy IndexedDB URL detected');
-        setError('Please re-import this book to use cloud storage.');
+        setError('This book\'s file is no longer available on this device. Remove it and import the file again.');
         setResolving(false);
         return;
       }

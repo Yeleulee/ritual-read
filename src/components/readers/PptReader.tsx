@@ -1,309 +1,203 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import JSZip from 'jszip';
-import { XMLParser } from 'fast-xml-parser';
-import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
-import { getCachedFile, cacheFile } from '@/lib/indexedDBCache';
+import { useEffect, useRef, useState } from "react";
+import JSZip from "jszip";
+import type { ReaderTheme } from "@/lib/reader-themes";
+import { errorText } from "@/lib/epub-repair";
+import type { PageFace, ReaderApi, RelocatedInfo, TocItem } from "./EpubReader";
+
+/* PPTX slides rendered one at a time. Exposes the shared ReaderApi so the shell's page
+   turner, footer scrubber, keyboard shortcuts and saved position work like every other format. */
 
 interface Slide {
   number: number;
+  title: string;
+  paragraphs: string[];
   imageUrl?: string;
-  title?: string;
-  content?: string[];
 }
 
 interface PptReaderProps {
   fileUrl: string;
-  page?: number;
-  onPageCount?: (count: number) => void;
+  theme: ReaderTheme;
+  initialLocation?: string | null; // slide number as string
+  onReady?: (api: ReaderApi) => void;
+  onToc?: (toc: TocItem[]) => void;
+  onRelocated?: (info: RelocatedInfo) => void;
   onPageText?: (text: string) => void;
+  onTap?: () => void;
 }
 
-export function PptReader({ fileUrl, page = 1, onPageCount, onPageText }: PptReaderProps) {
+const slideNumber = (name: string) => Number(/slide(\d+)\.xml$/i.exec(name)?.[1] ?? 0);
+
+async function parsePptx(data: ArrayBuffer): Promise<Slide[]> {
+  const zip = await JSZip.loadAsync(data);
+  const names = Object.keys(zip.files)
+    .filter((n) => /^ppt\/slides\/slide\d+\.xml$/i.test(n))
+    .sort((a, b) => slideNumber(a) - slideNumber(b));
+  if (!names.length) throw new Error("no slides found in this presentation");
+
+  const parser = new DOMParser();
+  const slides: Slide[] = [];
+  for (const [i, name] of names.entries()) {
+    const xml = await zip.file(name)!.async("text");
+    const doc = parser.parseFromString(xml, "application/xml");
+    // Each <a:p> is one paragraph; runs inside it are joined
+    const paragraphs: string[] = [];
+    for (const p of Array.from(doc.getElementsByTagName("a:p"))) {
+      const text = Array.from(p.getElementsByTagName("a:t")).map((t) => t.textContent ?? "").join("").trim();
+      if (text) paragraphs.push(text);
+    }
+    const title = paragraphs.shift() ?? `Slide ${i + 1}`;
+
+    // Pictures are linked from the slide's relationship file, not by position in ppt/media
+    let imageUrl: string | undefined;
+    const relsName = name.replace(/^ppt\/slides\//, "ppt/slides/_rels/") + ".rels";
+    const rels = zip.file(relsName);
+    if (rels) {
+      const relDoc = parser.parseFromString(await rels.async("text"), "application/xml");
+      const image = Array.from(relDoc.getElementsByTagName("Relationship")).find((r) => /\/image$/i.test(r.getAttribute("Type") ?? ""));
+      const target = image?.getAttribute("Target");
+      if (target) {
+        const path = target.startsWith("../") ? `ppt/${target.slice(3)}` : `ppt/slides/${target}`;
+        const file = zip.file(path);
+        if (file) imageUrl = URL.createObjectURL(await file.async("blob"));
+      }
+    }
+    slides.push({ number: i + 1, title, paragraphs, imageUrl });
+  }
+  return slides;
+}
+
+export function PptReader({ fileUrl, theme, initialLocation, onReady, onToc, onRelocated, onPageText, onTap }: PptReaderProps) {
   const [slides, setSlides] = useState<Slide[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
-  const [currentSlide, setCurrentSlide] = useState(page - 1);
-  const [useIframe, setUseIframe] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [index, setIndex] = useState(() => Math.max(0, (parseInt(initialLocation ?? "1", 10) || 1) - 1));
+  const indexRef = useRef(index);
+  const slidesRef = useRef<Slide[]>([]);
+  const slideRef = useRef<HTMLDivElement>(null);
+  const cb = useRef({ onReady, onToc, onRelocated, onPageText, onTap });
+  cb.current = { onReady, onToc, onRelocated, onPageText, onTap };
+  const initialApplied = useRef(initialLocation ?? null);
 
-  const extractPPTX = useCallback(async (url: string) => {
-    try {
-      console.log('Loading PPTX file:', url);
-      
-      // Check cache first
-      const cacheKey = `pptx-${url}`;
-      const cachedBlob = await getCachedFile(cacheKey);
-      
-      let arrayBuffer: ArrayBuffer;
-      if (cachedBlob) {
-        console.log('Using cached PPTX file');
-        arrayBuffer = await cachedBlob.arrayBuffer();
-      } else {
-        console.log('Fetching PPTX file');
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Failed to load file');
-        
-        const blob = await response.blob();
-        arrayBuffer = await blob.arrayBuffer();
-        
-        // Cache for faster future access
-        await cacheFile(cacheKey, blob, 'pptx');
-      }
-
-      const zip = await JSZip.loadAsync(arrayBuffer);
-      const parser = new XMLParser({
-        ignoreAttributes: false,
-        attributeNamePrefix: '@_',
-      });
-
-      // Get presentation structure
-      const slidesFolder = zip.folder('ppt/slides');
-      if (!slidesFolder) {
-        throw new Error('Invalid PPTX structure');
-      }
-
-      const slideFiles = Object.keys(zip.files)
-        .filter(name => name.startsWith('ppt/slides/slide') && name.endsWith('.xml'))
-        .sort();
-
-      console.log(`Found ${slideFiles.length} slides`);
-      
-      const extractedSlides: Slide[] = [];
-
-      // Extract slide content and images
-      for (let i = 0; i < slideFiles.length; i++) {
-        const slideFile = slideFiles[i];
-        const slideXml = await zip.file(slideFile)?.async('text');
-        
-        if (!slideXml) continue;
-
-        const slideData = parser.parse(slideXml);
-        
-        // Extract text content from slide
-        const texts: string[] = [];
-        let title = '';
-        
-        const extractText = (obj: any): void => {
-          if (!obj) return;
-          
-          if (typeof obj === 'string') {
-            texts.push(obj);
-            return;
-          }
-          
-          if (obj['a:t']) {
-            const text = obj['a:t'];
-            texts.push(text);
-            if (!title) title = text;
-          }
-          
-          if (Array.isArray(obj)) {
-            obj.forEach(extractText);
-          } else if (typeof obj === 'object') {
-            Object.values(obj).forEach(extractText);
-          }
-        };
-
-        extractText(slideData);
-
-        // Try to find slide image in media folder
-        const mediaFolder = zip.folder('ppt/media');
-        let imageUrl: string | undefined;
-        
-        if (mediaFolder) {
-          const imageFiles = Object.keys(zip.files)
-            .filter(name => name.startsWith('ppt/media/') && /\.(jpg|jpeg|png|gif)$/i.test(name));
-          
-          // Try to match image to slide number
-          if (imageFiles.length > i) {
-            const imageFile = zip.file(imageFiles[i]);
-            if (imageFile) {
-              const imageBlob = await imageFile.async('blob');
-              imageUrl = URL.createObjectURL(imageBlob);
-            }
-          }
-        }
-
-        extractedSlides.push({
-          number: i + 1,
-          title: title || `Slide ${i + 1}`,
-          content: texts,
-          imageUrl,
-        });
-      }
-
-      if (extractedSlides.length === 0) {
-        throw new Error('No slides found');
-      }
-
-      setSlides(extractedSlides);
-      onPageCount?.(extractedSlides.length);
-      setLoading(false);
-      
-      // Set initial slide text
-      if (extractedSlides[currentSlide]) {
-        const slideText = [
-          extractedSlides[currentSlide].title,
-          ...(extractedSlides[currentSlide].content || [])
-        ].join('\n');
-        onPageText?.(slideText);
-      }
-
-    } catch (err) {
-      console.error('Failed to extract PPTX:', err);
-      setError('Could not parse PowerPoint file. Using fallback viewer...');
-      setUseIframe(true);
-      setLoading(false);
-    }
-  }, [currentSlide, onPageCount, onPageText]);
-
-  useEffect(() => {
-    if (fileUrl) {
-      setLoading(true);
-      setError(null);
-      
-      // Check if it's a .ppt (old format) or .pptx
-      const isPpt = fileUrl.toLowerCase().endsWith('.ppt');
-      
-      if (isPpt) {
-        // Old .ppt format - use iframe viewer
-        setUseIframe(true);
-        setLoading(false);
-      } else {
-        // Modern .pptx format - try to extract
-        extractPPTX(fileUrl);
-      }
-    }
-  }, [fileUrl, extractPPTX]);
-
-  useEffect(() => {
-    if (page && page > 0 && page <= slides.length) {
-      setCurrentSlide(page - 1);
-      
-      // Update slide text for AI context
-      if (slides[page - 1]) {
-        const slideText = [
-          slides[page - 1].title,
-          ...(slides[page - 1].content || [])
-        ].join('\n');
-        onPageText?.(slideText);
-      }
-    }
-  }, [page, slides, onPageText]);
-
-  const handlePrevious = () => {
-    if (currentSlide > 0) {
-      setCurrentSlide(currentSlide - 1);
-    }
+  const emit = (i: number) => {
+    const list = slidesRef.current;
+    const n = list.length;
+    const slide = list[i];
+    if (slide) cb.current.onPageText?.([slide.title, ...slide.paragraphs].join("\n"));
+    cb.current.onRelocated?.({
+      location: String(i + 1),
+      percent: n > 1 ? i / (n - 1) : 0,
+      page: i + 1,
+      totalPages: n,
+      chapter: slide ? { label: slide.title, href: String(i + 1) } : undefined,
+      pagesLeftInChapter: 0,
+      atStart: i <= 0,
+      atEnd: i >= n - 1,
+    });
+  };
+  const goTo = (i: number) => {
+    const n = slidesRef.current.length;
+    if (!n) return;
+    const clamped = Math.min(Math.max(0, i), n - 1);
+    indexRef.current = clamped;
+    setIndex(clamped);
+    emit(clamped);
   };
 
-  const handleNext = () => {
-    if (currentSlide < slides.length - 1) {
-      setCurrentSlide(currentSlide + 1);
-    }
-  };
-
-  const handleDownload = () => {
-    const link = document.createElement('a');
-    link.href = fileUrl;
-    link.download = 'presentation.pptx';
-    link.click();
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="text-muted-foreground">Loading presentation...</p>
-        </div>
-      </div>
-    );
+  const apiRef = useRef<ReaderApi>();
+  if (!apiRef.current) {
+    apiRef.current = {
+      async next() {
+        if (indexRef.current >= slidesRef.current.length - 1) return false;
+        goTo(indexRef.current + 1);
+        return true;
+      },
+      async prev() {
+        if (indexRef.current <= 0) return false;
+        goTo(indexRef.current - 1);
+        return true;
+      },
+      async display(target) {
+        const n = slidesRef.current.length;
+        if (typeof target === "number") goTo(Math.round(Math.min(1, Math.max(0, target)) * (n - 1)));
+        else if (/^\d+$/.test(target)) goTo(parseInt(target, 10) - 1);
+      },
+      currentLocation() {
+        return String(indexRef.current + 1);
+      },
+      visibleText() {
+        const s = slidesRef.current[indexRef.current];
+        return s ? [s.title, ...s.paragraphs].join("\n") : "";
+      },
+      async snapshot() {
+        const el = slideRef.current;
+        if (!el) return null;
+        const clone = el.cloneNode(true) as PageFace;
+        clone.style.position = "absolute";
+        clone.style.inset = "0";
+        return clone;
+      },
+    };
   }
 
-  if (useIframe) {
-    // Fallback to Office Online viewer or Google Docs viewer
-    const viewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
-    
-    return (
-      <div className="h-full flex flex-col">
-        {error && (
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-3 text-sm">
-            {error}
-          </div>
-        )}
-        <iframe
-          src={viewerUrl}
-          className="w-full flex-1 border-0"
-          title="PowerPoint Presentation"
-        />
-        <div className="p-2 border-t bg-muted/50 flex justify-center">
-          <Button size="sm" variant="outline" onClick={handleDownload}>
-            <Download className="w-4 h-4 mr-2" />
-            Download
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    let cancelled = false;
+    let urls: string[] = [];
+    setStatus("loading");
+    setError(null);
+    (async () => {
+      const resp = await fetch(fileUrl);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const parsed = await parsePptx(await resp.arrayBuffer());
+      if (cancelled) return;
+      urls = parsed.map((s) => s.imageUrl).filter((u): u is string => !!u);
+      slidesRef.current = parsed;
+      setSlides(parsed);
+      cb.current.onToc?.(parsed.map((s) => ({ label: s.title, href: String(s.number) })));
+      setStatus("ready");
+      goTo(indexRef.current);
+      cb.current.onReady?.(apiRef.current!);
+    })().catch((e) => {
+      if (cancelled) return;
+      console.error("PPTX load error", e);
+      setStatus("error");
+      setError(`Couldn't open this presentation: ${errorText(e)}.`);
+    });
+    return () => {
+      cancelled = true;
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileUrl]);
 
-  const currentSlideData = slides[currentSlide];
+  useEffect(() => {
+    if (status !== "ready" || !initialLocation || initialLocation === initialApplied.current) return;
+    initialApplied.current = initialLocation;
+    goTo((parseInt(initialLocation, 10) || 1) - 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLocation, status]);
 
+  const slide = slides[index];
   return (
-    <div className="h-full flex flex-col bg-background" ref={containerRef}>
-      {/* Slide Display */}
-      <div className="flex-1 flex items-center justify-center p-4 overflow-auto">
-        <div className="max-w-4xl w-full">
-          {currentSlideData?.imageUrl ? (
-            <img
-              src={currentSlideData.imageUrl}
-              alt={currentSlideData.title || `Slide ${currentSlideData.number}`}
-              className="w-full h-auto rounded-lg shadow-lg"
-            />
-          ) : (
-            <div className="bg-card border rounded-lg p-8 shadow-lg">
-              <h2 className="text-3xl font-bold mb-6 text-foreground">
-                {currentSlideData?.title || `Slide ${currentSlideData?.number}`}
-              </h2>
-              <div className="space-y-3">
-                {currentSlideData?.content?.map((text, idx) => (
-                  <p key={idx} className="text-lg text-muted-foreground leading-relaxed">
-                    {text}
-                  </p>
-                ))}
-              </div>
+    <div className="relative h-full w-full" style={{ background: theme.bg, color: theme.fg }} onClick={() => cb.current.onTap?.()}>
+      {status === "error" ? (
+        <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm">{error}</div>
+      ) : status === "loading" ? (
+        <div className="absolute inset-0 flex items-center justify-center text-sm" style={{ color: theme.muted }}>Opening presentation…</div>
+      ) : slide ? (
+        <div ref={slideRef} className="absolute inset-0 flex items-center justify-center overflow-hidden px-6 pb-24 pt-20 sm:px-12" style={{ background: theme.bg, color: theme.fg }}>
+          <div className="flex max-h-full w-full max-w-4xl flex-col gap-6 overflow-hidden">
+            {slide.imageUrl && <img src={slide.imageUrl} alt="" className="mx-auto max-h-[55vh] w-auto max-w-full rounded-md object-contain shadow-lg" draggable={false} />}
+            <div className="min-h-0 overflow-hidden">
+              <h2 className="font-serif text-2xl leading-tight sm:text-3xl">{slide.title}</h2>
+              {slide.paragraphs.length > 0 && (
+                <ul className="mt-4 space-y-2 text-base leading-relaxed sm:text-lg" style={{ color: theme.muted }}>
+                  {slide.paragraphs.map((p, i) => <li key={i}>{p}</li>)}
+                </ul>
+              )}
             </div>
-          )}
+          </div>
         </div>
-      </div>
-
-      {/* Navigation Controls */}
-      <div className="border-t bg-muted/50 p-3 flex items-center justify-between">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handlePrevious}
-          disabled={currentSlide === 0}
-        >
-          <ChevronLeft className="w-4 h-4 mr-1" />
-          Previous
-        </Button>
-
-        <div className="text-sm font-medium">
-          Slide {currentSlide + 1} of {slides.length}
-        </div>
-
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleNext}
-          disabled={currentSlide === slides.length - 1}
-        >
-          Next
-          <ChevronRight className="w-4 h-4 ml-1" />
-        </Button>
-      </div>
+      ) : null}
     </div>
   );
 }

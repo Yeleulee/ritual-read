@@ -3,12 +3,13 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { ArrowRight } from "lucide-react";
 import { useReducedMotion } from "framer-motion";
 import { ReaderIllustration } from "./ReaderIllustration";
+import { FORMAT_LABELS } from "@/lib/book-formats";
 
 const rise = (ms: number): CSSProperties => ({ "--rise-delay": `${ms}ms` } as CSSProperties);
 
 const stats = [
   { n: "20", unit: "min", body: "A daily goal small enough to keep. Big enough to finish books." },
-  { n: "3", unit: "formats", body: "EPUB, PDF and plain text — dropped in, shelved, remembered." },
+  { n: String(FORMAT_LABELS.length), unit: "formats", body: "EPUB, PDF, plain text, Word and PowerPoint — dropped in, shelved, remembered." },
   { n: "0", unit: "feeds", body: "No recommendations, no likes, no timeline. Just the page you're on." },
 ];
 
@@ -151,7 +152,7 @@ export function ReadingHero() {
             className="animate-rise mt-12 md:mt-16 flex flex-wrap items-center justify-center gap-x-14 gap-y-4 border-t border-white/20 pt-6 font-mono text-[12px] uppercase tracking-[0.16em] text-white/70"
             style={rise(360)}
           >
-            {["EPUB", "PDF", "TXT"].map((t) => (
+            {FORMAT_LABELS.map((t) => (
               <li key={t}>{t}</li>
             ))}
           </ul>

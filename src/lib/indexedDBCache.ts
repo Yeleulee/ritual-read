@@ -9,6 +9,8 @@ interface CacheDB extends DBSchema {
       timestamp: number;
       fileType: string;
       size: number;
+      /** Pinned entries are the only copy of a locally stored book; they never expire. */
+      pinned?: boolean;
     };
   };
   metadata: {
@@ -43,7 +45,7 @@ async function getDB() {
   return dbPromise;
 }
 
-export async function cacheFile(id: string, blob: Blob, fileType: string): Promise<void> {
+export async function cacheFile(id: string, blob: Blob, fileType: string, options: { pinned?: boolean } = {}): Promise<void> {
   try {
     const db = await getDB();
     await db.put('files', {
@@ -52,10 +54,22 @@ export async function cacheFile(id: string, blob: Blob, fileType: string): Promi
       timestamp: Date.now(),
       fileType,
       size: blob.size,
+      pinned: options.pinned || undefined,
     });
     console.log(`File cached: ${id}, size: ${blob.size} bytes`);
   } catch (error) {
     console.error('Failed to cache file:', error);
+    // Pinned entries have no other copy, so the caller must know the write failed
+    if (options.pinned) throw error;
+  }
+}
+
+export async function deleteCachedFile(id: string): Promise<void> {
+  try {
+    const db = await getDB();
+    await db.delete('files', id);
+  } catch (error) {
+    console.error('Failed to delete cached file:', error);
   }
 }
 
@@ -71,7 +85,7 @@ export async function getCachedFile(id: string): Promise<Blob | null> {
 
     // Check if cache is expired
     const age = Date.now() - cached.timestamp;
-    if (age > CACHE_EXPIRY) {
+    if (!cached.pinned && age > CACHE_EXPIRY) {
       console.log(`Cache expired for: ${id}`);
       await db.delete('files', id);
       return null;
@@ -126,7 +140,7 @@ export async function clearExpiredCache(): Promise<void> {
     // Clear expired files
     const files = await db.getAll('files');
     for (const file of files) {
-      if (now - file.timestamp > CACHE_EXPIRY) {
+      if (!file.pinned && now - file.timestamp > CACHE_EXPIRY) {
         await db.delete('files', file.id);
       }
     }
@@ -159,7 +173,9 @@ export async function getCacheSize(): Promise<number> {
 export async function clearCache(): Promise<void> {
   try {
     const db = await getDB();
-    await db.clear('files');
+    // Keep pinned files: they are locally stored books, not a re-downloadable cache
+    const files = await db.getAll('files');
+    for (const file of files) if (!file.pinned) await db.delete('files', file.id);
     await db.clear('metadata');
     console.log('Cache cleared');
   } catch (error) {

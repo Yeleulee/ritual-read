@@ -11,7 +11,7 @@ const features = [
   {
     n: "01",
     title: "A library that travels",
-    body: "Drop in EPUB, PDF or plain text. Covers, progress and last-read position sync across devices, or stay entirely on-device — your call.",
+    body: "Drop in EPUB, PDF, plain text, Word or PowerPoint. Covers, progress and last-read position sync across devices, or stay entirely on-device — your call.",
     meta: "Import · Sync · Local-first",
   },
   {

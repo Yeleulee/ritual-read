@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth, DEV_AUTH_BYPASS } from './use-auth';
 import { useToast } from './use-toast';
-import { saveBookFile } from '@/lib/fileCache';
+import { removeBookFile, saveBookFile, saveLocalBookFile } from '@/lib/fileCache';
 
 export interface BookItem {
   id: string;
@@ -102,33 +102,53 @@ export const useBooks = () => {
 
   // Add a new book
   const addBook = async ({ file, storedUrl, ...newBook }: Omit<BookItem, 'id'> & { file?: File; storedUrl?: Promise<string> }) => {
-    if (isLocal) {
-      console.log('No user, saving book locally');
+    const newId = () => (globalThis as any).crypto?.randomUUID?.() ?? Date.now().toString();
+
+    // A blob: URL dies with the tab, so a book kept on this device stores its file in IndexedDB instead
+    const keepFileLocally = async (id: string): Promise<string | undefined> => {
+      let blob: Blob | undefined = file;
+      if (!blob && newBook.fileUrl?.startsWith('blob:')) {
+        try {
+          blob = await (await fetch(newBook.fileUrl)).blob();
+        } catch {
+          blob = undefined;
+        }
+      }
+      if (!blob) return newBook.fileUrl && !newBook.fileUrl.startsWith('blob:') ? newBook.fileUrl : undefined;
+      try {
+        return await saveLocalBookFile(blob, id, newBook.fileType ?? 'bin');
+      } catch (error) {
+        console.warn('Could not store the file on this device; it will only open in this session', error);
+        return newBook.fileUrl;
+      }
+    };
+
+    const saveLocally = async (description: string): Promise<BookItem> => {
+      const id = newId();
       const localBook: BookItem = {
-        id: (globalThis as any).crypto?.randomUUID?.() ?? Date.now().toString(),
+        id,
         title: newBook.title,
         author: newBook.author,
         progress: newBook.progress || 0,
         totalPages: newBook.totalPages || 0,
         coverUrl: newBook.coverUrl,
         content: newBook.content,
-        fileUrl: newBook.fileUrl,
+        fileUrl: await keepFileLocally(id),
         fileType: newBook.fileType,
         lastRead: newBook.lastRead ?? new Date(),
       };
-
       setBooks((prev) => {
         const next = [localBook, ...prev];
         writeLocalBooks(next);
         return next;
       });
-
-      toast({
-        title: 'Book Saved Locally',
-        description: 'Your book was saved on this device.',
-      });
-
+      toast({ title: 'Book Saved Locally', description });
       return localBook;
+    };
+
+    if (isLocal) {
+      console.log('No user, saving book locally');
+      return saveLocally('Your book was saved on this device.');
     }
 
     console.log('Adding book for user:', user.id, 'Book:', newBook.title);
@@ -141,7 +161,13 @@ export const useBooks = () => {
       // Usually the upload started when the file was picked; otherwise start it now.
       if (storedUrl || file || (newBook.fileUrl && newBook.fileUrl.startsWith('blob:'))) {
         try {
-          fileUrl = await (storedUrl ?? saveBookFile(file ?? (await (await fetch(newBook.fileUrl!)).blob()), user.id));
+          const upload = async () => {
+            if (file) return saveBookFile(file, user.id);
+            // Only a blob: URL is left; rebuild a File so the validator knows the format
+            const blob = await (await fetch(newBook.fileUrl!)).blob();
+            return saveBookFile(new File([blob], `${newBook.title || 'book'}.${newBook.fileType ?? 'bin'}`, { type: blob.type }), user.id);
+          };
+          fileUrl = await (storedUrl ?? upload());
         } catch (uploadError) {
           const reason = uploadError instanceof Error ? uploadError.message : 'storage error';
           throw new Error(`Couldn't upload the file: ${reason}. Check your connection and try again.`);
@@ -183,32 +209,9 @@ export const useBooks = () => {
 
         // If table doesn't exist or any other error, save locally as fallback
         console.warn('Database error, saving locally:', error);
-
-        const localBook: BookItem = {
-          id: (globalThis as any).crypto?.randomUUID?.() ?? Date.now().toString(),
-          title: newBook.title,
-          author: newBook.author,
-          progress: newBook.progress || 0,
-          totalPages: newBook.totalPages || 0,
-          coverUrl: newBook.coverUrl,
-          content: newBook.content,
-          fileUrl: newBook.fileUrl,
-          fileType: newBook.fileType,
-          lastRead: newBook.lastRead ?? new Date(),
-        };
-
-        setBooks((prev) => {
-          const next = [localBook, ...prev];
-          writeLocalBooks(next);
-          return next;
-        });
-
-        toast({
-          title: 'Book Saved Locally',
-          description: 'Your book was saved on this device. It will sync to the cloud when the database is ready.',
-        });
-
-        return localBook;
+        // The uploaded copy has no row pointing at it; don't leave it in the bucket
+        if (fileUrl?.startsWith('supabase://')) removeBookFile(fileUrl).catch(() => {});
+        return saveLocally('Your book was saved on this device. It will sync to the cloud when the database is ready.');
       }
 
       // Immediately update UI for better UX
@@ -311,6 +314,7 @@ export const useBooks = () => {
 
   // Remove a book
   const removeBook = async (bookId: string) => {
+    const storedUrl = books.find((b) => b.id === bookId)?.fileUrl;
     if (isLocal) {
       // Fallback: remove from local cache only
       setBooks((prev) => {
@@ -318,6 +322,7 @@ export const useBooks = () => {
         writeLocalBooks(next);
         return next;
       });
+      if (storedUrl) removeBookFile(storedUrl).catch(() => {});
       toast({
         title: 'Removed from device',
         description: 'The book was removed from your local library.',
@@ -355,13 +360,7 @@ export const useBooks = () => {
       }
 
       // Row is gone; drop the uploaded file too so storage doesn't accumulate orphans
-      const storedUrl = books.find((b) => b.id === bookId)?.fileUrl;
-      if (storedUrl?.startsWith('supabase://books/')) {
-        const { error: rmError } = await supabase.storage
-          .from('books')
-          .remove([storedUrl.replace('supabase://books/', '')]);
-        if (rmError) console.warn('Book row deleted but file removal failed:', rmError);
-      }
+      if (storedUrl) await removeBookFile(storedUrl);
 
       setBooks((prev) => {
         const next = prev.filter((b) => b.id !== bookId);
@@ -389,11 +388,17 @@ export const useBooks = () => {
   // Returns null in local mode, where files stay in the browser.
   const prepareUpload = (file: File): Promise<string> | null => (isLocal ? null : saveBookFile(file, user.id));
 
+  // The dialog was cancelled (or the file swapped) after an upload began: delete the stored copy
+  const discardUpload = (storedUrl: Promise<string>) => {
+    storedUrl.then((url) => removeBookFile(url)).catch(() => {});
+  };
+
   return {
     books,
     loading,
     addBook,
     prepareUpload,
+    discardUpload,
     updateBookProgress,
     removeBook,
     loadBooks,

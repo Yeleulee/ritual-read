@@ -1,43 +1,31 @@
 import { supabase } from '@/integrations/supabase/client';
+import { extensionOf, mimeForFormat, validateBookFile } from '@/lib/book-formats';
 
 export const BOOKS_BUCKET = 'books';
 
-const MAX_FILE_MB = 100;
-const ALLOWED_TYPES = [
-  'application/pdf',
-  'application/epub+zip',
-  'application/octet-stream',
-];
-
-export function validateBookFile(file: File) {
-  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-  const isEpub = file.type === 'application/epub+zip' || file.name.toLowerCase().endsWith('.epub');
-  if (!isPdf && !isEpub && !ALLOWED_TYPES.includes(file.type)) {
-    throw new Error('Unsupported file type. Please upload PDF or EPUB.');
-  }
-  const sizeMb = file.size / (1024 * 1024);
-  if (sizeMb > MAX_FILE_MB) throw new Error(`File too large. Max ${MAX_FILE_MB}MB`);
-}
+// Format whitelist and size cap live in @/lib/book-formats so every upload path agrees
+export { validateBookFile };
 
 function slugify(input: string) {
   return input.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
 }
 
 export async function uploadBookFile(userId: string, file: File, title: string) {
-  validateBookFile(file);
-  const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+  const format = validateBookFile(file);
+  const ext = extensionOf(file.name) || format;
   const key = `${userId}/files/${crypto.randomUUID()}-${slugify(title || file.name)}.${ext}`;
+  const contentType = mimeForFormat(format);
 
   const { error } = await supabase.storage.from(BOOKS_BUCKET).upload(key, file, {
     upsert: false,
-    contentType: file.type || undefined,
+    contentType,
   });
   if (error) throw error;
 
   return {
     bucket: BOOKS_BUCKET,
     storagePath: key,
-    mimeType: file.type || undefined,
+    mimeType: contentType,
     sizeBytes: file.size,
   };
 }

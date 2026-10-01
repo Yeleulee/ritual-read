@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Highlight } from "@/hooks/use-reader-store";
 import { fontFaceCss, HIGHLIGHT_COLORS, MEASURE_EM, SPREAD_MIN_WIDTH, themeToEpubRules, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
+import { errorText, preflightEpub } from "@/lib/epub-repair";
 
 /** A still image of the current page for the page-turn sheet: a canvas, or a detached DOM
     clone that looks identical once attached. `rrReady` (optional) resolves when it has painted. */
@@ -79,6 +80,10 @@ interface EpubReaderProps {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+const OPEN_TIMEOUT_MS = 30_000;
+const withTimeout = <T,>(p: Promise<T>, ms: number, label: string) =>
+  Promise.race([p, new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error(`Timed out: ${label}`)), ms))]);
+
 const stripHash = (href = "") => href.split("#")[0];
 const basename = (href = "") => stripHash(href).split("/").pop() ?? "";
 
@@ -154,13 +159,20 @@ export const EpubReader = ({
     const book = bookRef.current;
     if (!book || !loc?.start) return;
     const cfi: string = loc.start.cfi;
-    const total = book.locations?.length?.() || 0;
+    let total = 0;
     let percent = 0;
     let page = 1;
-    if (total > 0) {
-      percent = Number(book.locations.percentageFromCfi(cfi)) || 0;
-      page = Math.max(1, (book.locations.locationFromCfi(cfi) || 0) + 1);
-    } else {
+    // A stale or foreign locations list can throw on compare; fall back to spine progress
+    try {
+      total = book.locations?.length?.() || 0;
+      if (total > 0) {
+        percent = Number(book.locations.percentageFromCfi(cfi)) || 0;
+        page = Math.max(1, (book.locations.locationFromCfi(cfi) || 0) + 1);
+      }
+    } catch {
+      total = 0;
+    }
+    if (total <= 0) {
       const spineLen = book.spine?.length || 1;
       const inSection = loc.start.displayed?.total ? (loc.start.displayed.page - 1) / loc.start.displayed.total : 0;
       percent = Math.min(1, (loc.start.index + inSection) / spineLen);
@@ -356,19 +368,28 @@ export const EpubReader = ({
 
     (async () => {
       const ePub = (await import("epubjs")).default;
-      let resource: any = fileUrl;
+      let data: ArrayBuffer;
       try {
-        if (fileUrl.startsWith("blob:") || fileUrl.startsWith("http")) {
-          const resp = await fetch(fileUrl);
-          resource = await resp.arrayBuffer();
-        }
-      } catch {
-        /* fall back to URL */
+        const resp = await fetch(fileUrl);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        data = await resp.arrayBuffer();
+      } catch (e) {
+        throw new Error(`Couldn't download the book file (${errorText(e)}). Check your connection and try again.`);
+      }
+      if (cancelled) return;
+      // Broken manifests hang epub.js silently; fix what can be fixed before handing the bytes over
+      try {
+        const pre = await preflightEpub(data);
+        data = pre.data;
+        if (pre.repaired.length) console.info("EPUB repaired before opening:", pre.repaired.join("; "));
+      } catch (e) {
+        throw new Error(`This file isn't a readable EPUB: ${errorText(e)}.`);
       }
       if (cancelled) return;
 
-      const book = ePub(resource);
+      const book = ePub(data);
       bookRef.current = book;
+      book.on("openFailed", (err: unknown) => console.warn("EPUB openFailed", err));
       // Both modes use the continuous manager: it pre-renders the neighbouring chapter, so a page turn at
       // a chapter boundary is a scroll instead of a full iframe layout (~1 s on long chapters).
       const rendition = book.renderTo(container, {
@@ -414,7 +435,14 @@ export const EpubReader = ({
         }
       });
 
-      await book.ready;
+      // `ready` waits on the navigation document too; a broken one keeps it pending forever
+      // even though the spine is fine, so give up waiting and open without a TOC
+      try {
+        await withTimeout(book.ready, OPEN_TIMEOUT_MS, "ready");
+      } catch {
+        if (!book.isOpen || !((book.spine as any)?.length > 0)) throw new Error("The book's package couldn't be read.");
+        console.warn("EPUB: table of contents unavailable, opening without it");
+      }
       if (cancelled) return;
 
       const toc = flattenToc(book.navigation?.toc ?? []);
@@ -446,19 +474,20 @@ export const EpubReader = ({
       try {
         const target = lastLocRef.current?.start?.cfi ?? initialLocation ?? undefined;
         try {
-          await rendition.display(target);
+          await withTimeout(rendition.display(target), OPEN_TIMEOUT_MS, "display");
         } catch (e) {
           if (!target) throw e;
           // A saved location that no longer resolves (edited file, other reader) shouldn't block the book
           console.warn("EPUB: saved location unusable, opening at the start", e);
-          await rendition.display();
+          await withTimeout(rendition.display(), OPEN_TIMEOUT_MS, "display");
         }
         lastAppliedInitialRef.current = initialLocation ?? null;
       } catch (e) {
         console.error("EPUB display error", e);
         if (!cancelled) {
+          const detail = e instanceof Error && e.message.startsWith("Timed out") ? "it took too long to lay out the first page" : errorText(e);
           setStatus("error");
-          setErrorMsg("Failed to display EPUB.");
+          setErrorMsg(`Couldn't display this EPUB: ${detail}.`);
           cb.current.onError?.("Failed to display EPUB.");
         }
         return;
@@ -496,7 +525,17 @@ export const EpubReader = ({
       // Generating them loads every chapter, so the result is cached per book.
       try {
         const cacheKey = locationsKey ? `rr:locations:${locationsKey}` : null;
-        const cached = cacheKey ? localStorage.getItem(cacheKey) : null;
+        let cached = cacheKey ? localStorage.getItem(cacheKey) : null;
+        // Only trust a cache that is a non-empty list of CFIs; anything else is regenerated
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (!Array.isArray(parsed) || !parsed.length || typeof parsed[0] !== "string") cached = null;
+          } catch {
+            cached = null;
+          }
+          if (!cached && cacheKey) localStorage.removeItem(cacheKey);
+        }
         if (cached) book.locations.load(cached);
         else {
           await book.locations.generate(1024);
@@ -516,7 +555,7 @@ export const EpubReader = ({
       console.error("EPUB load error", e);
       if (cancelled) return;
       setStatus("error");
-      setErrorMsg("Failed to load EPUB. Try re-importing the book.");
+      setErrorMsg(e instanceof Error && e.message ? e.message : "Failed to load EPUB. Try re-importing the book.");
       cb.current.onError?.("Failed to load EPUB.");
     });
 

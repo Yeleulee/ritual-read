@@ -36,10 +36,10 @@ export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onR
 
   const emit = (p: number, n: number) => {
     const outline = outlineRef.current;
-    let chapter: { label: string } | undefined;
+    let chapter: { label: string; href?: string } | undefined;
     let nextStart = n + 1;
     for (let i = 0; i < outline.length; i++) {
-      if (outline[i].pageNumber <= p) chapter = { label: outline[i].title };
+      if (outline[i].pageNumber <= p) chapter = { label: outline[i].title, href: String(outline[i].pageNumber) };
       else {
         nextStart = outline[i].pageNumber;
         break;

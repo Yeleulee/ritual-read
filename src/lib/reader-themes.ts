@@ -75,13 +75,16 @@ export type TurnSpeed = "slow" | "normal" | "fast";
 export const TURN_SPEED_SECONDS: Record<TurnSpeed, number> = { slow: 1.15, normal: 0.8, fast: 0.5 };
 
 // Apple Books' 100% size is ~17px on phones and ~19px on larger screens
-const defaultFontSize = () => (typeof window !== "undefined" && window.innerWidth < 640 ? 17 : 19);
+export const defaultFontSize = () => (typeof window !== "undefined" && window.innerWidth < 640 ? 17 : 19);
 
 export const DEFAULT_SETTINGS: ReaderSettings = {
   theme: "original",
   autoNight: false,
   fontId: "charis",
-  fontSize: defaultFontSize(),
+  get fontSize() {
+    // Resolved on read so a phone and a desktop each get their own comfortable default
+    return defaultFontSize();
+  },
   bold: false,
   lineHeight: 1.5,
   letterSpacing: 0,

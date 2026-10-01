@@ -23,7 +23,7 @@ const TABS = ["library", "reader", "progress", "streaks", "assistant"] as const;
 const Index = () => {
   const { theme, setTheme } = useTheme();
   const { user, loading: authLoading, signOut } = useAuth();
-  const { books, loading: booksLoading, addBook, prepareUpload, updateBookProgress, removeBook } = useBooks();
+  const { books, loading: booksLoading, addBook, prepareUpload, discardUpload, updateBookProgress, removeBook } = useBooks();
   const [currentBook, setCurrentBook] = useState<any>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
@@ -158,6 +158,7 @@ const Index = () => {
               onBookSelect={handleBookSelect}
               onAddBook={handleAddBook}
               onPrepareUpload={prepareUpload}
+              onDiscardUpload={discardUpload}
               onRemoveBook={handleRemoveBook}
             />
           </TabsContent>

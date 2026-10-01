@@ -54,6 +54,12 @@ const COMMIT_PROGRESS = 0.3; // release past this and the turn finishes
 const COMMIT_VELOCITY = 0.35; // px/ms flick that finishes a turn from anywhere
 const TURN_EASE: [number, number, number, number] = [0.3, 0.05, 0.2, 1];
 
+/* Phones and tablets: every face is a whole chapter document in an iframe, and Safari repaints
+   it on each clip-path frame. The lite path keeps one warm face instead of two, skips the
+   blurred cast shadow (an SVG filter re-run per frame) and shortens the animation. */
+const isLiteDevice = () =>
+  typeof window !== "undefined" && (window.matchMedia?.("(pointer: coarse)").matches || (navigator.maxTouchPoints ?? 0) > 0 || window.innerWidth < 900 || (navigator.hardwareConcurrency ?? 8) <= 4);
+
 const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T) => Promise.race([p, new Promise<T>((r) => window.setTimeout(() => r(fallback), ms))]);
 
 const pts = (p: Pt[]) => p.map((q) => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(" ");
@@ -118,7 +124,8 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   // reduced-motion hint only shortens the animation instead of silently disabling it.
   const reduced = useReducedMotion();
   const effectiveMode: PageTurnMode = mode;
-  const fullTurnSec = TURN_SPEED_SECONDS[turnSpeed] * (reduced ? 0.6 : 1);
+  const [lite] = useState(isLiteDevice);
+  const fullTurnSec = TURN_SPEED_SECONDS[turnSpeed] * (reduced ? 0.6 : lite ? 0.8 : 1);
   const [dragging, setDragging] = useState(false);
 
   // Overlay DOM (imperatively driven for 60fps)
@@ -198,7 +205,9 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       if (turning.current || activeRef.current) return;
       const face = await getSnapshot();
       if (cancelled || !face || turning.current || activeRef.current) return;
-      await Promise.all([paintFace(frontRef.current, face), paintFace(staticRef.current, cloneFace(face))]);
+      // Lite: one iframe per page instead of two; the static layer is filled on demand for "prev"
+      if (lite) await paintFace(frontRef.current, face);
+      else await Promise.all([paintFace(frontRef.current, face), paintFace(staticRef.current, cloneFace(face))]);
       if (!cancelled && !turning.current) warmKey.current = pageKey;
     }, 150);
     return () => {
@@ -223,7 +232,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     const g = foldGeometry(W, H, C, P);
     if (frontRef.current) frontRef.current.style.clipPath = poly(g.front);
     if (backRef.current) backRef.current.style.clipPath = poly(g.back);
-    if (shadowRef.current) shadowRef.current.setAttribute("points", pts(g.shadow));
+    if (shadowRef.current && !lite) shadowRef.current.setAttribute("points", pts(g.shadow));
     if (shadeRef.current) shadeRef.current.setAttribute("points", pts(g.back));
     if (shadeGradRef.current && g.fold) {
       const { m, n } = g.fold;
@@ -233,7 +242,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       shadeGradRef.current.setAttribute("x2", `${m.x - n.x * L}`);
       shadeGradRef.current.setAttribute("y2", `${m.y - n.y * L}`);
     }
-  }, [t, py]);
+  }, [t, py, lite]);
 
   useEffect(() => {
     const u1 = t.on("change", render);
@@ -305,6 +314,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
           // Current page stays as a static layer; the previous page unfolds over it (t from 1 → 0)
           if (staticRef.current) staticRef.current.style.display = "block";
           if (!warm) await paintFace(staticRef.current, current);
+          else if (lite && frontRef.current?.firstChild) await paintFace(staticRef.current, cloneFace(frontRef.current.firstChild as PageFace));
           void paintFace(sheet, null);
           t.set(1);
           render();
@@ -321,7 +331,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
         return false;
       }
     },
-    [api, disabled, canNext, canPrev, effectiveMode, getSnapshot, onTurned, t, finish, pageKey],
+    [api, disabled, canNext, canPrev, effectiveMode, getSnapshot, onTurned, t, finish, pageKey, lite],
   );
 
   const settle = useCallback(
@@ -504,25 +514,29 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
           <div ref={slideRef} className="absolute inset-0 will-change-transform" style={{ background: theme.bg, boxShadow: `8px 0 24px ${sheetShadow}` }} />
         ) : (
           <>
-            <svg className="absolute inset-0 h-full w-full overflow-visible">
+            {!lite && <svg className="absolute inset-0 h-full w-full overflow-visible">
               <defs>
                 <filter id="rr-fold-blur" x="-20%" y="-20%" width="140%" height="140%">
                   <feGaussianBlur stdDeviation="10" />
                 </filter>
+              </defs>
+              <polygon ref={shadowRef} fill={sheetShadow} filter="url(#rr-fold-blur)" />
+            </svg>}
+            {/* translateZ promotes each face to its own layer so the clip is applied at composite time
+                instead of re-rasterizing the chapter document every frame */}
+            <div ref={frontRef} className="absolute inset-0 will-change-[clip-path]" style={{ background: theme.bg, transform: "translateZ(0)", contain: "paint" }} />
+            {/* Back of the sheet: plain paper, slightly darker than the page so the fold reads as a surface */}
+            <div ref={backRef} className="absolute inset-0 will-change-[clip-path]" style={{ background: theme.dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.035)", backgroundColor: theme.bg, transform: "translateZ(0)", contain: "paint" }}>
+              <div className="absolute inset-0" style={{ background: theme.dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.035)" }} />
+            </div>
+            <svg className="absolute inset-0 h-full w-full overflow-visible">
+              <defs>
                 <linearGradient id="rr-fold-shade" ref={shadeGradRef} gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stopColor="#000" stopOpacity={theme.dark ? 0.55 : 0.32} />
+                  <stop offset="0" stopColor="#000" stopOpacity={theme.dark ? 0.55 : lite ? 0.4 : 0.32} />
                   <stop offset="0.35" stopColor="#000" stopOpacity={theme.dark ? 0.22 : 0.1} />
                   <stop offset="1" stopColor="#fff" stopOpacity={theme.dark ? 0.02 : 0.12} />
                 </linearGradient>
               </defs>
-              <polygon ref={shadowRef} fill={sheetShadow} filter="url(#rr-fold-blur)" />
-            </svg>
-            <div ref={frontRef} className="absolute inset-0 will-change-[clip-path]" style={{ background: theme.bg }} />
-            {/* Back of the sheet: plain paper, slightly darker than the page so the fold reads as a surface */}
-            <div ref={backRef} className="absolute inset-0 will-change-[clip-path]" style={{ background: theme.dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.035)", backgroundColor: theme.bg }}>
-              <div className="absolute inset-0" style={{ background: theme.dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.035)" }} />
-            </div>
-            <svg className="absolute inset-0 h-full w-full overflow-visible">
               <polygon ref={shadeRef} fill="url(#rr-fold-shade)" />
             </svg>
           </>
