@@ -10,9 +10,11 @@ function devApi(env: Record<string, string>): Plugin {
   return {
     name: "ritual-dev-api",
     configureServer(server) {
-      // The dev server is local, so the signed-in check that guards the keys in production is skipped
+      // The server listens on every interface (host "::"), so only requests from this machine skip
+      // the signed-in check that guards the keys; anyone else on the network must be signed in
       server.middlewares.use("/api/ai-chat", (req, res) => {
-        void aiChatHandler(req, res, { env, requireAuth: false });
+        const local = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress ?? "");
+        void aiChatHandler(req, res, { env, requireAuth: !local });
       });
     },
   };

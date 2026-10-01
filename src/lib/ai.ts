@@ -53,12 +53,13 @@ async function viaServer(messages: ChatMessage[], model: string): Promise<string
 
 async function viaSupabase(messages: ChatMessage[], model: string): Promise<string> {
     const { supabase } = await import('@/integrations/supabase/client');
-    const { data, error } = await supabase.functions.invoke('ai-chat', { body: { messages, model } });
-    if (error) {
-        console.error('Edge function error:', error);
-        throw new Error(ASSISTANT_UNAVAILABLE);
+    // Overloads and free-tier quotas are per model, so another model often answers when the first can't
+    for (const m of [...new Set([model, 'gemini-flash-latest', 'gemini-flash-lite-latest'])]) {
+        const { data, error } = await supabase.functions.invoke('ai-chat', { body: { messages, model: m } });
+        if (!error) return data?.reply || 'No response generated';
+        console.error('Edge function error:', m, error);
     }
-    return data?.reply || 'No response generated';
+    throw new Error(ASSISTANT_UNAVAILABLE);
 }
 
 export async function chat(req: ChatRequest): Promise<string> {

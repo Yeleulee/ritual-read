@@ -25,7 +25,10 @@ interface Slot {
   provider: Provider;
   key: string;
 }
-type Failure = { ok: false; status: number; message: string; tryNextKey: boolean; tryNextModel: boolean };
+/* Where a failure applies: just this model (its quota, overload or retirement), this whole key
+   (rejected, out of credit, account-wide limit), or the request itself (same on every key). */
+type Scope = "model" | "key" | "request";
+type Failure = { ok: false; status: number; message: string; scope: Scope; retryAfterMs?: number };
 type Attempt = { ok: true; reply: string } | Failure;
 interface Result {
   status: number;
@@ -33,8 +36,9 @@ interface Result {
 }
 
 const GEMINI_DEFAULT = "gemini-2.5-flash";
-// Google retires model ids; when one 404s the request moves down this list
-const GEMINI_FALLBACKS = ["gemini-2.5-flash", "gemini-flash-latest"];
+// Each model has its own free-tier quota and its own overloads, so when one is out of quota,
+// overloaded or retired the request moves down this list on the same key (checked October 2026)
+const GEMINI_FALLBACKS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-flash-lite-latest"];
 // Free models (checked October 2026). openrouter/free routes to whichever free model is up,
 // so the chain keeps working when a named model is retired.
 const OPENROUTER_DEFAULTS = ["google/gemma-4-31b-it:free", "qwen/qwen3.8-27b:free", "openrouter/free"];
@@ -48,10 +52,15 @@ const ATTEMPT_TIMEOUT_MS = 25_000;
 // Stays inside the function's maxDuration (vercel.json) with room to answer
 const TOTAL_BUDGET_MS = 50_000;
 
-// Rotation state lives as long as the function instance stays warm
+// Rotation state lives as long as the function instance stays warm. Rests are kept per key and
+// per key+model, so a model that is out of quota is not asked first again on every message.
 let cursor = 0;
 const restingUntil = new Map<string, number>();
 const slotId = (s: Slot) => `${s.provider}:${s.key}`;
+const modelId = (s: Slot, model: string) => `${slotId(s)}|${model}`;
+const isResting = (id: string) => (restingUntil.get(id) ?? 0) > Date.now();
+// Resting entries go last rather than being dropped, so a lone key or model is still tried
+const restingLast = <T,>(items: T[], id: (x: T) => string) => [...items.filter((x) => !isResting(id(x))), ...items.filter((x) => isResting(id(x)))];
 
 function readKeys(env: Env, prefix: string): string[] {
   const listed = (env[`${prefix}S`] ?? "").split(/[\s,]+/);
@@ -74,18 +83,26 @@ export function configuredSlots(env: Env): Slot[] {
 
 function slotOrder(slots: Slot[]): Slot[] {
   const start = cursor++ % slots.length;
-  const rotated = slots.map((_, i) => slots[(start + i) % slots.length]);
-  const now = Date.now();
-  const rested = (s: Slot) => (restingUntil.get(slotId(s)) ?? 0) <= now;
-  // Resting keys go last rather than being dropped, so a lone key (or all keys resting) is still tried
-  return [...rotated.filter(rested), ...rotated.filter((s) => !rested(s))];
+  return restingLast(slots.map((_, i) => slots[(start + i) % slots.length]), slotId);
 }
 
-function restFor(status: number): number {
-  if (status === 429) return 60_000; // quota window
-  if (status === 400 || status === 401 || status === 402 || status === 403) return 10 * 60_000; // rejected or out of credit
+function restFor(f: Failure): number {
+  // The provider says when to come back; trust it within sane bounds
+  if (f.retryAfterMs) return Math.min(30 * 60_000, Math.max(5_000, f.retryAfterMs));
+  // A daily allowance won't come back in a minute; don't keep spending requests to find that out
+  if (f.status === 429 && /per[\s-]?day|daily/i.test(f.message)) return 30 * 60_000;
+  if (f.status === 429) return 60_000; // per-minute window
+  if (f.status === 503) return 30_000; // overloaded
+  if (f.status === 404) return 60 * 60_000; // retired model
+  if (f.status === 400 || f.status === 401 || f.status === 402 || f.status === 403) return 10 * 60_000; // rejected or out of credit
   return 15_000; // upstream hiccup or network
 }
+
+// "37s" (Gemini RetryInfo) or "37" (Retry-After header) -> ms
+const parseRetry = (v: string | null | undefined) => {
+  const n = v ? parseFloat(v) : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 1000) : undefined;
+};
 
 function parseInput(input: unknown): { messages: ChatMessage[]; model: string } | { error: string } {
   const body = (input ?? {}) as { messages?: unknown; model?: unknown };
@@ -122,7 +139,8 @@ async function postJson(url: string, headers: Record<string, string>, body: unkn
 
 function networkFailure(e: unknown): Failure {
   const timedOut = e instanceof Error && e.name === "AbortError";
-  return { ok: false, status: timedOut ? 504 : 502, message: timedOut ? "timeout" : "network error", tryNextKey: true, tryNextModel: false };
+  // A hang is usually one overloaded model; the next model or key may answer
+  return { ok: false, status: timedOut ? 504 : 502, message: timedOut ? "timeout" : "network error", scope: "model" };
 }
 
 function geminiBody(messages: ChatMessage[], model: string) {
@@ -145,8 +163,9 @@ function geminiBody(messages: ChatMessage[], model: string) {
     generationConfig: {
       temperature: 0.7,
       maxOutputTokens: 4096,
-      // 2.5 models think by default; a reading assistant answers faster and cheaper without it
-      ...(model.startsWith("gemini-2.5") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      // Flash models think by default; a reading assistant answers faster and cheaper without it.
+      // (Pro models reject a zero budget, so they keep their default.)
+      ...(model.startsWith("gemini-2.5-flash") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
     },
   };
 }
@@ -155,7 +174,7 @@ async function callGemini(key: string, model: string, messages: ChatMessage[], t
   interface GeminiResponse {
     candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[];
     promptFeedback?: { blockReason?: string };
-    error?: { message?: string };
+    error?: { message?: string; details?: { retryDelay?: string; violations?: { quotaId?: string }[] }[] };
   }
   try {
     const { res, data } = await postJson(
@@ -176,12 +195,18 @@ async function callGemini(key: string, model: string, messages: ChatMessage[], t
       if (d.promptFeedback?.blockReason || candidate?.finishReason === "SAFETY") {
         return { ok: true, reply: "I can't help with that one. Try asking about the passage another way." };
       }
-      return { ok: false, status: 502, message: "empty reply", tryNextKey: true, tryNextModel: true };
+      return { ok: false, status: 502, message: "empty reply", scope: "model" };
     }
-    const message = String(d.error?.message ?? res.statusText ?? "error");
-    // Gemini reports an invalid key as 400 API_KEY_INVALID, so 400 only moves on when it is about the key
-    const keyProblem = res.status === 401 || res.status === 403 || res.status === 429 || res.status >= 500 || (res.status === 400 && /api[ _-]?key/i.test(message));
-    return { ok: false, status: res.status, message, tryNextKey: keyProblem, tryNextModel: res.status === 404 };
+    // Quota ids (e.g. ...PerDayPerProjectPerModel-FreeTier) tell a daily limit from a per-minute one
+    const details = d.error?.details ?? [];
+    const quotaIds = details.flatMap((x) => x.violations ?? []).map((v) => v.quotaId ?? "").filter(Boolean).join(" ");
+    const message = `${String(d.error?.message ?? res.statusText ?? "error")}${quotaIds ? ` [${quotaIds}]` : ""}`;
+    const retryAfterMs = parseRetry(details.find((x) => x.retryDelay)?.retryDelay);
+    // Gemini reports an invalid key as 400 API_KEY_INVALID
+    const keyRejected = res.status === 401 || res.status === 403 || (res.status === 400 && /api[ _-]?key/i.test(message));
+    // Free-tier quota (429), overload (503) and retirement (404) are per model: the next model may answer
+    const scope: Scope = keyRejected ? "key" : res.status === 400 ? "request" : "model";
+    return { ok: false, status: res.status, message, scope, retryAfterMs };
   } catch (e) {
     return networkFailure(e);
   }
@@ -207,13 +232,17 @@ async function callOpenRouter(key: string, model: string, messages: ChatMessage[
       // Reasoning models may inline their thinking
       const text = raw.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
       if (text) return { ok: true, reply: text };
-      return { ok: false, status: 502, message: "empty reply", tryNextKey: true, tryNextModel: true };
+      return { ok: false, status: 502, message: "empty reply", scope: "model" };
     }
     const message = String(d.error?.message ?? res.statusText ?? "error");
-    // 401 bad key, 402 out of credit, 429 rate-limited (free models: per minute and per day)
-    const keyProblem = status === 401 || status === 402 || status === 403 || status === 429 || status >= 500;
-    // 400/404 here usually mean this model is gone or can't take the request; another model may
-    return { ok: false, status, message, tryNextKey: keyProblem, tryNextModel: status === 400 || status === 404 || status >= 500 };
+    const retryAfterMs = parseRetry(res.headers.get("retry-after"));
+    // A 429 is either the account's free-model allowance (shared by every free model) or one model
+    // being rate-limited upstream, in which case another free model may still answer
+    const accountLimit = status === 429 && /free-models-per-|per[\s-]?day|daily/i.test(message);
+    // 401 bad key, 402 out of credit, 403 key blocked: no model on this key will work.
+    // 400/404 here usually mean this model is gone or can't take the request; another model may.
+    const scope: Scope = status === 401 || status === 402 || status === 403 || accountLimit ? "key" : "model";
+    return { ok: false, status, message, scope, retryAfterMs };
   } catch (e) {
     return networkFailure(e);
   }
@@ -237,34 +266,41 @@ export async function generateReply(input: unknown, env: Env, referer = "https:/
   // A provider that rejects the request itself (not the key) would do the same on every key
   const refused = new Set<Provider>();
   const failures: Failure[] = [];
+  let outOfTime = false;
   for (const slot of slotOrder(slots)) {
+    if (outOfTime) break;
     if (refused.has(slot.provider)) continue;
-    let last: Failure | null = null;
-    for (const model of models[slot.provider]) {
+    for (const model of restingLast(models[slot.provider], (m) => modelId(slot, m))) {
       const remaining = deadline - Date.now();
-      if (remaining < 3_000) break;
-      const timeout = Math.min(ATTEMPT_TIMEOUT_MS, remaining);
+      if (remaining < 3_000) {
+        outOfTime = true;
+        break;
+      }
       const attempt =
         slot.provider === "gemini"
-          ? await callGemini(slot.key, model, parsed.messages, timeout)
-          : await callOpenRouter(slot.key, model, parsed.messages, timeout, referer);
+          ? await callGemini(slot.key, model, parsed.messages, Math.min(ATTEMPT_TIMEOUT_MS, remaining))
+          : await callOpenRouter(slot.key, model, parsed.messages, Math.min(ATTEMPT_TIMEOUT_MS, remaining), referer);
       if (attempt.ok) {
         restingUntil.delete(slotId(slot));
+        restingUntil.delete(modelId(slot, model));
         return { status: 200, body: { reply: attempt.reply } };
       }
-      last = attempt;
       failures.push(attempt);
-      if (!attempt.tryNextModel) break;
+      if (attempt.scope === "model") {
+        restingUntil.set(modelId(slot, model), Date.now() + restFor(attempt));
+        continue;
+      }
+      if (attempt.scope === "key") restingUntil.set(slotId(slot), Date.now() + restFor(attempt));
+      else refused.add(slot.provider);
+      break;
     }
-    if (!last) break; // out of time
-    if (last.tryNextKey) restingUntil.set(slotId(slot), Date.now() + restFor(last.status));
-    else refused.add(slot.provider);
   }
 
   // Provider messages never contain the key, but scrub defensively before logging
   const scrub = (m: string) => slots.reduce((s, x) => s.split(x.key).join("[key]"), m);
   console.error(`ai-chat: all ${slots.length} key(s) failed: ${failures.map((f) => `${f.status} ${scrub(f.message).slice(0, 120)}`).join(" | ")}`);
-  if (failures.some((f) => f.status === 429)) {
+  // Busy (rate-limited or overloaded) vs broken; either way the client falls back to Supabase
+  if (failures.some((f) => f.status === 429 || f.status === 503)) {
     return { status: 429, body: { code: "RATE_LIMITED", error: "The assistant is busy right now. Try again in a minute." } };
   }
   return { status: 502, body: { code: "UPSTREAM", error: "The assistant couldn't answer right now. Try again." } };
