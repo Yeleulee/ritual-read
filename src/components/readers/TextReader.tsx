@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Highlight } from "@/hooks/use-reader-store";
 import { BODY_TEXT_RULES, fontById, HIGHLIGHT_COLORS, pageLayout, type ReaderSettings, type ReaderTheme } from "@/lib/reader-themes";
-import type { ReaderApi, RelocatedInfo, SearchHit, SelectionInfo } from "./EpubReader";
+import type { PageFace, ReaderApi, RelocatedInfo, SearchHit, SelectionInfo } from "./EpubReader";
 
 /* Plain-text / DOCX reader. The whole text is laid out once in CSS columns the size of a page;
    a "page" is one column (or two facing columns on wide screens), turned by shifting the track.
@@ -70,6 +70,8 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
   themeRef.current = theme;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const highlightsRef = useRef(highlights);
+  highlightsRef.current = highlights;
 
   const scroll = settings.pageTurn === "scroll";
   const font = fontById(settings.fontId);
@@ -213,9 +215,18 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
         const vp = viewportRef.current;
         if (!vp) return null;
         // Everything that positions the page is inline style or utility classes, so a deep clone is pixel-identical
-        const face = vp.cloneNode(true) as HTMLElement;
+        const face = vp.cloneNode(true) as PageFace;
         face.style.pointerEvents = "none";
         face.removeAttribute("data-lov-id");
+        // The clone holds the whole document; pages differ only by the track's offset. Everything
+        // that changes the layout goes into the key, so an equal key means "just move the track".
+        const s = settingsRef.current;
+        face.rrKey = [s.fontId, s.fontSize, s.bold, s.lineHeight, s.letterSpacing, s.wordSpacing, s.justify, s.hyphenation, s.margins, themeRef.current.id, content.length, vp.clientWidth, vp.clientHeight, highlightsRef.current.map((h) => `${h.id}:${h.color}:${h.cfi_range}`).join(",")].join("|");
+        face.rrAdopt = function (this: PageFace, from: PageFace) {
+          const track = this.querySelector<HTMLElement>("[data-rr-track]");
+          const next = from.querySelector<HTMLElement>("[data-rr-track]");
+          if (track && next) track.style.transform = next.style.transform;
+        };
         return face;
       },
       async search(query) {
@@ -378,6 +389,7 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
       >
         <div
           ref={trackRef}
+          data-rr-track=""
           lang="en"
           className={scroll ? "" : "h-full"}
           style={{

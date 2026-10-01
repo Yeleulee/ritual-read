@@ -1,5 +1,4 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { flushSync } from "react-dom";
 import { animate, useMotionValue, useReducedMotion } from "framer-motion";
 import type { GesturePhase, GesturePoint, PageFace, ReaderApi } from "@/components/readers/EpubReader";
 import { TURN_SPEED_SECONDS, type PageTurnMode, type ReaderTheme, type TurnSpeed } from "@/lib/reader-themes";
@@ -63,6 +62,7 @@ const isLiteDevice = () =>
   typeof window !== "undefined" && (window.matchMedia?.("(pointer: coarse)").matches || window.innerWidth < 900);
 
 const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T) => Promise.race([p, new Promise<T>((r) => window.setTimeout(() => r(fallback), ms))]);
+const nextFrames = (n: number) => new Promise<void>((resolve) => { const step = (k: number) => (k <= 0 ? resolve() : requestAnimationFrame(() => step(k - 1))); step(n); });
 
 const pts = (p: Pt[]) => p.map((q) => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(" ");
 const poly = (p: Pt[]) => (p.length < 3 ? "polygon(0 0, 0 0, 0 0)" : `polygon(${p.map((q) => `${q.x.toFixed(1)}px ${q.y.toFixed(1)}px`).join(",")})`);
@@ -124,16 +124,19 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   ref,
 ) {
   const rootRef = useRef<HTMLDivElement>(null);
-  // The chosen mode is an explicit user setting ("None" exists for exactly this), so an OS
-  // reduced-motion hint only shortens the animation instead of silently disabling it.
+  // An OS reduced-motion hint only shortens the animation instead of silently disabling it.
   const reduced = useReducedMotion();
   const effectiveMode: PageTurnMode = mode;
   const [lite] = useState(isLiteDevice);
   const fullTurnSec = TURN_SPEED_SECONDS[turnSpeed] * (reduced ? 0.6 : lite ? 0.8 : 1);
   const [dragging, setDragging] = useState(false);
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
 
-  // Overlay DOM (imperatively driven for 60fps)
-  const staticRef = useRef<HTMLDivElement>(null);
+  /* Overlay DOM, driven imperatively at 60fps. The overlay is never display:none: a hidden face
+     stays laid out and painted, so showing it is a compositor change, not a fresh layout. */
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const curlRef = useRef<HTMLDivElement>(null);
   const frontRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLDivElement>(null);
   const shadowRef = useRef<SVGPolygonElement>(null);
@@ -143,9 +146,11 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   const creaseGradRef = useRef<SVGLinearGradientElement>(null);
   const slideRef = useRef<HTMLDivElement>(null);
 
-  const [active, setActive] = useState<null | { dir: 1 | -1; kind: "curl" | "slide" }>(null);
-  const activeRef = useRef(active);
-  activeRef.current = active;
+  // The turn in progress. A ref rather than state, so showing and hiding never wait on a React render.
+  const activeRef = useRef<null | { dir: 1 | -1; kind: "curl" | "slide" }>(null);
+  // Pointer movement that arrived while the turn was still being set up
+  const dragReady = useRef(false);
+  const pendingDrag = useRef<{ t: number; py: number } | null>(null);
   const t = useMotionValue(0); // 0 = sheet at rest on its own page, 1 = fully turned away
   const py = useMotionValue(0); // pointer-driven vertical offset for the fold angle
   const turning = useRef(false);
@@ -176,45 +181,43 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   /* ---------- painting ---------- */
   const paintFace = (host: HTMLDivElement | null, face: PageFace | null): Promise<void> => {
     if (!host) return Promise.resolve();
-    host.replaceChildren();
     if (!face) {
-      host.style.background = theme.bg;
+      host.replaceChildren();
+      host.style.background = themeRef.current.bg;
       return Promise.resolve();
     }
+    const cur = host.firstElementChild as PageFace | null;
+    // Same document as the face already here (another page of the same chapter): move it, don't reload it
+    if (face.rrKey && cur && cur !== face && cur.rrKey === face.rrKey && cur.rrAdopt) {
+      cur.rrAdopt(face);
+      return cur.rrReadyPromise ?? Promise.resolve();
+    }
+    // Keyed faces carry their own backdrop; a transparent host lets any part not painted yet show
+    // the identical live page instead of blank paper
+    host.style.background = face.rrKey ? "transparent" : themeRef.current.bg;
     if (face instanceof HTMLCanvasElement) {
       face.style.width = "100%";
       face.style.height = "100%";
       face.style.display = "block";
     }
-    host.appendChild(face);
-    return face.rrReady ? face.rrReady() : Promise.resolve();
-  };
-  const cloneFace = (face: PageFace | null): PageFace | null => {
-    if (!face) return null;
-    if (face instanceof HTMLCanvasElement) return cloneCanvas(face);
-    const c = face.cloneNode(true) as PageFace;
-    c.rrReady = face.rrReady;
-    return c;
+    host.replaceChildren(face);
+    face.rrReadyPromise = face.rrReady ? face.rrReady() : Promise.resolve();
+    return face.rrReadyPromise;
   };
 
-  // Warm faces: painted into the hidden overlay hosts ahead of time (iframes load while display:none),
-  // so a turn needs no snapshot or load at gesture start. Moving an iframe reloads it, so each host
-  // gets its own copy rather than sharing one. Each copy is a full chapter document, so only the two
-  // that every turn needs are kept warm; the back of the sheet is plain paper.
-  const warmKey = useRef<string | null>(null);
+  // Warm face: the current page is painted into the active mode's hidden sheet ahead of time, so a
+  // turn normally finds the same document already laid out there and only has to move it.
   const [warmTick, setWarmTick] = useState(0);
   useEffect(() => {
-    warmKey.current = null;
     if (!api || !pageKey || effectiveMode === "none" || effectiveMode === "scroll") return;
     let cancelled = false;
     const id = window.setTimeout(async () => {
-      if (turning.current || activeRef.current) return;
+      if (turning.current) return;
       const face = await getSnapshot();
-      if (cancelled || !face || turning.current || activeRef.current) return;
-      // Lite: one iframe per page instead of two; the static layer is filled on demand for "prev"
-      if (lite) await paintFace(frontRef.current, face);
-      else await Promise.all([paintFace(frontRef.current, face), paintFace(staticRef.current, cloneFace(face))]);
-      if (!cancelled && !turning.current) warmKey.current = pageKey;
+      if (cancelled || !face || turning.current) return;
+      const [host, other] = effectiveMode === "slide" ? [slideRef.current, frontRef.current] : [frontRef.current, slideRef.current];
+      if (other?.firstChild) paintFace(other, null);
+      await paintFace(host, face);
     }, 150);
     return () => {
       cancelled = true;
@@ -229,14 +232,21 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     const { W, H } = sizeRef.current;
     const tv = t.get();
     if (a.kind === "slide") {
-      if (slideRef.current) slideRef.current.style.transform = `translate3d(${(-W * tv).toFixed(1)}px,0,0)`;
+      // The copy of the current page slides away (left going forward, right going back) over the live
+      // reader, which is already on the destination page. The live reader itself never moves: epub.js
+      // decides which chapter views to show from cached container bounds, so translating it hides the
+      // incoming page until the turn ends.
+      const p = a.dir === 1 ? tv : 1 - tv;
+      if (slideRef.current) slideRef.current.style.transform = `translate3d(${(-a.dir * W * p).toFixed(1)}px,0,0)`;
       return;
     }
-    // Sheet always turns from the right edge; for "prev" the sheet is the incoming page unfolding back (t: 1 → 0)
+    // The sheet always turns at the right edge; going back it is the previous page unfolding (t: 1 → 0).
+    // The live reader shows the destination page, so the copy of the current page only has to cover
+    // the part still showing it: the sheet's flat part going forward, the uncovered part going back.
     const C = { x: W, y: H };
     const P = { x: W - 2 * W * tv, y: Math.max(0, Math.min(H, H + py.get())) };
     const g = foldGeometry(W, H, C, P);
-    if (frontRef.current) frontRef.current.style.clipPath = poly(g.front);
+    if (frontRef.current) frontRef.current.style.clipPath = poly(a.dir === 1 ? g.front : g.folded);
     if (backRef.current) backRef.current.style.clipPath = poly(g.back);
     // No sheet on the page at either extreme, so its shadows fade out there rather than leaving a band
     const edgeFade = Math.min(1, Math.min(tv, 1 - tv) / 0.04).toFixed(3);
@@ -269,14 +279,36 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       u1();
       u2();
     };
-  }, [render, t, py, active]);
+  }, [render, t, py]);
 
   /* ---------- turn orchestration ---------- */
+  const showOverlay = (kind: "curl" | "slide", dir: 1 | -1) => {
+    if (slideRef.current) {
+      slideRef.current.style.opacity = kind === "slide" ? "1" : "0";
+      // The shadow trails the moving page: on its right going forward, on its left going back
+      const shadow = themeRef.current.dark ? "rgba(0,0,0,.6)" : "rgba(0,0,0,.28)";
+      slideRef.current.style.boxShadow = kind === "slide" ? `${dir === 1 ? 10 : -10}px 0 28px ${shadow}` : "none";
+    }
+    if (curlRef.current) curlRef.current.style.opacity = kind === "curl" ? "1" : "0";
+    if (overlayRef.current) overlayRef.current.style.opacity = "1";
+    render();
+  };
+  const hideOverlay = () => {
+    if (overlayRef.current) overlayRef.current.style.opacity = "0";
+  };
+
   const finish = useCallback(() => {
+    // Hide first. Resetting the sheet while it is still on screen flashes the old page back.
+    hideOverlay();
+    activeRef.current = null;
     turning.current = false;
-    setActive(null);
+    dragReady.current = false;
+    pendingDrag.current = null;
     t.set(0);
     py.set(0);
+    // Park the hidden sheet over the page again so its copy stays laid out for the next turn
+    if (slideRef.current) slideRef.current.style.transform = "";
+    if (frontRef.current) frontRef.current.style.clipPath = "";
     // The relocation that changed pageKey arrived mid-turn; warm the new page now that we're idle
     setWarmTick((n) => n + 1);
   }, [t, py]);
@@ -296,49 +328,37 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       }
 
       const kind = effectiveMode === "slide" ? "slide" : "curl";
+      const host = kind === "slide" ? slideRef.current : frontRef.current;
+      dragReady.current = false;
+      pendingDrag.current = null;
+      // At rest the sheet is a copy of the current page lying exactly over the live one
+      activeRef.current = { dir, kind };
+      t.set(dir === 1 ? 0 : 1);
+      py.set(0);
+      render();
       try {
-        const warm = !!pageKey && warmKey.current === pageKey && !!frontRef.current?.firstChild;
-        warmKey.current = null;
-        const current = warm ? null : await getSnapshot();
-        if (!warm && !current) {
+        // Only ever the page on screen right now, so the copy can be checked against the live page
+        const face = await getSnapshot();
+        if (!face) {
           // Nothing to animate with — still turn, just without the sheet
+          activeRef.current = null;
           await (dir === 1 ? api.next() : api.prev());
           onTurned?.(dir);
           turning.current = false;
           return false;
         }
-        // Every face is painted while the overlay is still hidden; it is only revealed once the
-        // sheet looks exactly like the live page, otherwise the first frames show blank paper.
-        activeRef.current = { dir, kind };
-        const sheet = kind === "slide" ? slideRef.current : frontRef.current;
-        const reveal = () => flushSync(() => setActive({ dir, kind }));
-        if (dir === 1) {
-          // Outgoing page rides the sheet; the live reader already shows the next page underneath
-          if (staticRef.current) staticRef.current.style.display = "none";
-          if (!warm) await paintFace(sheet, current);
-          else if (kind === "slide" && slideRef.current && frontRef.current?.firstChild) {
-            // Warm faces live in the curl hosts; the slide sheet borrows the front one
-            await paintFace(slideRef.current, cloneFace(frontRef.current.firstChild as PageFace));
-          }
-          t.set(0);
-          render();
-          reveal();
-          await api.next();
-        } else {
-          // Current page stays as a static layer; the previous page unfolds over it (t from 1 → 0)
-          if (!warm) await paintFace(staticRef.current, current);
-          else if (lite && frontRef.current?.firstChild) await paintFace(staticRef.current, cloneFace(frontRef.current.firstChild as PageFace));
-          if (staticRef.current) staticRef.current.style.display = "block";
-          void paintFace(sheet, null);
-          t.set(1);
-          render();
-          reveal();
-          await api.prev();
-          // Give the live reader a frame to paint, then capture the incoming page for the sheet
-          // (at t = 1 the sheet is fully turned away, so painting it is invisible)
-          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-          const prevFace = validFace(await withTimeout(api.snapshot(), SNAPSHOT_BUDGET_MS, null));
-          await paintFace(sheet, prevFace);
+        await paintFace(host, face);
+        // Reveal the copy and let it reach the screen before the reader underneath moves: until the
+        // live page changes, any part of the copy that hasn't painted yet is indistinguishable from it.
+        showOverlay(kind, dir);
+        await nextFrames(2);
+        await (dir === 1 ? api.next() : api.prev());
+        const pending = pendingDrag.current;
+        pendingDrag.current = null;
+        dragReady.current = true;
+        if (pending) {
+          t.set(pending.t);
+          py.set(pending.py);
         }
         return true;
       } catch (e) {
@@ -347,7 +367,8 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
         return false;
       }
     },
-    [api, disabled, canNext, canPrev, effectiveMode, getSnapshot, onTurned, t, finish, pageKey, lite],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [api, disabled, canNext, canPrev, effectiveMode, getSnapshot, onTurned, t, py, finish, render],
   );
 
   const settle = useCallback(
@@ -366,7 +387,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       if (!commit) {
         // Put the live reader back where the sheet says it is
         await (dir === 1 ? api?.prev() : api?.next());
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        await nextFrames(2);
       } else onTurned?.(dir);
       finish();
     },
@@ -440,13 +461,22 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
       try { rootRef.current?.setPointerCapture(p.id); g.captured = true; } catch { /* fed from an iframe */ }
       g.began = true;
       g.starting = beginTurn(dir);
-      if (!(await g.starting)) { releaseCapture(g); gesture.current = null; setDragging(false); return; }
+      void g.starting.then((ok) => {
+        if (!ok && gesture.current === g) { releaseCapture(g); gesture.current = null; setDragging(false); }
+      });
     }
-    if (!turning.current) return;
+    if (!turning.current || !activeRef.current) return;
     const { W } = sizeRef.current;
-    // Corner displacement = pointer displacement × gain; the corner needs 2W to flip fully
-    const travel = (2 * W) / (W < 600 ? DRAG_GAIN_NARROW : DRAG_GAIN);
-    t.set(Math.max(0, Math.min(1, g.dir === 1 ? (g.startX - p.x) / travel : 1 - (p.x - g.startX) / travel)));
+    // Slide follows the finger 1:1. For the curl the corner moves faster than the finger: it needs
+    // 2W to flip fully, and a full-width swipe should get there.
+    const travel = activeRef.current.kind === "slide" ? W : (2 * W) / (W < 600 ? DRAG_GAIN_NARROW : DRAG_GAIN);
+    const next = Math.max(0, Math.min(1, g.dir === 1 ? (g.startX - p.x) / travel : 1 - (p.x - g.startX) / travel));
+    // Until the sheet is on screen the move is only remembered, then applied in one step
+    if (!dragReady.current) {
+      pendingDrag.current = { t: next, py: dy };
+      return;
+    }
+    t.set(next);
     // Fold angle follows the finger's height 1:1
     py.set(dy);
   };
@@ -508,7 +538,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   const showZones = effectiveMode !== "scroll" && !disabled;
   const sheetShadow = theme.dark ? "rgba(0,0,0,.6)" : "rgba(0,0,0,.28)";
   if (import.meta.env.DEV) {
-    (window as unknown as { __rrTurner?: () => unknown }).__rrTurner = () => ({ mode, effectiveMode, reduced, api: !!api, disabled, turning: turning.current, canNext, canPrev, active: activeRef.current, t: t.get() });
+    (window as unknown as { __rrTurner?: () => unknown }).__rrTurner = () => ({ mode, effectiveMode, reduced, api: !!api, disabled, turning: turning.current, canNext, canPrev, active: activeRef.current, t: t.get(), dragReady: dragReady.current, pending: pendingDrag.current, gesture: gesture.current && { dragging: gesture.current.dragging, dir: gesture.current.dir, lastX: gesture.current.lastX, startX: gesture.current.startX } });
   }
 
   return (
@@ -523,15 +553,14 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
         </>
       )}
 
-      {/* Overlay. Every host stays mounted so faces can be painted while it is hidden; only the
-          variant matching the active turn is shown. */}
-      <div className="pointer-events-none absolute inset-0 z-30" style={{ display: active ? "block" : "none" }} aria-hidden>
-        <div ref={staticRef} className="absolute inset-0" style={{ background: theme.bg, display: "none" }} />
-        <div ref={slideRef} className="absolute inset-0 will-change-transform" style={{ background: theme.bg, boxShadow: `8px 0 24px ${sheetShadow}`, display: active?.kind === "slide" ? "block" : "none" }} />
-        <div className="absolute inset-0" style={{ display: active?.kind === "curl" ? "block" : "none" }}>
+      {/* Overlay. Shown and hidden by opacity, imperatively; React never touches these opacities
+          after mount, so re-renders can't flash it. */}
+      <div ref={overlayRef} className="pointer-events-none absolute inset-0 z-30" style={{ opacity: 0, willChange: "opacity" }} aria-hidden>
+        <div ref={slideRef} className="absolute inset-0" style={{ opacity: 0, willChange: "transform" }} />
+        <div ref={curlRef} className="absolute inset-0" style={{ opacity: 0 }}>
           {/* translateZ promotes each face to its own layer so the clip is applied at composite time
               instead of re-rasterizing the chapter document every frame */}
-          <div ref={frontRef} className="absolute inset-0 will-change-[clip-path]" style={{ background: theme.bg, transform: "translateZ(0)", contain: "paint" }} />
+          <div ref={frontRef} className="absolute inset-0 will-change-[clip-path]" style={{ transform: "translateZ(0)", contain: "paint" }} />
           {/* Shadow the lifted sheet throws onto the page it is peeling from */}
           <svg className="absolute inset-0 h-full w-full overflow-visible">
             {!lite && (
@@ -572,11 +601,3 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     </div>
   );
 });
-
-function cloneCanvas(src: HTMLCanvasElement) {
-  const c = document.createElement("canvas");
-  c.width = src.width;
-  c.height = src.height;
-  c.getContext("2d")?.drawImage(src, 0, 0);
-  return c;
-}

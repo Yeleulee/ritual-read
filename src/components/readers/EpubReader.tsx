@@ -4,8 +4,15 @@ import { fontFaceCss, HIGHLIGHT_COLORS, MEASURE_EM, SPREAD_MIN_WIDTH, themeToEpu
 import { errorText, preflightEpub } from "@/lib/epub-repair";
 
 /** A still image of the current page for the page-turn sheet: a canvas, or a detached DOM
-    clone that looks identical once attached. `rrReady` (optional) resolves when it has painted. */
-export type PageFace = (HTMLCanvasElement | HTMLElement) & { rrReady?: () => Promise<void> };
+    clone that looks identical once attached. `rrReady` (optional) resolves when it has painted.
+    Faces with the same `rrKey` show the same document at a different position (another page of
+    the same chapter); `rrAdopt` moves an attached face to where `from` would be, without a reload. */
+export type PageFace = (HTMLCanvasElement | HTMLElement) & {
+  rrReady?: () => Promise<void>;
+  rrReadyPromise?: Promise<void>;
+  rrKey?: string;
+  rrAdopt?: (from: PageFace) => void;
+};
 
 export type GesturePhase = "down" | "move" | "up" | "cancel";
 export interface GesturePoint {
@@ -98,6 +105,45 @@ const withTimeout = <T,>(p: Promise<T>, ms: number, label: string) =>
   });
 
 const stripHash = (href = "") => href.split("#")[0];
+
+/* FNV-1a: cheap identity for a serialized chapter, so a copy is only rebuilt when its document changed. */
+function hashText(s: string) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return `${(h >>> 0).toString(36)}.${s.length}`;
+}
+
+/* Resolves once a page copy has really painted: loaded, laid out with its webfonts (which don't
+   block `load`), and two of its own animation frames have run. */
+function frameReady(f: HTMLIFrameElement): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (!done) {
+        done = true;
+        resolve();
+      }
+    };
+    const painted = () => {
+      const w = f.contentWindow;
+      if (!w) return finish();
+      w.requestAnimationFrame(() => w.requestAnimationFrame(finish));
+    };
+    const loaded = () => {
+      const doc = f.contentDocument;
+      void doc?.body?.offsetWidth; // lay out now so the webfonts are requested now
+      const fonts = doc?.fonts;
+      if (fonts && fonts.status !== "loaded") fonts.ready.then(painted, painted);
+      else painted();
+    };
+    if (f.dataset.rrLoaded) loaded();
+    else f.addEventListener("load", loaded, { once: true });
+    window.setTimeout(finish, 1000);
+  });
+}
 const basename = (href = "") => stripHash(href).split("/").pop() ?? "";
 
 function flattenToc(items: any[] = []): TocItem[] {
@@ -310,37 +356,84 @@ export const EpubReader = ({
         try {
           const r = renditionRef.current;
           const container = containerRef.current;
-          const c = r?.getContents()[0];
-          if (!r || !c || !container) return null;
-          const frame = c.document.defaultView.frameElement as HTMLIFrameElement;
-          const fr = frame.getBoundingClientRect();
+          const root = container?.parentElement;
+          if (!r || !container || !root) return null;
+          const rr = root.getBoundingClientRect();
           const cr = container.getBoundingClientRect();
           const bg = themeRef.current.bg;
-          // A frozen copy of the section in a same-origin srcdoc iframe, positioned exactly where the live one is.
-          // Scripts are dropped; blob: resources and our injected stylesheet resolve as-is.
-          const wrap = document.createElement("div") as PageFace;
-          wrap.style.cssText = `position:absolute;inset:0;overflow:hidden;background:${bg}`;
-          const clone = document.createElement("iframe");
-          clone.setAttribute("aria-hidden", "true");
-          clone.tabIndex = -1;
-          clone.style.cssText = `position:absolute;left:${fr.left - cr.left}px;top:${fr.top - cr.top}px;width:${fr.width}px;height:${fr.height}px;border:0;margin:0;pointer-events:none;background:${bg}`;
-          const html = (c.document.documentElement as HTMLElement).outerHTML.replace(/<script[\s\S]*?<\/script>/gi, "");
-          clone.srcdoc = `<!DOCTYPE html>${html}`;
-          wrap.appendChild(clone);
-          // srcdoc only loads once attached; caller awaits this after mounting. Webfonts don't block
-          // `load`, so wait for them too or the sheet paints in a fallback face for a frame.
+          // Only the section(s) actually on screen. The continuous manager keeps the neighbouring
+          // chapters loaded too, so the first contents is often not the page being read.
+          const shown = (r.getContents() as any[])
+            .map((c) => ({ c, f: (c.document?.defaultView?.frameElement ?? null) as HTMLIFrameElement | null }))
+            .filter((x): x is { c: any; f: HTMLIFrameElement } => !!x.f)
+            .map((x) => ({ ...x, fr: x.f.getBoundingClientRect() }))
+            .filter(({ fr }) => Math.min(fr.right, cr.right) - Math.max(fr.left, cr.left) > 2 && Math.min(fr.bottom, cr.bottom) - Math.max(fr.top, cr.top) > 2)
+            .sort((a, b) => a.fr.left - b.fr.left);
+          if (!shown.length) return null;
+
+          // Frozen copies of those sections in same-origin srcdoc iframes, inside a box clipped to the
+          // reader's viewport exactly like the live container. Around them a backdrop with holes where
+          // the pages are: until a copy has painted, its hole shows the identical live page, never blank.
+          const W = rr.width;
+          const H = rr.height;
+          const clipCss = `position:absolute;left:${cr.left - rr.left}px;top:${cr.top - rr.top}px;width:${cr.width}px;height:${cr.height}px;overflow:hidden`;
+          const frameCss: string[] = [];
+          const htmls: string[] = [];
+          let holes = "";
+          for (const { c, fr } of shown) {
+            frameCss.push(`position:absolute;left:${fr.left - cr.left}px;top:${fr.top - cr.top}px;width:${fr.width}px;height:${fr.height}px;border:0;margin:0;pointer-events:none;background:transparent`);
+            htmls.push((c.document.documentElement as HTMLElement).outerHTML.replace(/<script[\s\S]*?<\/script>/gi, ""));
+            const x0 = Math.max(fr.left, cr.left) - rr.left;
+            const x1 = Math.min(fr.right, cr.right) - rr.left;
+            const y0 = Math.max(fr.top, cr.top) - rr.top;
+            const y1 = Math.min(fr.bottom, cr.bottom) - rr.top;
+            holes += `M${x0} ${y0}H${x1}V${y1}H${x0}Z`;
+          }
+          const maskPath = `M0 0H${W}V${H}H0Z${holes}`;
+
+          const wrap = document.createElement("div") as PageFace & { rrLayout?: { clip: string; frames: string[]; mask: string } };
+          wrap.style.cssText = "position:absolute;inset:0;overflow:hidden";
+          wrap.rrKey = `${bg}|${Math.round(cr.width)}x${Math.round(cr.height)}|${shown.map(({ fr }, i) => `${Math.round(fr.width)}x${Math.round(fr.height)}#${hashText(htmls[i])}`).join("|")}`;
+          wrap.rrLayout = { clip: clipCss, frames: frameCss, mask: maskPath };
+
+          const svgNs = "http://www.w3.org/2000/svg";
+          const svg = document.createElementNS(svgNs, "svg");
+          svg.setAttribute("width", "100%");
+          svg.setAttribute("height", "100%");
+          svg.style.cssText = "position:absolute;inset:0;overflow:visible";
+          const path = document.createElementNS(svgNs, "path");
+          path.setAttribute("fill", bg);
+          path.setAttribute("fill-rule", "evenodd");
+          path.setAttribute("d", maskPath);
+          svg.appendChild(path);
+          wrap.appendChild(svg);
+
+          const clip = document.createElement("div");
+          clip.style.cssText = clipCss;
+          htmls.forEach((html, i) => {
+            const clone = document.createElement("iframe");
+            clone.setAttribute("aria-hidden", "true");
+            clone.tabIndex = -1;
+            clone.style.cssText = frameCss[i];
+            clone.addEventListener("load", () => { clone.dataset.rrLoaded = "1"; }, { once: true });
+            clone.srcdoc = `<!DOCTYPE html>${html}`;
+            clip.appendChild(clone);
+          });
+          wrap.appendChild(clip);
+
+          // Same chapter, another page: the copy is already laid out, so only its position changes
+          wrap.rrAdopt = function (this: typeof wrap, from: PageFace) {
+            const next = (from as typeof wrap).rrLayout;
+            if (!next) return;
+            const [mask, box] = [this.querySelector("path"), this.lastElementChild as HTMLElement | null];
+            mask?.setAttribute("d", next.mask);
+            if (box) box.style.cssText = next.clip;
+            box?.querySelectorAll("iframe").forEach((f, i) => { if (next.frames[i]) f.style.cssText = next.frames[i]; });
+            this.rrLayout = next;
+          };
+          // srcdoc only loads once attached; the caller awaits this after mounting
           wrap.rrReady = function (this: HTMLElement) {
-            const f = this.querySelector("iframe");
-            if (!f) return Promise.resolve();
-            return new Promise<void>((res) => {
-              const done = () => requestAnimationFrame(() => res());
-              f.addEventListener("load", () => {
-                const fonts = f.contentDocument?.fonts;
-                if (fonts && fonts.status !== "loaded") fonts.ready.then(done, done);
-                else done();
-              }, { once: true });
-              window.setTimeout(res, 700);
-            });
+            return Promise.all(Array.from(this.querySelectorAll("iframe")).map(frameReady)).then(() => undefined);
           };
           return wrap;
         } catch (e) {
@@ -428,6 +521,10 @@ export const EpubReader = ({
         try {
           contents.addStylesheetCss(cssRef.current, "rr");
           const doc: Document = contents.document;
+          // Touches on the page belong to the page turner. With the default touch-action the browser
+          // claims a horizontal swipe as a pan and cancels the pointer stream after the first move, so
+          // the turn bounces back. Scroll mode still lets the browser scroll vertically.
+          doc.documentElement.style.touchAction = flow === "scrolled" ? "pan-y" : "none";
           doc.addEventListener("selectionchange", () => {
             const sel = contents.window.getSelection();
             if (!sel || sel.isCollapsed) cb.current.onSelected?.(null);
