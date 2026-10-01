@@ -41,7 +41,8 @@ const emptyRelocation = (book: ReaderBook): RelocatedInfo => ({ location: "", pe
    rather than in the synced settings. Touch devices start on "slide": it is a single composited
    transform, while the curl re-clips a whole chapter document every frame. */
 const DEVICE_TURN_KEY = "rr:device:pageTurn";
-const isTouchDevice = () => typeof window !== "undefined" && (!!window.matchMedia?.("(pointer: coarse)").matches || (navigator.maxTouchPoints ?? 0) > 0);
+// Touch-first devices (phones, iPads) report a coarse primary pointer; a touchscreen laptop does not
+const isTouchDevice = () => typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
 const readDeviceTurn = (): PageTurnMode | null => {
   try {
     const v = localStorage.getItem(DEVICE_TURN_KEY);
@@ -102,6 +103,7 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
   // A mode chosen for EPUB shouldn't strand a format that can't do it: scroll → slide for paged-only readers
   const pageTurn: PageTurnMode = useMemo(() => {
     let mode = deviceTurn ?? baseSettings.pageTurn;
+    if (mode === "none") mode = "slide"; // retired option
     if (!deviceTurn && touch && mode === "curl") mode = "slide";
     if (mode === "scroll" && !capabilities.scroll) mode = "slide";
     return mode;

@@ -81,8 +81,21 @@ interface EpubReaderProps {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const OPEN_TIMEOUT_MS = 30_000;
+/* Rejects after `ms` of *visible* time. epub.js lays pages out on animation frames, which
+   browsers stop while a tab is hidden; a book opened in the background must wait, not fail. */
 const withTimeout = <T,>(p: Promise<T>, ms: number, label: string) =>
-  Promise.race([p, new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error(`Timed out: ${label}`)), ms))]);
+  new Promise<T>((resolve, reject) => {
+    let timer: number | undefined;
+    let remaining = ms;
+    let started = 0;
+    const stop = () => { if (timer !== undefined) { window.clearTimeout(timer); timer = undefined; remaining -= performance.now() - started; } };
+    const arm = () => { if (document.visibilityState === "hidden") return; started = performance.now(); timer = window.setTimeout(() => { cleanup(); reject(new Error(`Timed out: ${label}`)); }, Math.max(0, remaining)); };
+    const onVis = () => (document.visibilityState === "hidden" ? stop() : timer === undefined && arm());
+    const cleanup = () => { stop(); document.removeEventListener("visibilitychange", onVis); };
+    document.addEventListener("visibilitychange", onVis);
+    arm();
+    p.then((v) => { cleanup(); resolve(v); }, (e) => { cleanup(); reject(e); });
+  });
 
 const stripHash = (href = "") => href.split("#")[0];
 const basename = (href = "") => stripHash(href).split("/").pop() ?? "";
@@ -314,13 +327,19 @@ export const EpubReader = ({
           const html = (c.document.documentElement as HTMLElement).outerHTML.replace(/<script[\s\S]*?<\/script>/gi, "");
           clone.srcdoc = `<!DOCTYPE html>${html}`;
           wrap.appendChild(clone);
-          // srcdoc only loads once attached; caller awaits this after mounting
+          // srcdoc only loads once attached; caller awaits this after mounting. Webfonts don't block
+          // `load`, so wait for them too or the sheet paints in a fallback face for a frame.
           wrap.rrReady = function (this: HTMLElement) {
             const f = this.querySelector("iframe");
             if (!f) return Promise.resolve();
             return new Promise<void>((res) => {
-              f.addEventListener("load", () => requestAnimationFrame(() => res()), { once: true });
-              window.setTimeout(res, 400);
+              const done = () => requestAnimationFrame(() => res());
+              f.addEventListener("load", () => {
+                const fonts = f.contentDocument?.fonts;
+                if (fonts && fonts.status !== "loaded") fonts.ready.then(done, done);
+                else done();
+              }, { once: true });
+              window.setTimeout(res, 700);
             });
           };
           return wrap;
