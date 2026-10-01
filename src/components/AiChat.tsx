@@ -50,14 +50,14 @@ export const AiChat = ({ context = "" }: AiChatProps) => {
         system.push({ role: "system", content: `Context from current book:\n${context.trim().slice(0, 8000)}` });
       }
       const response = await chat({
-        provider: "openrouter",
-        model: "deepseek/deepseek-r1-0528:free",
+        provider: "gemini",
         messages: [...system, ...messages, userMessage],
       });
       setMessages((prev) => [...prev, { role: "assistant", content: response || "No response." }]);
     } catch (error) {
       console.error("Chat error:", error);
-      setMessages((prev) => [...prev, { role: "assistant", content: "Something went wrong. Try again." }]);
+      const reason = error instanceof Error && error.message ? error.message : "Something went wrong. Try again.";
+      setMessages((prev) => [...prev, { role: "assistant", content: reason }]);
     } finally {
       setIsSending(false);
       inputRef.current?.focus();
