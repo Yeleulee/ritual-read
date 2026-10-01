@@ -6,10 +6,43 @@ import { Rule } from "@/components/dashboard/primitives";
 import { formatTime } from "@/components/InlineRitualAudioControls";
 import { cn } from "@/lib/utils";
 import { Pause, Play, SkipBack, SkipForward, Minimize2, Maximize2, X } from "lucide-react";
-import { getCurrentTrack, useMusicPlayer } from "@/hooks/use-music-player";
+import { getCurrentTrack, useMusicPlayer, type YouTubeTrack } from "@/hooks/use-music-player";
+
+/* Stable components at module level. Declared inside the player they would be a new type on
+   every render — and the player re-renders twice a second for the time display — so React
+   remounted the buttons constantly: they flickered and taps landing mid-remount were dropped. */
+function Transport({ size = "sm" }: { size?: "sm" | "md" }) {
+  const hasQueue = useMusicPlayer((s) => s.queue.length > 0);
+  const isPlaying = useMusicPlayer((s) => s.isPlaying);
+  const hasTrack = useMusicPlayer((s) => s.currentIndex >= 0);
+  const { next, prev, togglePlay } = useMusicPlayer.getState();
+  const icon = size === "md" ? "h-4 w-4" : "h-3.5 w-3.5";
+  const btn = size === "md" ? "h-9 w-9" : "h-8 w-8";
+  return (
+    <div className="flex shrink-0 items-center gap-0.5">
+      <Button variant="ghost" size="icon" className={btn} onClick={() => prev()} disabled={!hasQueue} aria-label="Previous">
+        <SkipBack className={icon} />
+      </Button>
+      <Button variant={isPlaying ? "outline" : "default"} size="icon" className={btn} onClick={() => togglePlay()} disabled={!hasTrack} aria-label={isPlaying ? "Pause" : "Play"}>
+        {isPlaying ? <Pause className={icon} /> : <Play className={icon} />}
+      </Button>
+      <Button variant="ghost" size="icon" className={btn} onClick={() => next()} disabled={!hasQueue} aria-label="Next">
+        <SkipForward className={icon} />
+      </Button>
+    </div>
+  );
+}
+
+function Art({ track, className }: { track?: YouTubeTrack; className?: string }) {
+  return (
+    <div className={cn("shrink-0 overflow-hidden border border-border bg-muted", className)}>
+      {track && <img src={track.thumbnailUrl} alt="" className="h-full w-full object-cover" />}
+    </div>
+  );
+}
 
 export const RitualMusicPlayer = () => {
-  const { queue, isPlaying, volume, viewMode, next, prev, togglePlay, setVolume, setViewMode, currentTime, duration, setPlayback, requestedSeekSeconds, clearSeek } = useMusicPlayer();
+  const { isPlaying, volume, viewMode, next, setVolume, setViewMode, currentTime, duration, setPlayback, requestedSeekSeconds, clearSeek } = useMusicPlayer();
   const currentTrack = useMusicPlayer(getCurrentTrack);
   const [player, setPlayer] = useState<YouTubePlayer | null>(null);
   const intervalRef = useRef<number | null>(null);
@@ -70,30 +103,6 @@ export const RitualMusicPlayer = () => {
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-  const Transport = ({ size = "sm" }: { size?: "sm" | "md" }) => {
-    const icon = size === "md" ? "h-4 w-4" : "h-3.5 w-3.5";
-    const btn = size === "md" ? "h-9 w-9" : "h-8 w-8";
-    return (
-      <div className="flex items-center gap-0.5">
-        <Button variant="ghost" size="icon" className={btn} onClick={() => prev()} disabled={!queue.length} aria-label="Previous">
-          <SkipBack className={icon} />
-        </Button>
-        <Button variant={isPlaying ? "outline" : "default"} size="icon" className={btn} onClick={() => togglePlay()} disabled={!videoId} aria-label={isPlaying ? "Pause" : "Play"}>
-          {isPlaying ? <Pause className={icon} /> : <Play className={icon} />}
-        </Button>
-        <Button variant="ghost" size="icon" className={btn} onClick={() => next()} disabled={!queue.length} aria-label="Next">
-          <SkipForward className={icon} />
-        </Button>
-      </div>
-    );
-  };
-
-  const Art = ({ className }: { className?: string }) => (
-    <div className={cn("shrink-0 overflow-hidden border border-border bg-muted", className)}>
-      {currentTrack && <img src={currentTrack.thumbnailUrl} alt="" className="h-full w-full object-cover" />}
-    </div>
-  );
-
   const Mini = (
     <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-[400px] z-50">
       <div className="border border-border bg-background shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)]">
@@ -101,7 +110,7 @@ export const RitualMusicPlayer = () => {
           <Rule value={progress} />
         </div>
         <div className="flex items-center gap-3 p-3">
-          <Art className="h-10 w-10" />
+          <Art track={currentTrack} className="h-10 w-10" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm leading-tight">{currentTrack?.title || "Nothing playing"}</p>
             <p className="truncate font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
@@ -137,7 +146,7 @@ export const RitualMusicPlayer = () => {
         </header>
 
         <div className="flex gap-4 p-4">
-          <Art className="h-24 w-24" />
+          <Art track={currentTrack} className="h-24 w-24" />
           <div className="min-w-0 flex-1">
             <p className="font-serif text-xl leading-tight line-clamp-2">{currentTrack?.title || "Nothing playing"}</p>
             <p className="mt-1 truncate text-xs text-muted-foreground">{currentTrack?.channelTitle}</p>

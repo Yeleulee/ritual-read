@@ -10,7 +10,7 @@ type Relocation = { page: number; totalPages: number; percent: number; pagesLeft
 // 44px: comfortable thumb target on phones; the icon stays 18–20px inside it
 const iconButton = "inline-flex h-11 w-11 items-center justify-center rounded-full text-current transition-colors hover:bg-black/10 active:bg-black/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30 disabled:pointer-events-none";
 
-export function ReaderTopBar({ title, author, theme, visible, bookmarked, onClose, onBookmark, onContents, onSettings, onMusic }: { title: string; author: string; theme: (typeof THEMES)[ThemeId]; visible: boolean; bookmarked: boolean; onClose: () => void; onBookmark: () => void; onContents: () => void; onSettings: () => void; onMusic: () => void }) {
+export function ReaderTopBar({ title, author, theme, visible, bookmarked, musicPlaying, onClose, onBookmark, onContents, onSettings, onMusic }: { title: string; author: string; theme: (typeof THEMES)[ThemeId]; visible: boolean; bookmarked: boolean; musicPlaying?: boolean; onClose: () => void; onBookmark: () => void; onContents: () => void; onSettings: () => void; onMusic: () => void }) {
   return <div className={`absolute inset-x-0 top-0 z-50 flex items-center justify-between gap-1 px-2 pt-[max(6px,env(safe-area-inset-top))] pb-5 transition-all duration-200 sm:px-4 ${visible ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0 pointer-events-none"}`} style={{ color: theme.fg, background: `linear-gradient(${theme.bg}f2,${theme.bg}00)` }}>
     <div className="flex shrink-0 items-center">
       <button className={iconButton} onClick={onClose} aria-label="Close book"><X size={20} /></button>
@@ -18,7 +18,7 @@ export function ReaderTopBar({ title, author, theme, visible, bookmarked, onClos
     </div>
     <div className="min-w-0 flex-1 px-1 text-center"><p className="truncate text-sm font-medium">{title}</p><p className="truncate text-xs opacity-60">{author}</p></div>
     <div className="flex shrink-0 items-center">
-      <button className={iconButton} onClick={onMusic} aria-label="Music for reading" title="Music (M)"><Music2 size={19} /></button>
+      <button className={`${iconButton} relative`} onClick={onMusic} aria-label={musicPlaying ? "Music for reading (playing)" : "Music for reading"} title="Music (M)"><Music2 size={19} />{musicPlaying && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full" style={{ background: theme.link }} aria-hidden />}</button>
       <button className={iconButton} onClick={onSettings} aria-label="Themes and settings" title="Settings (T)"><Settings2 size={19} /></button>
       <button className={`${iconButton} ${bookmarked ? "text-amber-600" : ""}`} onClick={onBookmark} aria-label={bookmarked ? "Remove bookmark" : "Bookmark this page"} aria-pressed={bookmarked}><Bookmark size={19} fill={bookmarked ? "currentColor" : "none"} /></button>
     </div>
