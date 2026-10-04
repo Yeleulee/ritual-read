@@ -1,4 +1,6 @@
 import type { Config } from "tailwindcss";
+import animate from "tailwindcss-animate";
+import typography from "@tailwindcss/typography";
 
 export default {
   darkMode: ["class"],
@@ -167,7 +169,107 @@ export default {
         '700': '700ms',
         '1000': '1000ms',
       },
+      // Prose (AI chat answers) inherits the app's tokens so it tracks light/dark automatically.
+      typography: ({ theme }: { theme: (path: string) => string | string[] }) => {
+        const font = (name: string) => [theme(`fontFamily.${name}`)].flat().join(", ");
+        // Size modifiers (prose-sm etc.) re-declare sizes/margins after DEFAULT, so metrics
+        // must be repeated on each modifier we use.
+        const metrics = {
+          maxWidth: "68ch",
+          "h2": { fontSize: "1.65em", marginTop: "1.7em", marginBottom: "0.5em", lineHeight: "1.15" },
+          "h3": { fontSize: "1.25em", marginTop: "1.4em", marginBottom: "0.4em", lineHeight: "1.2" },
+          ":where(h1, h2, h3):first-child": { marginTop: "0" },
+          "p": { marginTop: "0.85em", marginBottom: "0.85em" },
+          "li": { marginTop: "0.3em", marginBottom: "0.3em" },
+          "blockquote": { fontSize: "1.08em", lineHeight: "1.45", paddingLeft: "1em", marginTop: "1.2em", marginBottom: "1.2em" },
+          "code": { fontSize: "0.875em", padding: "0.15em 0.4em", borderRadius: "2px" },
+          "pre": { fontSize: "0.85em", lineHeight: "1.6", borderRadius: "2px" },
+          "table": { fontSize: "0.95em", lineHeight: "1.45" },
+          "thead th": { fontSize: "11px", paddingBottom: "0.6em" },
+          "tbody td": { paddingTop: "0.55em", paddingBottom: "0.55em" },
+          "hr": { marginTop: "1.8em", marginBottom: "1.8em" },
+        };
+        return {
+        sm: { css: metrics },
+        DEFAULT: {
+          css: {
+            "--tw-prose-body": "hsl(var(--foreground) / 0.88)",
+            "--tw-prose-headings": "hsl(var(--foreground))",
+            "--tw-prose-lead": "hsl(var(--muted-foreground))",
+            "--tw-prose-links": "hsl(var(--foreground))",
+            "--tw-prose-bold": "hsl(var(--foreground))",
+            "--tw-prose-counters": "hsl(var(--muted-foreground))",
+            "--tw-prose-bullets": "hsl(var(--foreground) / 0.5)",
+            "--tw-prose-hr": "hsl(var(--border))",
+            "--tw-prose-quotes": "hsl(var(--foreground))",
+            "--tw-prose-quote-borders": "hsl(var(--primary))",
+            "--tw-prose-captions": "hsl(var(--muted-foreground))",
+            "--tw-prose-code": "hsl(var(--foreground))",
+            "--tw-prose-pre-code": "hsl(var(--foreground))",
+            "--tw-prose-pre-bg": "hsl(var(--muted))",
+            "--tw-prose-th-borders": "hsl(var(--border))",
+            "--tw-prose-td-borders": "hsl(var(--border))",
+            "--tw-prose-invert-body": "hsl(var(--foreground) / 0.88)",
+            "--tw-prose-invert-headings": "hsl(var(--foreground))",
+            "--tw-prose-invert-lead": "hsl(var(--muted-foreground))",
+            "--tw-prose-invert-links": "hsl(var(--foreground))",
+            "--tw-prose-invert-bold": "hsl(var(--foreground))",
+            "--tw-prose-invert-counters": "hsl(var(--muted-foreground))",
+            "--tw-prose-invert-bullets": "hsl(var(--foreground) / 0.5)",
+            "--tw-prose-invert-hr": "hsl(var(--border))",
+            "--tw-prose-invert-quotes": "hsl(var(--foreground))",
+            "--tw-prose-invert-quote-borders": "hsl(var(--primary))",
+            "--tw-prose-invert-captions": "hsl(var(--muted-foreground))",
+            "--tw-prose-invert-code": "hsl(var(--foreground))",
+            "--tw-prose-invert-pre-code": "hsl(var(--foreground))",
+            "--tw-prose-invert-pre-bg": "hsl(var(--muted))",
+            "--tw-prose-invert-th-borders": "hsl(var(--border))",
+            "--tw-prose-invert-td-borders": "hsl(var(--border))",
+            ...metrics,
+            "h1, h2, h3, h4": {
+              fontFamily: font("serif"),
+              fontWeight: "400",
+              letterSpacing: "-0.01em",
+            },
+            "ul > li::marker": { fontSize: "0.9em" },
+            "ol > li::marker": { fontFamily: font("mono"), fontSize: "0.85em" },
+            "blockquote": {
+              fontFamily: font("serif"),
+              fontStyle: "italic",
+              fontWeight: "400",
+              borderLeftWidth: "1px",
+              ...metrics.blockquote,
+            },
+            "blockquote p:first-of-type::before": { content: "none" },
+            "blockquote p:last-of-type::after": { content: "none" },
+            "a": { textDecorationThickness: "1px", textUnderlineOffset: "4px", fontWeight: "400" },
+            "code": {
+              fontFamily: font("mono"),
+              fontWeight: "400",
+              backgroundColor: "hsl(var(--muted))",
+              ...metrics.code,
+            },
+            "code::before": { content: "none" },
+            "code::after": { content: "none" },
+            "pre": {
+              border: "1px solid hsl(var(--border))",
+              ...metrics.pre,
+            },
+            "pre code": { backgroundColor: "transparent", padding: "0" },
+            "thead th": {
+              fontFamily: font("mono"),
+              fontWeight: "400",
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+              color: "hsl(var(--muted-foreground))",
+              ...metrics["thead th"],
+            },
+            "strong": { fontWeight: "600" },
+          },
+        },
+        };
+      },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [animate, typography],
 } satisfies Config;
