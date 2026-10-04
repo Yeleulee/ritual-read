@@ -95,9 +95,40 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
     pageRef.current = clamped;
     setPage(clamped);
     emit(clamped, n);
+    anchorRef.current = anchorOffset();
   };
   const pagesRef = useRef(1);
   pagesRef.current = pages;
+  const strideRef = useRef(0);
+  strideRef.current = stride;
+  // Text offset of the first paragraph on the current page, captured while the column geometry
+  // still matches the page number (by the time a resize callback fires the columns have already reflowed)
+  const anchorRef = useRef<number | null>(null);
+
+  // Column index a track-relative x falls in, for the given layout
+  const columnAt = (x: number, l: ReturnType<typeof pageLayout>) => Math.floor((x + l.gutter / 2) / Math.max(1, l.columnWidth + l.gutter));
+  /* Rotation or a font change re-flows the columns, so page N no longer holds the same words.
+     The remembered first paragraph of the page is located again after measuring. */
+  const anchorOffset = (): number | null => {
+    const track = trackRef.current;
+    if (!track || !strideRef.current) return null;
+    const pageStart = (pageRef.current - 1) * strideRef.current;
+    const left = track.getBoundingClientRect().left;
+    let fallback: number | null = null;
+    for (const el of Array.from(track.querySelectorAll<HTMLElement>("[data-start]"))) {
+      const x = el.getBoundingClientRect().left - left;
+      if (x >= pageStart - 1) return +el.dataset.start!;
+      fallback = +el.dataset.start!;
+    }
+    return fallback;
+  };
+  const pageForOffset = (offset: number, l: ReturnType<typeof pageLayout>): number | null => {
+    const track = trackRef.current;
+    const el = track?.querySelector<HTMLElement>(`[data-start="${offset}"]`);
+    if (!el || !track) return null;
+    const x = el.getBoundingClientRect().left - track.getBoundingClientRect().left;
+    return Math.floor(columnAt(x, l) / l.columns) + 1;
+  };
 
   // Column geometry: recount pages whenever size or typography changes
   useLayoutEffect(() => {
@@ -109,6 +140,7 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
       const w = vp.clientWidth;
       const h = vp.clientHeight;
       if (!w) return;
+      const anchor = scroll ? null : anchorRef.current;
       if (scroll) {
         // Scrolling reads as one long single column at a comfortable measure
         const l = pageLayout(w, Infinity, settingsRef.current);
@@ -132,10 +164,13 @@ export const TextReader = ({ content, settings, theme, initialLocation, highligh
       const cols = Math.max(1, Math.round((track.scrollWidth + l.gutter) / step));
       const n = Math.max(1, Math.ceil(cols / l.columns));
       setStride(step * l.columns);
+      strideRef.current = step * l.columns;
       setPages(n);
       pagesRef.current = n;
-      if (pageRef.current > n) goTo(n);
-      else emit(pageRef.current, n);
+      const anchored = anchor != null ? pageForOffset(anchor, l) : null;
+      if (anchored != null && anchored !== pageRef.current) goTo(anchored);
+      else if (pageRef.current > n) goTo(n);
+      else { emit(pageRef.current, n); anchorRef.current = anchorOffset(); }
     };
     measure();
     const ro = new ResizeObserver(measure);

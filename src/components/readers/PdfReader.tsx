@@ -12,11 +12,19 @@ interface PdfReaderProps {
   onRelocated?: (info: RelocatedInfo) => void;
   onPageText?: (text: string) => void;
   onTap?: () => void;
+  /** Current zoom factor (1 = fit); the shell disables page-turn gestures while zoomed */
+  onZoom?: (zoom: number) => void;
+  /** Two fingers are on the page; the shell must not treat the movement as a page turn */
+  onPinch?: (active: boolean) => void;
 }
+
+export const PDF_ZOOM_MIN = 1;
+export const PDF_ZOOM_MAX = 4;
+const clampZoom = (z: number) => Math.min(PDF_ZOOM_MAX, Math.max(PDF_ZOOM_MIN, z));
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onRelocated, onPageText, onTap }: PdfReaderProps) => {
+export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onRelocated, onPageText, onTap, onZoom, onPinch }: PdfReaderProps) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const docRef = useRef<any>(null);
@@ -28,11 +36,24 @@ export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onR
   const [numPages, setNumPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [zoom, setZoomState] = useState(1);
+  const zoomRef = useRef(1);
+  const pinch = useRef<{ pointers: Map<number, { x: number; y: number }>; startDist: number; startZoom: number } | null>(null);
+  // The click that follows a pinch release must not toggle the reader chrome
+  const suppressTap = useRef(false);
 
-  const cb = useRef({ onReady, onToc, onRelocated, onPageText, onTap });
-  cb.current = { onReady, onToc, onRelocated, onPageText, onTap };
+  const cb = useRef({ onReady, onToc, onRelocated, onPageText, onTap, onZoom, onPinch });
+  cb.current = { onReady, onToc, onRelocated, onPageText, onTap, onZoom, onPinch };
   const themeRef = useRef(theme);
   themeRef.current = theme;
+
+  const setZoom = (z: number) => {
+    const next = Math.round(clampZoom(z) * 100) / 100;
+    if (next === zoomRef.current) return;
+    zoomRef.current = next;
+    setZoomState(next);
+    cb.current.onZoom?.(next);
+  };
 
   const emit = (p: number, n: number) => {
     const outline = outlineRef.current;
@@ -86,6 +107,9 @@ export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onR
       },
       currentLocation() {
         return String(pageRef.current);
+      },
+      zoomTo(z) {
+        setZoom(z);
       },
       async snapshot() {
         const src = canvasRef.current;
@@ -209,7 +233,7 @@ export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onR
       try {
         const p = await doc.getPage(page);
         const base = p.getViewport({ scale: 1 });
-        const scale = Math.min(container.clientWidth / base.width, container.clientHeight / base.height);
+        const scale = Math.min(container.clientWidth / base.width, container.clientHeight / base.height) * zoom;
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         const vp = p.getViewport({ scale: scale * dpr });
         const ctx = canvas.getContext("2d");
@@ -241,14 +265,56 @@ export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onR
     const ro = new ResizeObserver(() => render());
     if (containerRef.current) ro.observe(containerRef.current);
     return () => ro.disconnect();
-  }, [page, numPages]);
+  }, [page, numPages, zoom]);
+
+  // A new page starts back at fit-to-screen
+  useEffect(() => { setZoom(1); }, [page]);
+
+  /* Pinch: PageTurner sets touch-action:none on its root, so native pinch zoom never happens.
+     Two pointers here scale the render instead; the shell pauses page turning meanwhile. */
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== "touch") return;
+    const s = pinch.current ?? { pointers: new Map(), startDist: 0, startZoom: zoomRef.current };
+    s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    pinch.current = s;
+    if (s.pointers.size === 2) {
+      const [a, b] = Array.from(s.pointers.values());
+      s.startDist = Math.hypot(a.x - b.x, a.y - b.y);
+      s.startZoom = zoomRef.current;
+      cb.current.onPinch?.(true);
+    }
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const s = pinch.current;
+    if (!s || !s.pointers.has(e.pointerId)) return;
+    s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (s.pointers.size !== 2 || !s.startDist) return;
+    const [a, b] = Array.from(s.pointers.values());
+    setZoom(s.startZoom * (Math.hypot(a.x - b.x, a.y - b.y) / s.startDist));
+  };
+  const onPointerEnd = (e: React.PointerEvent) => {
+    const s = pinch.current;
+    if (!s) return;
+    const wasPinch = s.pointers.size === 2;
+    s.pointers.delete(e.pointerId);
+    if (s.pointers.size < 2) {
+      s.startDist = 0;
+      if (s.pointers.size === 0) pinch.current = null;
+      if (wasPinch) { suppressTap.current = true; cb.current.onPinch?.(false); }
+    }
+  };
+  const zoomed = zoom > 1;
 
   return (
     <div
       ref={containerRef}
-      className="flex h-full w-full items-center justify-center overflow-hidden"
-      style={{ background: theme.bg }}
-      onClick={() => cb.current.onTap?.()}
+      className={zoomed ? "h-full w-full overflow-auto overscroll-contain" : "flex h-full w-full items-center justify-center overflow-hidden"}
+      style={{ background: theme.bg, touchAction: zoomed ? "pan-x pan-y" : undefined }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+      onClick={() => { if (suppressTap.current) { suppressTap.current = false; return; } cb.current.onTap?.(); }}
     >
       {error ? (
         <div className="px-4 text-sm" style={{ color: theme.fg }}>
@@ -259,7 +325,7 @@ export const PdfReader = ({ fileUrl, theme, initialLocation, onReady, onToc, onR
           Opening PDF…
         </div>
       ) : null}
-      <canvas ref={canvasRef} className={loading || error ? "hidden" : "block"} style={{ filter: theme.dark ? "invert(0.92) hue-rotate(180deg)" : "none" }} />
+      <canvas ref={canvasRef} className={loading || error ? "hidden" : zoomed ? "mx-auto block" : "block"} style={{ filter: theme.dark ? "invert(0.92) hue-rotate(180deg)" : "none" }} />
     </div>
   );
 };

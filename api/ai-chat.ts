@@ -48,7 +48,7 @@ const OPENROUTER_MODEL_ID = /^[a-z0-9._-]+\/[a-z0-9._:-]+$/i;
 const MAX_MESSAGES = 40;
 const MAX_CHARS = 60_000;
 const MAX_BODY_BYTES = 1_000_000;
-const ATTEMPT_TIMEOUT_MS = 25_000;
+const ATTEMPT_TIMEOUT_MS = 40_000;
 // Stays inside the function's maxDuration (vercel.json) with room to answer
 const TOTAL_BUDGET_MS = 50_000;
 
@@ -162,10 +162,8 @@ function geminiBody(messages: ChatMessage[], model: string) {
     contents,
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 4096,
-      // Flash models think by default; a reading assistant answers faster and cheaper without it.
-      // (Pro models reject a zero budget, so they keep their default.)
-      ...(model.startsWith("gemini-2.5-flash") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      maxOutputTokens: 8192,
+      ...(model.startsWith("gemini-2.5-flash") ? { thinkingConfig: { thinkingBudget: 1024 } } : {}),
     },
   };
 }
@@ -193,7 +191,7 @@ async function callGemini(key: string, model: string, messages: ChatMessage[], t
         .trim();
       if (text) return { ok: true, reply: text };
       if (d.promptFeedback?.blockReason || candidate?.finishReason === "SAFETY") {
-        return { ok: true, reply: "I can't help with that one. Try asking about the passage another way." };
+        return { ok: false, status: 422, message: "The provider blocked this request. Try asking about the passage another way.", scope: "request" };
       }
       return { ok: false, status: 502, message: "empty reply", scope: "model" };
     }
@@ -221,7 +219,7 @@ async function callOpenRouter(key: string, model: string, messages: ChatMessage[
     const { res, data } = await postJson(
       "https://openrouter.ai/api/v1/chat/completions",
       { Authorization: `Bearer ${key}`, "HTTP-Referer": referer, "X-Title": "Ritual Reader" },
-      { model, messages, temperature: 0.7, max_tokens: 4096 },
+      { model, messages, temperature: 0.7, max_tokens: 8192 },
       timeoutMs,
     );
     const d = data as OpenRouterResponse;

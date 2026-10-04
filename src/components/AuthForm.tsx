@@ -118,8 +118,9 @@ export const AuthForm = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground grid lg:grid-cols-12">
-      {/* Statement panel — same colour block as the landing hero */}
-      <aside className="hidden lg:flex lg:col-span-7 flex-col justify-between border-r border-white/10 bg-[linear-gradient(135deg,#0B0B0B_0%,#161514_55%,#242220_100%)] text-white px-10 xl:px-14 py-8">
+      {/* Statement panel — same colour block as the landing hero. Pinned to one viewport so the
+          form can scroll without stretching the composition. */}
+      <aside className="hidden lg:flex lg:col-span-7 lg:sticky lg:top-0 lg:h-dvh flex-col justify-between border-r border-white/10 bg-[linear-gradient(135deg,#0B0B0B_0%,#161514_55%,#242220_100%)] text-white px-10 xl:px-14 py-8">
         <div className="flex items-center justify-between">
           <Link to="/" aria-label="Ritual Reader — home" className="inline-flex">
             <Logo label="" className="text-3xl text-white" />
@@ -127,8 +128,10 @@ export const AuthForm = () => {
           <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-white/60">Sign in</p>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center py-6">
-          <ReadingNookIllustration className="w-full max-w-[min(660px,72vh)]" />
+        {/* Height-bounded so the headline and stats always stay on screen; scene hugs the left
+            padding edge to line up with the headline below. */}
+        <div className="flex-1 min-h-0 flex items-center py-8">
+          <ReadingNookIllustration align="start" className="h-full w-full max-w-[680px]" />
         </div>
 
         <div>
@@ -166,9 +169,9 @@ export const AuthForm = () => {
         <div className="flex-1 flex items-center">
           <div className="w-full max-w-sm mx-auto">
             {/* Below lg the statement panel is hidden, so carry the illustration into a compact banner */}
-            <div className="lg:hidden mb-8 overflow-hidden rounded-sm bg-[linear-gradient(135deg,#0B0B0B_0%,#161514_55%,#242220_100%)] text-white">
-              <div className="relative h-44 sm:h-52 overflow-hidden">
-                <ReadingNookIllustration className="absolute left-1/2 top-1/2 w-[104%] max-w-none -translate-x-1/2 -translate-y-[48%]" />
+            <div className="lg:hidden mt-4 mb-6 sm:mb-8 overflow-hidden rounded-sm bg-[linear-gradient(135deg,#0B0B0B_0%,#161514_55%,#242220_100%)] text-white">
+              <div className="aspect-[21/8] max-h-60 w-full">
+                <ReadingNookIllustration crop="wide" fit="slice" className="h-full w-full" />
               </div>
               <div className="flex items-center justify-between border-t border-white/10 px-4 py-2.5">
                 <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/55">Ritual Reader</p>
@@ -192,7 +195,7 @@ export const AuthForm = () => {
                 <p className="mt-2 text-sm text-muted-foreground">
                   No Supabase keys found, so auth is bypassed. Books are stored in this browser.
                 </p>
-                <Button className="mt-4 w-full" onClick={() => signIn('', '')}>
+                <Button className="mt-4 h-11 w-full" onClick={() => signIn('', '')}>
                   Continue locally
                 </Button>
               </div>
@@ -209,7 +212,7 @@ export const AuthForm = () => {
                   <Button
                     onClick={handleGoogleSignIn}
                     variant="outline"
-                    className="w-full"
+                    className="h-11 w-full"
                     disabled={googleLoading || loading}
                   >
                     {googleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
@@ -245,7 +248,7 @@ export const AuthForm = () => {
                         required
                       />
                     </div>
-                    <Button type="submit" className="w-full" disabled={loading || googleLoading}>
+                    <Button type="submit" className="h-11 w-full" disabled={loading || googleLoading}>
                       {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Sign in
                     </Button>
@@ -258,7 +261,7 @@ export const AuthForm = () => {
                   <Button
                     onClick={handleGoogleSignIn}
                     variant="outline"
-                    className="w-full"
+                    className="h-11 w-full"
                     disabled={googleLoading || loading}
                   >
                     {googleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
@@ -296,7 +299,7 @@ export const AuthForm = () => {
                       />
                       <p className="text-xs text-muted-foreground">At least 6 characters.</p>
                     </div>
-                    <Button type="submit" className="w-full" disabled={loading || googleLoading}>
+                    <Button type="submit" className="h-11 w-full" disabled={loading || googleLoading}>
                       {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Create account
                     </Button>

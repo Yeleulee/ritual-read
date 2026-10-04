@@ -6,7 +6,7 @@ import { useMusicPlayer } from "@/hooks/use-music-player";
 import { useBookmarks, useHighlights, useReaderSettings, useReadingPosition, type HighlightColor } from "@/hooks/use-reader-store";
 import { DEFAULT_SETTINGS, isNightNow, resolveTheme, type PageTurnMode, type ReaderSettings } from "@/lib/reader-themes";
 import { BOOK_FORMATS, FORMAT_LABELS, formatFromType } from "@/lib/book-formats";
-import { ReaderMenu, ReaderTopBar, ReaderFooter, ThemesSettingsSheet, ContentsDrawer, SearchSheet, SelectionMenu, NoteSheet, LookUpSheet, MusicSheet, ReaderChromeStyles, type SettingsCapabilities } from "./ReaderOverlays";
+import { ReaderMenu, ReaderTopBar, ReaderFooter, ReaderChromeHandle, ThemesSettingsSheet, ContentsDrawer, SearchSheet, SelectionMenu, NoteSheet, LookUpSheet, MusicSheet, ReaderChromeStyles, type SettingsCapabilities } from "./ReaderOverlays";
 import { PageTurner, type PageTurnerHandle } from "./PageTurner";
 import type { ReaderApi, RelocatedInfo, SelectionInfo, TocItem } from "@/components/readers/EpubReader";
 import { EpubReader } from "@/components/readers/EpubReader";
@@ -42,6 +42,7 @@ const emptyRelocation = (book: ReaderBook): RelocatedInfo => ({ location: "", pe
    rather than in the synced settings. Touch devices start on "slide": it is a single composited
    transform, while the curl re-clips a whole chapter document every frame. */
 const DEVICE_TURN_KEY = "rr:device:pageTurn";
+const CHROME_HINT_KEY = "rr:hint:chrome";
 // Touch-first devices (phones, iPads) report a coarse primary pointer; a touchscreen laptop does not
 const isTouchDevice = () => typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
 const readDeviceTurn = (): PageTurnMode | null => {
@@ -84,6 +85,8 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
   const [musicOpen, setMusicOpen] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
+  const [pdfZoom, setPdfZoom] = useState(1);
+  const [pinching, setPinching] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
   const pageTurnerRef = useRef<PageTurnerHandle>(null);
   const hideTimer = useRef<number>();
@@ -132,6 +135,14 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
 
   useEffect(() => { showChrome(3200); return () => { if (hideTimer.current) window.clearTimeout(hideTimer.current); }; // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book.id]);
+
+  // One-time hint for touch users: the bars are about to hide and the way back is not obvious
+  useEffect(() => {
+    if (!touch) return;
+    try { if (localStorage.getItem(CHROME_HINT_KEY)) return; localStorage.setItem(CHROME_HINT_KEY, "1"); } catch { return; }
+    const t = window.setTimeout(() => toast({ title: "Reading controls", description: "Tap the middle of the page, or the handle at the bottom, to show them again." }), 2600);
+    return () => window.clearTimeout(t);
+  }, [touch, toast]);
 
   useEffect(() => {
     if (!settings.autoNight) return;
@@ -262,7 +273,7 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
     const pageStart = saved && /^\d+$/.test(saved) ? saved : null;
     const textStart = saved && saved.startsWith("txt:") ? saved : null;
     if (isEpub && resolvedUrl) return <EpubReader fileUrl={resolvedUrl} locationsKey={book.id} settings={settings} theme={theme} initialLocation={epubStart} highlights={highlights} onReady={onReaderReady} onToc={setToc} onRelocated={onRelocated} onSelected={onSelection} onHighlightClick={(id, rect) => { const h = highlights.find((item) => item.id === id); if (h) setSelection({ cfiRange: h.cfi_range, text: h.text, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } }); }} onTap={readerTap} onGesture={(phase, p) => pageTurnerRef.current?.feed(phase, p)} />;
-    if (isPdf && resolvedUrl) return <PdfReader key={book.id} fileUrl={resolvedUrl} theme={theme} initialLocation={pageStart ?? String(Math.max(1, Math.round((book.progress / 100) * Math.max(1, book.totalPages))))} onReady={onReaderReady} onToc={setToc} onRelocated={onRelocated} onTap={readerTap} />;
+    if (isPdf && resolvedUrl) return <PdfReader key={book.id} fileUrl={resolvedUrl} theme={theme} initialLocation={pageStart ?? String(Math.max(1, Math.round((book.progress / 100) * Math.max(1, book.totalPages))))} onReady={onReaderReady} onToc={setToc} onRelocated={onRelocated} onTap={readerTap} onZoom={setPdfZoom} onPinch={setPinching} />;
     if (isPpt && resolvedUrl) return <PptReader key={book.id} fileUrl={resolvedUrl} theme={theme} initialLocation={pageStart} onReady={onReaderReady} onToc={setToc} onRelocated={onRelocated} onTap={readerTap} />;
     // File-backed books wait for their URL rather than falling through to the text reader
     if (book.fileUrl && (isEpub || isPdf || isPpt)) return <div className="flex h-full items-center justify-center text-sm" style={{ color: theme.muted }}>Preparing book…</div>;
@@ -278,10 +289,11 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
   return createPortal(<>
     <ReaderChromeStyles />
     <div ref={shellRef} className="fixed inset-0 z-50 overflow-hidden" style={{ background: theme.bg, color: theme.fg }}>
-      {resolveError ? <div className="flex h-full items-center justify-center p-6 text-sm">{resolveError}</div> : <PageTurner ref={pageTurnerRef} api={api} mode={pageTurn} turnSpeed={settings.turnSpeed} theme={theme} canNext={!relocation.atEnd} canPrev={!relocation.atStart} pageKey={`${relocation.location}|${theme.id}|${settings.fontId}|${settings.fontSize}|${settings.lineHeight}|${settings.bold}|${settings.margins}`} disabled={anySheetOpen || !!selection} onTapCenter={readerTap} onTurned={hideChrome}>{reader}</PageTurner>}
+      {resolveError ? <div className="flex h-full items-center justify-center p-6 text-sm">{resolveError}</div> : <PageTurner ref={pageTurnerRef} api={api} mode={pageTurn} turnSpeed={settings.turnSpeed} theme={theme} canNext={!relocation.atEnd} canPrev={!relocation.atStart} pageKey={`${relocation.location}|${theme.id}|${settings.fontId}|${settings.fontSize}|${settings.lineHeight}|${settings.bold}|${settings.margins}`} disabled={anySheetOpen || !!selection || pinching || pdfZoom > 1} onTapCenter={readerTap} onTurned={hideChrome}>{reader}</PageTurner>}
       {settings.brightness < 1 && <div className="pointer-events-none absolute inset-0 z-40 bg-black" style={{ opacity: 1 - settings.brightness }} />}
       <ReaderTopBar title={book.title} author={book.author} theme={theme} visible={chromeVisible && !selection} bookmarked={isBookmarked} musicPlaying={musicPlaying} onClose={onBackToLibrary} onBookmark={toggleBookmark} onContents={() => setContentsOpen(true)} onSettings={() => setSettingsOpen(true)} onMusic={() => setMusicOpen(true)} />
-      <ReaderFooter theme={theme} visible={chromeVisible && !selection} location={location} relocation={relocation} onSeek={(p) => { void api?.display(p); }} onMenu={() => { setMenuOpen(true); setChromeVisible(true); }} canPrevChapter={flatToc.length > 0 && chapterIndex > 0} canNextChapter={flatToc.length > 0 && chapterIndex < flatToc.length - 1} onChapter={stepChapter} />
+      <ReaderFooter theme={theme} visible={chromeVisible && !selection} location={location} relocation={relocation} onSeek={(p) => { void api?.display(p); }} onMenu={() => { setMenuOpen(true); setChromeVisible(true); }} canPrevChapter={flatToc.length > 0 && chapterIndex > 0} canNextChapter={flatToc.length > 0 && chapterIndex < flatToc.length - 1} onChapter={stepChapter} zoom={isPdf ? { value: pdfZoom, onChange: (z) => api?.zoomTo?.(z) } : undefined} />
+      <ReaderChromeHandle theme={theme} visible={!chromeVisible && !selection && !anySheetOpen} musicPlaying={musicPlaying} onShow={() => showChrome()} />
       <ReaderMenu open={menuOpen} onClose={() => setMenuOpen(false)} theme={theme} onContents={() => { setMenuOpen(false); setContentsOpen(true); }} onSearch={() => { setMenuOpen(false); setSearchOpen(true); }} onSettings={() => { setMenuOpen(false); setSettingsOpen(true); }} onMusic={() => { setMenuOpen(false); setMusicOpen(true); }} onFullscreen={toggleFullscreen} onAssistant={() => { setMenuOpen(false); toast({ title: "Assistant", description: "Open the Assistant tab to continue with your book context." }); }} />
       <ThemesSettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} settings={settings} update={update} theme={theme} capabilities={capabilities} formatLabel={formatInfo?.label} />
       <ContentsDrawer open={contentsOpen} onClose={() => setContentsOpen(false)} theme={theme} toc={toc} bookmarks={bookmarks} highlights={highlights} currentLocation={location} currentChapter={relocation.chapter} onNavigate={navigate} onRemoveBookmark={removeBookmark} onRemoveHighlight={removeHighlight} />

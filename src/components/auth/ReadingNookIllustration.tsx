@@ -23,14 +23,35 @@ const MOTES: Array<[number, number, number, number, number]> = [
   [676, 560, 1.3, -5.6, 7.5], [728, 360, 1.5, -3.4, 8], [772, 500, 1.0, -6.8, 6.8], [712, 600, 1.2, -0.7, 9.5],
 ];
 
-export function ReadingNookIllustration({ className }: { className?: string }) {
+// Crops are in scene units. `full` hugs the drawn content (drops the empty margins of the
+// 1040×730 canvas); `wide` is a letterbox across shelves, lamp and window for short banners.
+const CROPS = {
+  full: { x: 60, y: 70, w: 920, h: 600 },
+  wide: { x: 120, y: 80, w: 840, h: 320 },
+} as const;
+
+export function ReadingNookIllustration({
+  className,
+  crop = "full",
+  align = "center",
+  fit = "meet",
+}: {
+  className?: string;
+  crop?: keyof typeof CROPS;
+  /** Horizontal anchor when the box is wider than the scene */
+  align?: "start" | "center";
+  /** `slice` fills the box and crops; `meet` letterboxes */
+  fit?: "meet" | "slice";
+}) {
+  const c = CROPS[crop];
   return (
     <svg
-      viewBox="0 0 1040 730"
+      viewBox={`${c.x} ${c.y} ${c.w} ${c.h}`}
+      preserveAspectRatio={`${align === "start" ? "xMin" : "xMid"}YMid ${fit}`}
       role="img"
       aria-label="A reading nook at night: a bookshelf, an armchair beside a lamp, and a cup of tea steaming on a side table."
       className={cn("auth-scene block w-full h-auto", className)}
-      style={{ aspectRatio: "1040 / 730" }}
+      style={{ aspectRatio: `${c.w} / ${c.h}` }}
     >
       <defs>
         <radialGradient id="nook-glow" cx="50%" cy="50%" r="50%">

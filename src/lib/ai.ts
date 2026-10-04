@@ -45,7 +45,7 @@ async function viaServer(messages: ChatMessage[], model: string): Promise<string
         return null;
     }
     const data = (await res.json().catch(() => null)) as { reply?: unknown; error?: unknown } | null;
-    if (res.ok && typeof data?.reply === 'string') return data.reply;
+    if (res.ok && !data?.error && typeof data?.reply === 'string' && data.reply.trim()) return data.reply.trim();
     // Problems with the request itself would fail on the fallback too, so report them
     if ((res.status === 400 || res.status === 401) && typeof data?.error === 'string') throw new Error(data.error);
     return null;
@@ -53,13 +53,12 @@ async function viaServer(messages: ChatMessage[], model: string): Promise<string
 
 async function viaSupabase(messages: ChatMessage[], model: string): Promise<string> {
     const { supabase } = await import('@/integrations/supabase/client');
-    // Overloads and free-tier quotas are per model, so another model often answers when the first can't
-    for (const m of [...new Set([model, 'gemini-flash-latest', 'gemini-flash-lite-latest'])]) {
-        const { data, error } = await supabase.functions.invoke('ai-chat', { body: { messages, model: m } });
-        if (!error) return data?.reply || 'No response generated';
-        console.error('Edge function error:', m, error);
+    const { data, error } = await supabase.functions.invoke('ai-chat', { body: { messages, model } });
+    if (error || data?.error) throw new Error(ASSISTANT_UNAVAILABLE);
+    if (typeof data?.reply !== 'string' || !data.reply.trim()) {
+        throw new Error('The assistant returned an empty reply. Try again.');
     }
-    throw new Error(ASSISTANT_UNAVAILABLE);
+    return data.reply.trim();
 }
 
 export async function chat(req: ChatRequest): Promise<string> {

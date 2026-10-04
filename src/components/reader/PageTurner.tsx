@@ -45,6 +45,8 @@ const EDGE_NARROW = 0.24; // phones: bigger tap targets
 const TAP_MS = 300;
 const TAP_PX = 10;
 const DRAG_PX = 8;
+// iOS back-swipe and Android back gestures begin in this strip; a touch drag starting there is theirs
+const SYSTEM_EDGE_PX = 24;
 const SWIPE_PX = 40; // "none" mode: a flick still turns
 const SNAPSHOT_BUDGET_MS = 450; // past this, turn without animation rather than feel stuck
 // The grabbed corner travels 2W to flip fully; the pointer moves it this many times its own
@@ -412,7 +414,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
      getting them for selection/links until a horizontal drag is recognised) and events fed in
      from inside the EPUB iframe. */
   type Zone = "left" | "right" | "center";
-  type Gesture = { id: number; type: string; zone: Zone; dir: 1 | -1; startX: number; startY: number; startT: number; lastX: number; lastTime: number; vx: number; dragging: boolean; began: boolean; captured: boolean; starting?: Promise<boolean> };
+  type Gesture = { id: number; type: string; zone: Zone; dir: 1 | -1; startX: number; startY: number; startT: number; lastX: number; lastTime: number; vx: number; dragging: boolean; began: boolean; captured: boolean; systemEdge: boolean; starting?: Promise<boolean> };
   const gesture = useRef<Gesture | null>(null);
 
   const edgeFraction = () => (sizeRef.current.W < 600 ? EDGE_NARROW : EDGE);
@@ -435,7 +437,8 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   const gDown = (p: GesturePoint) => {
     if (disabled || effectiveMode === "scroll") return;
     const now = performance.now();
-    gesture.current = { id: p.id, type: p.pointerType, zone: zoneAt(p.x), dir: 1, startX: p.x, startY: p.y, startT: now, lastX: p.x, lastTime: now, vx: 0, dragging: false, began: false, captured: false };
+    const systemEdge = p.pointerType === "touch" && (p.x < SYSTEM_EDGE_PX || p.x > window.innerWidth - SYSTEM_EDGE_PX);
+    gesture.current = { id: p.id, type: p.pointerType, zone: zoneAt(p.x), dir: 1, startX: p.x, startY: p.y, startT: now, lastX: p.x, lastTime: now, vx: 0, dragging: false, began: false, captured: false, systemEdge };
   };
 
   const gMove = async (p: GesturePoint) => {
@@ -449,7 +452,10 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
     const dx = p.x - g.startX;
     const dy = p.y - g.startY;
     if (!g.dragging) {
+      if (disabled) return;
       if (Math.abs(dx) < DRAG_PX || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+      // A swipe that began in the system strip belongs to the browser's back/forward gesture
+      if (g.systemEdge) return;
       // Mouse drags in the middle of the page select text; fingers and pens swipe anywhere
       if (g.zone === "center" && g.type === "mouse") return;
       if (effectiveMode === "none" || hasSelection()) return;
@@ -542,7 +548,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
   }
 
   return (
-    <div ref={rootRef} className="relative h-full w-full select-none overflow-hidden" style={{ touchAction: effectiveMode === "scroll" ? "pan-y" : "none", cursor: dragging ? "grabbing" : undefined }} {...rootPointer}>
+    <div ref={rootRef} className="relative h-full w-full select-none overflow-hidden" style={{ touchAction: disabled ? "auto" : effectiveMode === "scroll" ? "pan-y" : "none", cursor: dragging ? "grabbing" : undefined }} {...rootPointer}>
       <div className="absolute inset-0">{children}</div>
 
       {/* Edge zones: tap targets that keep edge touches away from the text; the middle belongs to the reader */}

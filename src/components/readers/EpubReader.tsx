@@ -32,6 +32,8 @@ export interface ReaderApi {
   search?(query: string): Promise<SearchHit[]>;
   clearSelection?(): void;
   visibleText?(): string;
+  /** Fixed-layout readers (PDF): 1 = fit to screen; larger values pan inside the page */
+  zoomTo?(zoom: number): void;
 }
 
 export interface TocItem {

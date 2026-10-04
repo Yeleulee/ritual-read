@@ -8,12 +8,12 @@ export const RitualModeButton = () => {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-9">
+        <Button variant="ghost" size="sm" className="h-11 min-w-11 px-3 text-sm" aria-label="Music">
           <Music2 className="w-4 h-4" />
-          <span className="hidden lg:inline">Music</span>
+          <span className="hidden sm:inline">Music</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-xl rounded-lg p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-xl rounded-lg p-0 gap-0 overflow-hidden max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader className="px-6 pt-6 pb-4 text-left">
           <p className="eyebrow">Ritual</p>
           <DialogTitle className="display text-3xl">Music for reading</DialogTitle>

@@ -118,20 +118,20 @@ const Index = () => {
               size="icon"
               aria-label="Toggle theme"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="h-9 w-9"
+              className="h-11 w-11"
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
 
             <span className="hidden md:block h-5 w-px bg-border mx-2" />
 
-            <Button variant="ghost" size="sm" asChild className="hidden md:inline-flex h-9">
+            <Button variant="ghost" size="sm" asChild className="hidden md:inline-flex h-11 text-sm">
               <Link to="/">
                 <Home className="w-4 h-4" />
                 <span className="hidden lg:inline">Home</span>
               </Link>
             </Button>
-            <Button variant="ghost" size="sm" onClick={signOut} className="hidden md:inline-flex h-9 text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" size="sm" onClick={signOut} className="hidden md:inline-flex h-11 text-sm text-muted-foreground hover:text-foreground">
               <LogOut className="w-4 h-4" />
               <span className="hidden lg:inline">Sign out</span>
             </Button>

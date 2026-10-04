@@ -10,15 +10,24 @@ export interface YouTubeTrack {
 
 export type PlayerViewMode = "full" | "mini" | "hidden";
 
+/** Minimal surface of the YouTube iframe player we drive from the store. */
+export interface PlayerHandle {
+  playVideo: () => void;
+  pauseVideo: () => void;
+}
+
 interface PlayerState {
   queue: YouTubeTrack[];
   currentIndex: number;
   isPlaying: boolean;
+  /** True when the browser refused to start audio (iOS autoplay policy) — UI should ask for a tap. */
+  playbackBlocked: boolean;
   volume: number; // 0..100
   viewMode: PlayerViewMode;
   currentTime: number; // seconds
   duration: number; // seconds
   requestedSeekSeconds: number | null;
+  player: PlayerHandle | null;
 
   setQueue: (tracks: YouTubeTrack[], startIndex?: number) => void;
   addToQueue: (track: YouTubeTrack) => void;
@@ -31,17 +40,23 @@ interface PlayerState {
   setPlayback: (currentTime: number, duration: number) => void;
   requestSeek: (seconds: number) => void;
   clearSeek: () => void;
+  setPlayer: (player: PlayerHandle | null) => void;
+  /** Called from YouTube player-state events so UI reflects what is actually audible. */
+  syncFromPlayer: (playing: boolean) => void;
+  setPlaybackBlocked: (blocked: boolean) => void;
 }
 
 export const useMusicPlayer = create<PlayerState>((set, get) => ({
   queue: [],
   currentIndex: -1,
   isPlaying: false,
+  playbackBlocked: false,
   volume: 60,
   viewMode: "hidden",
   currentTime: 0,
   duration: 0,
   requestedSeekSeconds: null,
+  player: null,
 
   setQueue: (tracks, startIndex = 0) => {
     set({ queue: tracks, currentIndex: startIndex, isPlaying: true, viewMode: "mini", currentTime: 0, duration: 0 });
@@ -74,13 +89,24 @@ export const useMusicPlayer = create<PlayerState>((set, get) => ({
   },
   togglePlay: (playing) => {
     const isPlaying = playing ?? !get().isPlaying;
-    set({ isPlaying });
+    // Drive the iframe synchronously so iOS still sees the tap as the activating user gesture.
+    const player = get().player;
+    try {
+      if (isPlaying) player?.playVideo(); else player?.pauseVideo();
+    } catch { /* iframe not ready yet; the effect in RitualMusicPlayer retries */ }
+    set({ isPlaying, playbackBlocked: false });
   },
   setVolume: (volume) => set({ volume: Math.max(0, Math.min(100, volume)) }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setPlayback: (currentTime, duration) => set({ currentTime, duration }),
   requestSeek: (seconds) => set({ requestedSeekSeconds: Math.max(0, seconds) }),
   clearSeek: () => set({ requestedSeekSeconds: null }),
+  setPlayer: (player) => set({ player }),
+  syncFromPlayer: (playing) => {
+    if (get().isPlaying !== playing) set({ isPlaying: playing });
+    if (playing && get().playbackBlocked) set({ playbackBlocked: false });
+  },
+  setPlaybackBlocked: (blocked) => set({ playbackBlocked: blocked, ...(blocked ? { isPlaying: false } : {}) }),
 }));
 
 export const getCurrentTrack = (state: PlayerState) =>

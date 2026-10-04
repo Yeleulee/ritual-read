@@ -524,9 +524,11 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onPrepareUpload, o
                   <AlertDialogTrigger asChild>
                     <button
                       aria-label={`Remove ${book.title}`}
-                      className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center border border-border bg-background/90 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                      className="absolute right-1 top-1 inline-flex h-10 w-10 items-center justify-center text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <span className="inline-flex h-7 w-7 items-center justify-center border border-border bg-background/90">
+                        <X className="h-3.5 w-3.5" />
+                      </span>
                     </button>
                   </AlertDialogTrigger>
                   <AlertDialogContent className="rounded-lg">
