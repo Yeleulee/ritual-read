@@ -279,8 +279,21 @@ Colors are in HSL format for proper theming.
   animation-delay: var(--rise-delay, 0ms);
 }
 
+/* Accent rule that draws itself from the left */
+@keyframes grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.animate-grow-x {
+  transform-origin: left center;
+  animation: grow-x 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--rise-delay, 0ms);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-rise {
+  .animate-rise,
+  .animate-grow-x {
     animation-duration: 1ms;
     animation-delay: 0ms;
   }

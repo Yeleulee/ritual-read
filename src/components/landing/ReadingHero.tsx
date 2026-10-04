@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowRight } from "lucide-react";
 import { useReducedMotion } from "framer-motion";
 import { ReaderIllustration } from "./ReaderIllustration";
@@ -7,11 +7,51 @@ import { FORMAT_LABELS } from "@/lib/book-formats";
 
 const rise = (ms: number): CSSProperties => ({ "--rise-delay": `${ms}ms` } as CSSProperties);
 
+// `from` lets "0 feeds" count down to zero instead of sitting still
 const stats = [
-  { n: "20", unit: "min", body: "A daily goal small enough to keep. Big enough to finish books." },
-  { n: String(FORMAT_LABELS.length), unit: "formats", body: "EPUB, PDF, plain text, Word and PowerPoint — dropped in, shelved, remembered." },
-  { n: "0", unit: "feeds", body: "No recommendations, no likes, no timeline. Just the page you're on." },
+  { n: 20, from: 0, unit: "min", body: "A daily goal small enough to keep. Big enough to finish books." },
+  { n: FORMAT_LABELS.length, from: 0, unit: "formats", body: "EPUB, PDF, plain text, Word and PowerPoint — dropped in, shelved, remembered." },
+  { n: 0, from: 12, unit: "feeds", body: "No recommendations, no likes, no timeline. Just the page you're on." },
 ];
+const STAT_STAGGER = 160;
+const STAT_BASE_DELAY = 200;
+
+/** True once the element has scrolled into view (fires once). */
+function useInView<T extends HTMLElement>(threshold = 0.3) {
+  const ref = useRef<T>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (!("IntersectionObserver" in window)) { setInView(true); return; }
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setInView(true); io.disconnect(); }
+    }, { threshold });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [threshold]);
+  return [ref, inView] as const;
+}
+
+function CountUp({ to, from = 0, active, delayMs = 0, durationMs = 1400 }: { to: number; from?: number; active: boolean; delayMs?: number; durationMs?: number }) {
+  const reduced = useReducedMotion();
+  const [value, setValue] = useState(reduced ? to : from);
+  useEffect(() => {
+    if (!active) return;
+    if (reduced) { setValue(to); return; }
+    const start = performance.now() + delayMs;
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, Math.max(0, (now - start) / durationMs));
+      const eased = 1 - Math.pow(1 - t, 3);
+      setValue(Math.round(from + (to - from) * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [active, to, from, delayMs, durationMs, reduced]);
+  return <>{value}</>;
+}
 
 type Segment = { text: string; className?: string };
 
@@ -109,6 +149,7 @@ function Typed({
 }
 
 export function ReadingHero() {
+  const [statsRef, statsInView] = useInView<HTMLDivElement>();
   return (
     <section id="hero" className="relative">
       {/* Colour block — Circle-style with a large rounded base */}
@@ -162,18 +203,26 @@ export function ReadingHero() {
       {/* Stat card overlapping the block edge */}
       <div className="mx-auto max-w-[1400px] px-6 sm:px-10 lg:px-14 -mt-14 md:-mt-20 relative z-10">
         <div
+          ref={statsRef}
           className="animate-rise rounded-[40px] md:rounded-[80px] bg-card text-card-foreground border border-border px-8 sm:px-12 lg:px-20 py-10 md:py-14 grid md:grid-cols-3 gap-10 md:gap-6"
           style={rise(440)}
         >
-          {stats.map((s, i) => (
-            <div key={s.unit} className={i > 0 ? "md:border-l md:border-border md:pl-10" : ""}>
-              <div className="flex items-baseline gap-2">
-                <span className="font-sans font-light text-[56px] md:text-[64px] leading-none tracking-[-0.03em]">{s.n}</span>
-                <span className="font-serif italic text-2xl text-muted-foreground">{s.unit}</span>
+          {stats.map((s, i) => {
+            const delay = STAT_BASE_DELAY + i * STAT_STAGGER;
+            const reveal = (extra: number) => (statsInView ? "animate-rise" : "opacity-0") + " " + extra;
+            return (
+              <div key={s.unit} className={i > 0 ? "md:border-l md:border-border md:pl-10" : ""}>
+                <div className="flex items-baseline gap-2">
+                  <span className={reveal("font-sans font-light text-[56px] md:text-[64px] leading-none tracking-[-0.03em] tabular-nums")} style={rise(delay)}>
+                    <CountUp to={s.n} from={s.from} active={statsInView} delayMs={delay + 200} />
+                  </span>
+                  <span className={reveal("font-serif italic text-2xl text-muted-foreground")} style={rise(delay + 140)}>{s.unit}</span>
+                </div>
+                <span className={(statsInView ? "animate-grow-x" : "scale-x-0") + " mt-4 block h-px w-12 bg-foreground/40"} style={rise(delay + 260)} aria-hidden />
+                <p className={reveal("mt-4 text-[15px] leading-relaxed text-muted-foreground max-w-[26ch]")} style={rise(delay + 300)}>{s.body}</p>
               </div>
-              <p className="mt-4 text-[15px] leading-relaxed text-muted-foreground max-w-[26ch]">{s.body}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>
