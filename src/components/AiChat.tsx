@@ -1,14 +1,41 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { chat, ChatMessage } from "@/lib/ai";
+import { buildBookContextMessages, getBookText, MAX_TAGGED_BOOKS, type TaggedBookText } from "@/lib/book-context";
+import type { BookItem } from "@/hooks/use-books";
 import { cn } from "@/lib/utils";
 
 interface AiChatProps {
   context?: string;
+  /** Library books that can be tagged with "@" */
+  books?: BookItem[];
+  /** Id of the open book, so tagging it doesn't send its text twice */
+  currentBookId?: string;
 }
+
+type TaggedRef = Pick<BookItem, "id" | "title" | "author">;
+
+/** `content` is what the model sees (text + plain-text mentions); `display`/`books` are for the transcript. */
+interface ChatEntry extends ChatMessage {
+  display?: string;
+  books?: TaggedRef[];
+}
+
+interface Mention {
+  start: number;
+  end: number;
+  query: string;
+}
+
+// "@" at the start or after whitespace, followed by a query that doesn't begin with a space
+const MENTION_RE = /(?:^|\s)@((?:[^\s@][^@\n]{0,39})?)$/;
+const PICKER_ID = "ai-chat-book-picker";
 
 // Renderer overrides: tables and code scroll instead of breaking the bubble on narrow screens;
 // links open safely in a new tab; the closing Takeaways section gets a hairline divider.
@@ -54,18 +81,101 @@ const SYSTEM_PROMPT = `You are Ritual, a knowledgeable, friendly assistant built
 - Keep sections proportionate: short paragraphs (2–4 sentences), no filler preambles, and no repetition between the body and the takeaways.
 - Match any explicit request for a shorter answer; otherwise prioritize completeness over brevity.`;
 
-const MAX_BOOK_CONTEXT_CHARS = 32_000;
-
-export const AiChat = ({ context = "" }: AiChatProps) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps) => {
+  const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isReadingBooks, setIsReadingBooks] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [taggedBooks, setTaggedBooks] = useState<BookItem[]>([]);
+  const [mention, setMention] = useState<Mention | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  // Start index of an "@" the user dismissed with Escape, so it stays closed while they keep typing
+  const dismissedAt = useRef<number | null>(null);
+  const pendingCaret = useRef<number | null>(null);
 
   const bookTitle = context.match(/Currently reading: "([^"]+)"/)?.[1];
+
+  const mentionMatches = useMemo(() => {
+    if (!mention) return [];
+    const tokens = mention.query.toLowerCase().split(/\s+/).filter(Boolean);
+    const taggedIds = new Set(taggedBooks.map((b) => b.id));
+    const q = mention.query.toLowerCase();
+    return books
+      .filter((b) => !taggedIds.has(b.id))
+      .filter((b) => {
+        const haystack = `${b.title} ${b.author}`.toLowerCase();
+        return tokens.every((t) => haystack.includes(t));
+      })
+      .sort((a, b) => Number(b.title.toLowerCase().startsWith(q)) - Number(a.title.toLowerCase().startsWith(q)));
+  }, [mention, books, taggedBooks]);
+
+  const tagLimitReached = taggedBooks.length >= MAX_TAGGED_BOOKS;
+  // Spaces are allowed for multi-word titles; once nothing matches, the "@" is just text
+  const pickerOpen = !!mention && (mentionMatches.length > 0 || !/\s/.test(mention.query));
+  const activeBook = pickerOpen && !tagLimitReached ? mentionMatches[activeIndex] : undefined;
+
+  useEffect(() => setActiveIndex(0), [mention?.start, mention?.query]);
+
+  useEffect(() => {
+    if (activeBook) document.getElementById(`${PICKER_ID}-${activeBook.id}`)?.scrollIntoView({ block: "nearest" });
+  }, [activeBook]);
+
+  // Drop tags for books removed from the library
+  useEffect(() => {
+    setTaggedBooks((prev) => {
+      const next = prev.filter((t) => books.some((b) => b.id === t.id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [books]);
+
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (pendingCaret.current === null || !el) return;
+    el.focus();
+    el.setSelectionRange(pendingCaret.current, pendingCaret.current);
+    pendingCaret.current = null;
+  }, [input, taggedBooks]);
+
+  const detectMention = (value: string, caret: number | null) => {
+    const match = caret === null ? null : value.slice(0, caret).match(MENTION_RE);
+    if (!match || caret === null) {
+      dismissedAt.current = null;
+      setMention(null);
+      return;
+    }
+    const start = caret - match[1].length - 1;
+    if (dismissedAt.current === start) {
+      setMention(null);
+      return;
+    }
+    dismissedAt.current = null;
+    setMention((prev) => (prev && prev.start === start && prev.end === caret && prev.query === match[1] ? prev : { start, end: caret, query: match[1] }));
+  };
+
+  const closeMention = () => {
+    if (mention) dismissedAt.current = mention.start;
+    setMention(null);
+  };
+
+  const selectBook = (book: BookItem) => {
+    if (!mention || tagLimitReached) return;
+    const before = input.slice(0, mention.start);
+    let after = input.slice(mention.end);
+    if (!before || /\s$/.test(before)) after = after.replace(/^ /, "");
+    pendingCaret.current = before.length;
+    setInput(before + after);
+    setTaggedBooks((prev) => (prev.some((b) => b.id === book.id) ? prev : [...prev, book]));
+    setMention(null);
+  };
+
+  const removeTag = (id: string) => {
+    setTaggedBooks((prev) => prev.filter((b) => b.id !== id));
+    inputRef.current?.focus();
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -89,21 +199,33 @@ export const AiChat = ({ context = "" }: AiChatProps) => {
       return;
     }
 
-    const userMessage: ChatMessage = { role: "user", content: text };
+    const tagged = taggedBooks;
+    const refs: TaggedRef[] = tagged.map(({ id, title, author }) => ({ id, title, author }));
+    // Mentions stay in the history as plain text, so later turns still know which books were meant
+    const mentionNote = refs.length ? `\n\n[Tagged books: ${refs.map((b) => `@"${b.title}" by ${b.author || "Unknown author"}`).join("; ")}]` : "";
+    const userMessage: ChatEntry = { role: "user", content: text + mentionNote, display: text, books: refs.length ? refs : undefined };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setTaggedBooks([]);
+    setMention(null);
     setIsSending(true);
     setSendError(null);
 
     try {
-      const system: ChatMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
-      if (context.trim()) {
-        const bookContext = context.trim();
-        system.push({ role: "system", content: `Context from current book:\n${bookContext.slice(0, MAX_BOOK_CONTEXT_CHARS)}${bookContext.length > MAX_BOOK_CONTEXT_CHARS ? "\n[Book context truncated; later passages are not included.]" : ""}` });
+      let bookTexts: TaggedBookText[] = [];
+      if (tagged.length) {
+        setIsReadingBooks(true);
+        bookTexts = await Promise.all(tagged.map(async (book) => ({ book, text: await getBookText(book) })));
+        setIsReadingBooks(false);
       }
+      const system: ChatMessage[] = [
+        { role: "system", content: SYSTEM_PROMPT },
+        ...buildBookContextMessages({ currentContext: context, currentBookId, tagged: bookTexts, query: text }),
+      ];
+      const history: ChatMessage[] = messages.map(({ role, content }) => ({ role, content }));
       const response = await chat({
         provider: "gemini",
-        messages: [...system, ...messages, userMessage],
+        messages: [...system, ...history, { role: "user", content: userMessage.content }],
       });
       if (!response.trim()) throw new Error("The assistant returned an empty reply. Try again.");
       setMessages((prev) => [...prev, { role: "assistant", content: response.trim() }]);
@@ -112,13 +234,45 @@ export const AiChat = ({ context = "" }: AiChatProps) => {
       const reason = error instanceof Error && error.message ? error.message : "Something went wrong. Try again.";
       setSendError(reason);
       setInput(text);
+      setTaggedBooks(tagged);
     } finally {
       setIsSending(false);
+      setIsReadingBooks(false);
       inputRef.current?.focus();
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (pickerOpen) {
+      const count = tagLimitReached ? 0 : mentionMatches.length;
+      if (e.key === "ArrowDown" && count) {
+        e.preventDefault();
+        setActiveIndex((i) => (i + 1) % count);
+        return;
+      }
+      if (e.key === "ArrowUp" && count) {
+        e.preventDefault();
+        setActiveIndex((i) => (i - 1 + count) % count);
+        return;
+      }
+      if (((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") && activeBook) {
+        e.preventDefault();
+        selectBook(activeBook);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeMention();
+        return;
+      }
+    }
+    // Backspace on an empty caret position removes the last tag, like most chip inputs
+    const el = e.currentTarget;
+    if (e.key === "Backspace" && taggedBooks.length && el.selectionStart === 0 && el.selectionEnd === 0) {
+      e.preventDefault();
+      setTaggedBooks((prev) => prev.slice(0, -1));
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage(input);
@@ -170,8 +324,21 @@ export const AiChat = ({ context = "" }: AiChatProps) => {
               return (
                 <li key={i} className={cn("flex", isUser ? "justify-end" : "justify-start")}>
                   {isUser ? (
-                    <div className="max-w-[80%] bg-muted px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
-                      {m.content}
+                    <div className="flex max-w-[80%] flex-col items-end gap-1.5">
+                      {m.books?.length ? (
+                        <ul aria-label="Tagged books" className="flex flex-wrap justify-end gap-1.5">
+                          {m.books.map((b) => (
+                            <li key={b.id} className="max-w-full">
+                              <Badge variant="outline" title={`${b.title} — ${b.author}`} className="max-w-[16rem]">
+                                <span className="truncate">@ {b.title}</span>
+                              </Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div className="bg-muted px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
+                        {m.display ?? m.content}
+                      </div>
                     </div>
                   ) : (
                     <div className="max-w-[88%] border-l-2 border-foreground pl-4">
@@ -189,7 +356,7 @@ export const AiChat = ({ context = "" }: AiChatProps) => {
             {isSending && (
               <li className="border-l-2 border-border pl-4">
                 <p className="eyebrow mb-2">Ritual</p>
-                <p className="font-mono text-xs text-muted-foreground animate-pulse">Thinking…</p>
+                <p className="font-mono text-xs text-muted-foreground animate-pulse">{isReadingBooks ? "Reading tagged books…" : "Thinking…"}</p>
               </li>
             )}
           </ol>
@@ -205,24 +372,105 @@ export const AiChat = ({ context = "" }: AiChatProps) => {
         className="border-t border-border"
       >
         {sendError && <p role="alert" className="px-5 pt-3 text-sm text-destructive sm:px-8">{sendError}</p>}
-        <div className="flex items-end gap-3 px-5 py-3 sm:px-8">
-          <Textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onFocus={(e) => window.setTimeout(() => e.target.scrollIntoView({ block: "nearest" }), 300)}
-            placeholder="Ask a question…"
-            rows={1}
-            aria-label="Message"
-            className="min-h-[44px] max-h-[160px] flex-1 resize-none border-0 bg-transparent px-0 py-2 text-base sm:text-sm placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
-          />
-          <Button type="submit" size="sm" className="h-11 px-4" disabled={!input.trim() || isSending}>
-            Send
-          </Button>
-        </div>
+        {taggedBooks.length > 0 && (
+          <ul aria-label="Tagged books" className="flex flex-wrap gap-1.5 px-5 pt-3 sm:px-8">
+            {taggedBooks.map((b) => (
+              <li key={b.id} className="max-w-full">
+                <Badge variant="secondary" title={`${b.title} — ${b.author}`} className="h-8 max-w-[16rem] gap-0.5 py-0 pl-2 pr-0">
+                  <span className="truncate">@ {b.title}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeTag(b.id)}
+                    aria-label={`Remove ${b.title}`}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" aria-hidden />
+                  </button>
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Popover open={pickerOpen} onOpenChange={(open) => { if (!open) closeMention(); }}>
+          <PopoverAnchor asChild>
+            <div className="flex items-end gap-3 px-5 py-3 sm:px-8">
+              <Textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  detectMention(e.target.value, e.target.selectionStart);
+                }}
+                onSelect={(e) => detectMention(e.currentTarget.value, e.currentTarget.selectionStart)}
+                onKeyDown={handleKeyDown}
+                onBlur={() => setMention(null)}
+                onFocus={(e) => window.setTimeout(() => e.target.scrollIntoView({ block: "nearest" }), 300)}
+                placeholder={books.length ? "Ask a question or @ a book…" : "Ask a question…"}
+                rows={1}
+                aria-label="Message"
+                aria-autocomplete="list"
+                aria-controls={pickerOpen ? PICKER_ID : undefined}
+                aria-activedescendant={activeBook ? `${PICKER_ID}-${activeBook.id}` : undefined}
+                className="min-h-[44px] max-h-[160px] flex-1 resize-none border-0 bg-transparent px-0 py-2 text-base sm:text-sm placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
+              />
+              <Button type="submit" size="sm" className="h-11 px-4" disabled={!input.trim() || isSending}>
+                Send
+              </Button>
+            </div>
+          </PopoverAnchor>
+          {pickerOpen && (
+            <PopoverContent
+              side="top"
+              align="start"
+              sideOffset={4}
+              onOpenAutoFocus={(e) => e.preventDefault()}
+              onCloseAutoFocus={(e) => e.preventDefault()}
+              onInteractOutside={(e) => { if (e.target === inputRef.current) e.preventDefault(); }}
+              // Keep focus (and the mobile keyboard) on the textarea while picking
+              onMouseDown={(e) => e.preventDefault()}
+              className="w-[min(24rem,calc(100vw-2rem))] rounded-none p-0"
+            >
+              <p className="eyebrow border-b border-border px-3 py-2">Tag a book from your library</p>
+              {tagLimitReached ? (
+                <p className="px-3 py-3 text-sm text-muted-foreground">You can tag up to {MAX_TAGGED_BOOKS} books per message.</p>
+              ) : mentionMatches.length === 0 ? (
+                <p className="px-3 py-3 text-sm text-muted-foreground">
+                  {books.length === 0 ? "Your library is empty. Import a book to tag it here." : mention?.query ? `No books match “${mention.query}”.` : "Every book is already tagged."}
+                </p>
+              ) : (
+                <ul
+                  id={PICKER_ID}
+                  role="listbox"
+                  aria-label="Library books"
+                  className="max-h-[min(18rem,calc(var(--radix-popover-content-available-height,18rem)-2.5rem))] overflow-y-auto overscroll-contain py-1"
+                >
+                  {mentionMatches.map((b, i) => (
+                    <li
+                      key={b.id}
+                      id={`${PICKER_ID}-${b.id}`}
+                      role="option"
+                      aria-selected={i === activeIndex}
+                      onClick={() => selectBook(b)}
+                      onMouseMove={() => { if (i !== activeIndex) setActiveIndex(i); }}
+                      className={cn(
+                        "flex min-h-[44px] cursor-pointer flex-col justify-center px-3 py-2 text-sm transition-colors",
+                        i === activeIndex ? "bg-muted text-foreground" : "text-foreground/80",
+                      )}
+                    >
+                      <span className="truncate">{b.title}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {b.author || "Unknown author"}
+                        {b.fileType ? ` · ${b.fileType.toUpperCase()}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </PopoverContent>
+          )}
+        </Popover>
         <p className="border-t border-border px-5 py-2 sm:px-8 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-          Enter to send · Shift+Enter for a new line · Answers can be wrong
+          Enter to send · Shift+Enter for a new line · @ to tag a book · Answers can be wrong
         </p>
       </form>
     </div>
