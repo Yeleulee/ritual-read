@@ -408,6 +408,10 @@ Colors are in HSL format for proper theming.
     @apply border-border;
   }
 
+  /* Footer illustration palette — brand ink/paper/ember, inverted for dark mode */
+  .footer-scene { --sc-paper: #F3EFE7; --sc-ink: #0F0E0D; --sc-gray: #D8D1CA; --sc-ember: #E9752F; }
+  .dark .footer-scene { --sc-paper: #161413; --sc-ink: #EDEBE9; --sc-gray: #3A3633; --sc-ember: #E9752F; }
+
   /* Sign-in illustration: the room fades in, the lamp clicks on, then it quietly lives —
      breathing glow, rising steam, twinkling stars, dust in the light, a swinging pull chain,
      a swaying plant, an occasional shooting star and a page that turns on the open book. */

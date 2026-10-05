@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/Wordmark";
 import { ArrowRight, ArrowUpRight, Moon, Sun } from "lucide-react";
 import { ReadingHero } from "@/components/landing/ReadingHero";
+import { FooterNookIllustration } from "@/components/landing/FooterNookIllustration";
 import { UserMenu } from "@/components/UserMenu";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -149,7 +150,10 @@ const Landing = () => {
 
       {/* Footer */}
       <footer className="border-t border-border">
-        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-10 py-6 grid sm:grid-cols-3 gap-4 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-10 pt-10 md:pt-16">
+          <FooterNookIllustration />
+        </div>
+        <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-10 py-6 border-t border-border grid sm:grid-cols-3 gap-4 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
           <span>© {new Date().getFullYear()} Ritual Reader</span>
           <span className="sm:text-center">Made for slow reading</span>
           <span className="sm:text-right flex sm:justify-end gap-6">
