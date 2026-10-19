@@ -100,8 +100,6 @@ export const PdfReader = ({
   themeRef.current = theme;
   const highlightsRef = useRef(highlights);
   highlightsRef.current = highlights;
-  const isDualRef = useRef(isDual);
-  isDualRef.current = isDual;
 
   // Determine if Two-Page Spread is active
   const isDual = useMemo(() => {
@@ -111,6 +109,9 @@ export const PdfReader = ({
     const containerW = containerDims.width || (typeof window !== "undefined" ? window.innerWidth : 0);
     return containerW >= 900;
   }, [spread, zoom, numPages, containerDims.width]);
+
+  const isDualRef = useRef(isDual);
+  isDualRef.current = isDual;
 
   // Page 1 & 2 are presented side-by-side from the very first open
   const leftPage = isDual ? (page % 2 === 1 ? page : page - 1) : page;
