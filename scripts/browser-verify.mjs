@@ -132,6 +132,24 @@ async function runBrowserTests() {
   fs.writeFileSync(shot3Path, Buffer.from(res3.data, 'base64'));
   console.log(`[VERIFIED] Live selection menu saved to: ${shot3Path}`);
 
+  // 4. Toggle Dark Mode (Spread Mode)
+  console.log('Toggling Apple Books Dark Mode in Spread Mode...');
+  await send('Runtime.evaluate', { expression: 'window.toggleDark()' });
+  await sleep(500);
+  const res4 = await send('Page.captureScreenshot', { format: 'png' });
+  const shot4Path = path.join(rootDir, 'test-pdf-dark-mode-spread.png');
+  fs.writeFileSync(shot4Path, Buffer.from(res4.data, 'base64'));
+  console.log(`[VERIFIED] Dark Mode two-page spread saved to: ${shot4Path}`);
+
+  // 5. Toggle Single Page in Dark Mode
+  console.log('Toggling Single Page in Dark Mode...');
+  await send('Runtime.evaluate', { expression: 'window.toggleSpread()' });
+  await sleep(500);
+  const res5 = await send('Page.captureScreenshot', { format: 'png' });
+  const shot5Path = path.join(rootDir, 'test-pdf-dark-mode-single.png');
+  fs.writeFileSync(shot5Path, Buffer.from(res5.data, 'base64'));
+  console.log(`[VERIFIED] Dark Mode single page saved to: ${shot5Path}`);
+
   // Clean up
   ws.close();
   proc.kill();

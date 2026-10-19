@@ -258,6 +258,11 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
     catch { toast({ title: "Copy failed", description: "Clipboard permission was not granted.", variant: "destructive" }); }
   };
 
+  const toggleDarkMode = useCallback(() => {
+    const nextTheme: ThemeId = theme.dark ? "original" : "focus";
+    update({ theme: nextTheme });
+  }, [theme.dark, update]);
+
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
@@ -268,6 +273,7 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
       if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") { e.preventDefault(); pageTurnerRef.current?.turn(1); hideChrome(); return; }
       if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); pageTurnerRef.current?.turn(-1); hideChrome(); return; }
       if (e.key.toLowerCase() === "b") toggleBookmark();
+      else if (e.key.toLowerCase() === "d") { e.preventDefault(); toggleDarkMode(); }
       else if (e.key.toLowerCase() === "s") setSearchOpen(true);
       else if (e.key.toLowerCase() === "t") setSettingsOpen(true);
       else if (e.key.toLowerCase() === "c") setContentsOpen(true);
@@ -278,7 +284,7 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [menuOpen, settingsOpen, contentsOpen, searchOpen, musicOpen, lookUp, showChrome, hideChrome, toggleBookmark]);
+  }, [menuOpen, settingsOpen, contentsOpen, searchOpen, musicOpen, lookUp, showChrome, hideChrome, toggleBookmark, toggleDarkMode]);
 
   const reader = useMemo(() => {
     // Only hand a reader a position saved by the same format; a stale one from another reader would fail to open
@@ -305,7 +311,7 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
     <div ref={shellRef} className="fixed inset-0 z-50 overflow-hidden" style={{ background: theme.bg, color: theme.fg }}>
       {resolveError ? <div className="flex h-full items-center justify-center p-6 text-sm">{resolveError}</div> : <PageTurner ref={pageTurnerRef} api={api} mode={pageTurn} turnSpeed={settings.turnSpeed} theme={theme} canNext={!relocation.atEnd} canPrev={!relocation.atStart} pageKey={`${relocation.location}|${theme.id}|${settings.fontId}|${settings.fontSize}|${settings.lineHeight}|${settings.bold}|${settings.margins}`} disabled={anySheetOpen || !!selection || pinching || pdfZoom > 1} onTapCenter={readerTap} onTurned={hideChrome}>{reader}</PageTurner>}
       {settings.brightness < 1 && <div className="pointer-events-none absolute inset-0 z-40 bg-black" style={{ opacity: 1 - settings.brightness }} />}
-      <ReaderTopBar title={book.title} author={book.author} theme={theme} visible={chromeVisible && !selection} bookmarked={isBookmarked} musicPlaying={musicPlaying} onClose={onBackToLibrary} onBookmark={toggleBookmark} onContents={() => setContentsOpen(true)} onSettings={() => setSettingsOpen(true)} onMusic={() => setMusicOpen(true)} onFullscreen={toggleFullscreen} isFullscreen={fullscreen} />
+      <ReaderTopBar title={book.title} author={book.author} theme={theme} visible={chromeVisible && !selection} bookmarked={isBookmarked} musicPlaying={musicPlaying} onClose={onBackToLibrary} onBookmark={toggleBookmark} onContents={() => setContentsOpen(true)} onSettings={() => setSettingsOpen(true)} onMusic={() => setMusicOpen(true)} onFullscreen={toggleFullscreen} isFullscreen={fullscreen} onToggleDark={toggleDarkMode} />
       <ReaderFooter theme={theme} visible={chromeVisible && !selection} location={location} relocation={relocation} onSeek={(p) => { void api?.display(p); }} onMenu={() => { setMenuOpen(true); setChromeVisible(true); }} canPrevChapter={flatToc.length > 0 && chapterIndex > 0} canNextChapter={flatToc.length > 0 && chapterIndex < flatToc.length - 1} onChapter={stepChapter} zoom={isPdf ? { value: pdfZoom, onChange: (z) => api?.zoomTo?.(z) } : undefined} spread={isPdf ? { isSpread: pdfSpread, onToggle: () => { userToggledSpreadRef.current = true; setPdfSpread((s) => !s); } } : undefined} fit={isPdf ? { mode: pdfFitMode, onToggle: () => setPdfFitMode((m) => (m === "width" ? "page" : "width")) } : undefined} />
       <ReaderChromeHandle theme={theme} visible={!chromeVisible && !selection && !anySheetOpen} musicPlaying={musicPlaying} onShow={() => showChrome()} />
       <ReaderMenu open={menuOpen} onClose={() => setMenuOpen(false)} theme={theme} onContents={() => { setMenuOpen(false); setContentsOpen(true); }} onSearch={() => { setMenuOpen(false); setSearchOpen(true); }} onSettings={() => { setMenuOpen(false); setSettingsOpen(true); }} onMusic={() => { setMenuOpen(false); setMusicOpen(true); }} onFullscreen={toggleFullscreen} onAssistant={() => { setMenuOpen(false); toast({ title: "Assistant", description: "Open the Assistant tab to continue with your book context." }); }} />

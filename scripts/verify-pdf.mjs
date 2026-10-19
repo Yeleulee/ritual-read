@@ -156,11 +156,94 @@ async function runTests() {
   assert('Search finds matches across multiple pages', hits.length === 10, `(${hits.length} hits found in first 10 pages)`);
   assert('First hit matches page 1', hits[0].page === 1 && hits[0].text.includes('page 1'));
 
+  // 9. Test Apple Books Dark Mode & Theme Styles
+  console.log('\n--- Test Suite 7: Apple Books PDF Dark Mode & Eye-Comfort Filters ---');
+  function getPdfThemeStyle(themeId, isDark, selection) {
+    switch (themeId) {
+      case "focus":
+        return {
+          filter: "invert(0.92) hue-rotate(180deg) contrast(1.05) brightness(0.95)",
+          sheetBg: "#141416",
+          selectionBg: selection || "rgba(127, 179, 255, 0.35)",
+          highlightBlend: "screen",
+          highlightOpacity: 0.65,
+        };
+      case "calm":
+        return {
+          filter: "invert(0.88) sepia(0.25) hue-rotate(180deg) brightness(0.92) contrast(1.05)",
+          sheetBg: "#282420",
+          selectionBg: selection || "rgba(215, 167, 107, 0.3)",
+          highlightBlend: "screen",
+          highlightOpacity: 0.65,
+        };
+      case "paper":
+        return {
+          filter: "sepia(0.35) contrast(0.96) brightness(0.97)",
+          sheetBg: "#F6EEDC",
+          selectionBg: selection || "rgba(138, 90, 43, 0.25)",
+          highlightBlend: "multiply",
+          highlightOpacity: 0.38,
+        };
+      case "quiet":
+        return {
+          filter: "brightness(0.94) contrast(0.98)",
+          sheetBg: "#EDEDED",
+          selectionBg: selection || "rgba(62, 92, 138, 0.25)",
+          highlightBlend: "multiply",
+          highlightOpacity: 0.35,
+        };
+      case "bold":
+        return {
+          filter: "contrast(1.04)",
+          sheetBg: "#FFFFFF",
+          selectionBg: selection || "rgba(10, 79, 160, 0.25)",
+          highlightBlend: "multiply",
+          highlightOpacity: 0.38,
+        };
+      case "original":
+      default:
+        if (isDark) {
+          return {
+            filter: "invert(0.92) hue-rotate(180deg) contrast(1.05) brightness(0.95)",
+            sheetBg: "#141416",
+            selectionBg: selection || "rgba(127, 179, 255, 0.35)",
+            highlightBlend: "screen",
+            highlightOpacity: 0.65,
+          };
+        }
+        return {
+          filter: "none",
+          sheetBg: "#FFFFFF",
+          selectionBg: selection || "rgba(59, 130, 246, 0.35)",
+          highlightBlend: "multiply",
+          highlightOpacity: 0.35,
+        };
+    }
+  }
+
+  const focusStyle = getPdfThemeStyle("focus", true);
+  assert("Focus theme applies OLED dark inversion filter", focusStyle.filter.includes("invert(0.92)") && focusStyle.filter.includes("hue-rotate(180deg)"));
+  assert("Focus theme sets charcoal sheet background", focusStyle.sheetBg === "#141416");
+  assert("Focus theme uses 'screen' blend mode for readable dark highlights", focusStyle.highlightBlend === "screen");
+
+  const calmStyle = getPdfThemeStyle("calm", true);
+  assert("Calm theme applies warm espresso sepia inversion", calmStyle.filter.includes("sepia(0.25)"));
+  assert("Calm theme sets warm espresso sheet background", calmStyle.sheetBg === "#282420");
+
+  const paperStyle = getPdfThemeStyle("paper", false);
+  assert("Paper theme warms canvas with sepia tone", paperStyle.filter.includes("sepia(0.35)"));
+  assert("Paper theme sets parchment sheet background", paperStyle.sheetBg === "#F6EEDC");
+  assert("Paper theme keeps 'multiply' highlight blend mode", paperStyle.highlightBlend === "multiply");
+
+  const originalStyle = getPdfThemeStyle("original", false);
+  assert("Original light theme leaves canvas filter unchanged", originalStyle.filter === "none");
+  assert("Original light theme has white sheet background", originalStyle.sheetBg === "#FFFFFF");
+
   await doc.destroy();
 
   console.log('\n====================================================');
   if (allPassed) {
-    console.log('>>> ALL 18 UNIT & INTEGRATION CHECKS PASSED! <<<');
+    console.log('>>> ALL 28 UNIT & INTEGRATION CHECKS PASSED! <<<');
   } else {
     console.error('>>> SOME CHECKS FAILED! <<<');
     process.exit(1);

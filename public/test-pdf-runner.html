@@ -225,6 +225,7 @@
         <div class="book-author" id="ui-author">Test Author</div>
       </div>
       <div class="btn-group">
+        <button class="icon-btn" id="btn-dark" title="Dark Mode (D)" aria-label="Dark Mode">🌙</button>
         <button class="icon-btn" id="btn-fullscreen" title="Fullscreen (F)" aria-label="Fullscreen">⛶</button>
         <button class="icon-btn" title="Bookmark (B)" aria-label="Bookmark">★</button>
       </div>
@@ -389,6 +390,57 @@
       btnFullscreen.textContent = isFullscreen ? '⛶' : '⛶';
       btnFullscreen.style.color = isFullscreen ? '#38bdf8' : '#f4f4f5';
     });
+
+    const btnDark = document.getElementById('btn-dark');
+    let isDarkMode = false;
+
+    function updateTheme() {
+      const canvases = [document.getElementById('canvas-1'), document.getElementById('canvas-2')];
+      const sheets = [sheet1, sheet2];
+      const highlights = document.querySelectorAll('.ritual-pdf-highlight');
+      const shell = document.querySelector('.reader-shell');
+
+      if (isDarkMode) {
+        btnDark.textContent = '☀️';
+        btnDark.title = 'Light Mode (D)';
+        shell.style.background = '#000000';
+        canvases.forEach(c => {
+          if (c) c.style.filter = 'invert(0.92) hue-rotate(180deg) contrast(1.05) brightness(0.95)';
+        });
+        sheets.forEach(s => {
+          if (s) s.style.backgroundColor = '#141416';
+        });
+        highlights.forEach(h => {
+          h.style.mixBlendMode = 'screen';
+          h.style.opacity = '0.65';
+        });
+        spine.style.background = 'linear-gradient(to right, rgba(0,0,0,0.7), rgba(255,255,255,0.06) 50%, rgba(0,0,0,0.7))';
+      } else {
+        btnDark.textContent = '🌙';
+        btnDark.title = 'Dark Mode (D)';
+        shell.style.background = '#18181b';
+        canvases.forEach(c => {
+          if (c) c.style.filter = 'none';
+        });
+        sheets.forEach(s => {
+          if (s) s.style.backgroundColor = '#ffffff';
+        });
+        highlights.forEach(h => {
+          h.style.mixBlendMode = 'multiply';
+          h.style.opacity = '0.35';
+        });
+        spine.style.background = 'linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.12))';
+      }
+    }
+
+    btnDark.addEventListener('click', () => {
+      isDarkMode = !isDarkMode;
+      updateTheme();
+    });
+
+    window.toggleDark = function() {
+      btnDark.click();
+    };
 
     // Show popup
     window.showSelectionMenu = function() {

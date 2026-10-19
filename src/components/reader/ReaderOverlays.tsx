@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ArrowLeftRight, Bookmark, BookOpen, Check, ChevronLeft, ChevronRight, Columns2, List, Maximize2, Minimize2, Minus, Moon, Music2, Plus, Search, Settings2, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeftRight, Bookmark, BookOpen, Check, ChevronLeft, ChevronRight, Columns2, List, Maximize2, Minimize2, Minus, Moon, Music2, Plus, Search, Settings2, Sun, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { Bookmark as ReaderBookmark, Highlight } from "@/hooks/use-reader-store";
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, FONTS, HIGHLIGHT_COLORS, THEME_ORDER, THEMES, type ReaderSettings, type ThemeId } from "@/lib/reader-themes";
 import type { ReaderApi, SearchHit, TocItem } from "@/components/readers/EpubReader";
@@ -38,20 +38,62 @@ function useDialogFocus<T extends HTMLElement>(open: boolean, onClose: () => voi
   return ref;
 }
 
-export function ReaderTopBar({ title, author, theme, visible, bookmarked, musicPlaying, onClose, onBookmark, onContents, onSettings, onMusic, onFullscreen, isFullscreen }: { title: string; author: string; theme: (typeof THEMES)[ThemeId]; visible: boolean; bookmarked: boolean; musicPlaying?: boolean; onClose: () => void; onBookmark: () => void; onContents: () => void; onSettings: () => void; onMusic: () => void; onFullscreen?: () => void; isFullscreen?: boolean }) {
-  return <div className={`absolute inset-x-0 top-0 z-50 flex items-center justify-between gap-1 px-2 pt-[max(6px,env(safe-area-inset-top))] pb-5 transition-all duration-200 sm:px-4 ${visible ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0 pointer-events-none"}`} style={{ color: theme.fg, background: `linear-gradient(${theme.bg}f2,${theme.bg}00)` }}>
-    <div className="flex shrink-0 items-center">
-      <button className={iconButton} onClick={onClose} aria-label="Close book"><X size={20} /></button>
-      <button className={iconButton} onClick={onContents} aria-label="Contents and chapters" title="Contents (C)"><List size={20} /></button>
+export function ReaderTopBar({
+  title,
+  author,
+  theme,
+  visible,
+  bookmarked,
+  musicPlaying,
+  onClose,
+  onBookmark,
+  onContents,
+  onSettings,
+  onMusic,
+  onFullscreen,
+  isFullscreen,
+  onToggleDark,
+}: {
+  title: string;
+  author: string;
+  theme: (typeof THEMES)[ThemeId];
+  visible: boolean;
+  bookmarked: boolean;
+  musicPlaying?: boolean;
+  onClose: () => void;
+  onBookmark: () => void;
+  onContents: () => void;
+  onSettings: () => void;
+  onMusic: () => void;
+  onFullscreen?: () => void;
+  isFullscreen?: boolean;
+  onToggleDark?: () => void;
+}) {
+  return (
+    <div className={`absolute inset-x-0 top-0 z-50 flex items-center justify-between gap-1 px-2 pt-[max(6px,env(safe-area-inset-top))] pb-5 transition-all duration-200 sm:px-4 ${visible ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0 pointer-events-none"}`} style={{ color: theme.fg, background: `linear-gradient(${theme.bg}f2,${theme.bg}00)` }}>
+      <div className="flex shrink-0 items-center">
+        <button className={iconButton} onClick={onClose} aria-label="Close book"><X size={20} /></button>
+        <button className={iconButton} onClick={onContents} aria-label="Contents and chapters" title="Contents (C)"><List size={20} /></button>
+      </div>
+      <div className="min-w-0 flex-1 px-1 text-center"><p className="truncate text-sm font-medium">{title}</p><p className="truncate text-xs opacity-60">{author}</p></div>
+      <div className="flex shrink-0 items-center">
+        {onToggleDark && (
+          <button
+            className={iconButton}
+            onClick={onToggleDark}
+            aria-label={theme.dark ? "Switch to light theme (D)" : "Switch to dark theme (D)"}
+            title={theme.dark ? "Light mode (D)" : "Dark mode (D)"}
+          >
+            {theme.dark ? <Sun size={19} /> : <Moon size={19} />}
+          </button>
+        )}
+        <button className={`${iconButton} relative`} onClick={onMusic} aria-label={musicPlaying ? "Music for reading (playing)" : "Music for reading"} title="Music (M)"><Music2 size={19} />{musicPlaying && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full" style={{ background: theme.link }} aria-hidden />}</button>
+        <button className={iconButton} onClick={onSettings} aria-label="Themes and settings" title="Settings (T)"><Settings2 size={19} /></button>
+        {onFullscreen && <button className={iconButton} onClick={onFullscreen} aria-label={isFullscreen ? "Exit fullscreen (F)" : "Enter fullscreen (F)"} title={isFullscreen ? "Exit fullscreen (F)" : "Enter fullscreen (F)"}>{isFullscreen ? <Minimize2 size={19} /> : <Maximize2 size={19} />}</button>}
+        <button className={`${iconButton} ${bookmarked ? "text-amber-600" : ""}`} onClick={onBookmark} aria-label={bookmarked ? "Remove bookmark" : "Bookmark this page"} aria-pressed={bookmarked}><Bookmark size={19} fill={bookmarked ? "currentColor" : "none"} /></button>
+      </div>
     </div>
-    <div className="min-w-0 flex-1 px-1 text-center"><p className="truncate text-sm font-medium">{title}</p><p className="truncate text-xs opacity-60">{author}</p></div>
-    <div className="flex shrink-0 items-center">
-      <button className={`${iconButton} relative`} onClick={onMusic} aria-label={musicPlaying ? "Music for reading (playing)" : "Music for reading"} title="Music (M)"><Music2 size={19} />{musicPlaying && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full" style={{ background: theme.link }} aria-hidden />}</button>
-      <button className={iconButton} onClick={onSettings} aria-label="Themes and settings" title="Settings (T)"><Settings2 size={19} /></button>
-      {onFullscreen && <button className={iconButton} onClick={onFullscreen} aria-label={isFullscreen ? "Exit fullscreen (F)" : "Enter fullscreen (F)"} title={isFullscreen ? "Exit fullscreen (F)" : "Enter fullscreen (F)"}>{isFullscreen ? <Minimize2 size={19} /> : <Maximize2 size={19} />}</button>}
-      <button className={`${iconButton} ${bookmarked ? "text-amber-600" : ""}`} onClick={onBookmark} aria-label={bookmarked ? "Remove bookmark" : "Bookmark this page"} aria-pressed={bookmarked}><Bookmark size={19} fill={bookmarked ? "currentColor" : "none"} /></button>
-    </div>
-  </div>;
+  );
 }
 
 export function ReaderFooter({ theme, visible, location, relocation, onSeek, onMenu, canPrevChapter, canNextChapter, onChapter, zoom, spread, fit }: { theme: (typeof THEMES)[ThemeId]; visible: boolean; location: string | null; relocation: Relocation; onSeek: (percent: number) => void; onMenu: () => void; canPrevChapter: boolean; canNextChapter: boolean; onChapter: (dir: 1 | -1) => void; zoom?: { value: number; onChange: (zoom: number) => void }; spread?: { isSpread: boolean; onToggle: () => void }; fit?: { mode: "width" | "page"; onToggle: () => void } }) {

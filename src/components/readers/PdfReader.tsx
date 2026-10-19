@@ -753,6 +753,77 @@ export const PdfReader = ({
   const zoomed = zoom > 1;
   const isFitWidth = fitMode === "width";
 
+  // Apple Books PDF Theme Filter & Canvas Inversion
+  const pdfThemeStyle = useMemo(() => {
+    switch (theme.id) {
+      case "focus": // Pure Dark / OLED Night
+        return {
+          filter: "invert(0.92) hue-rotate(180deg) contrast(1.05) brightness(0.95)",
+          sheetBg: "#141416",
+          selectionBg: theme.selection || "rgba(127, 179, 255, 0.35)",
+          highlightBlend: "screen" as const,
+          highlightOpacity: 0.65,
+          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.7), rgba(255,255,255,0.06) 50%, rgba(0,0,0,0.7))",
+        };
+      case "calm": // Warm Espresso / Dark Sepia
+        return {
+          filter: "invert(0.88) sepia(0.25) hue-rotate(180deg) brightness(0.92) contrast(1.05)",
+          sheetBg: "#282420",
+          selectionBg: theme.selection || "rgba(215, 167, 107, 0.3)",
+          highlightBlend: "screen" as const,
+          highlightOpacity: 0.65,
+          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.65), rgba(255,255,255,0.05) 50%, rgba(0,0,0,0.65))",
+        };
+      case "paper": // Sepia Parchment Eye-Comfort
+        return {
+          filter: "sepia(0.35) contrast(0.96) brightness(0.97)",
+          sheetBg: "#F6EEDC",
+          selectionBg: theme.selection || "rgba(138, 90, 43, 0.25)",
+          highlightBlend: "multiply" as const,
+          highlightOpacity: 0.38,
+          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.14), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.14))",
+        };
+      case "quiet": // Soft Matte Gray
+        return {
+          filter: "brightness(0.94) contrast(0.98)",
+          sheetBg: "#EDEDED",
+          selectionBg: theme.selection || "rgba(62, 92, 138, 0.25)",
+          highlightBlend: "multiply" as const,
+          highlightOpacity: 0.35,
+          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.12))",
+        };
+      case "bold":
+        return {
+          filter: "contrast(1.04)",
+          sheetBg: "#FFFFFF",
+          selectionBg: theme.selection || "rgba(10, 79, 160, 0.25)",
+          highlightBlend: "multiply" as const,
+          highlightOpacity: 0.38,
+          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.12))",
+        };
+      case "original":
+      default:
+        if (theme.dark) {
+          return {
+            filter: "invert(0.92) hue-rotate(180deg) contrast(1.05) brightness(0.95)",
+            sheetBg: "#141416",
+            selectionBg: theme.selection || "rgba(127, 179, 255, 0.35)",
+            highlightBlend: "screen" as const,
+            highlightOpacity: 0.65,
+            spineGutter: "linear-gradient(to right, rgba(0,0,0,0.7), rgba(255,255,255,0.06) 50%, rgba(0,0,0,0.7))",
+          };
+        }
+        return {
+          filter: "none",
+          sheetBg: "#FFFFFF",
+          selectionBg: theme.selection || "rgba(59, 130, 246, 0.35)",
+          highlightBlend: "multiply" as const,
+          highlightOpacity: 0.35,
+          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.12))",
+        };
+    }
+  }, [theme.id, theme.dark, theme.selection]);
+
   // Paper sheet drop shadow matching luxury Apple Books paper aesthetic
   const paperShadow = theme.dark
     ? "0 22px 55px -12px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.08)"
@@ -781,12 +852,17 @@ export const PdfReader = ({
       <style>{`
         .ritual-pdf-sheet {
           position: relative;
-          background-color: #ffffff;
+          background-color: ${pdfThemeStyle.sheetBg};
           border-radius: 3px;
           user-select: text;
           -webkit-user-select: text;
           box-sizing: content-box;
-          transition: box-shadow 0.2s ease;
+          transition: background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+        }
+        .ritual-pdf-sheet canvas {
+          display: block;
+          filter: ${pdfThemeStyle.filter};
+          transition: filter 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .ritual-pdf-sheet .textLayer {
           position: absolute;
@@ -801,6 +877,8 @@ export const PdfReader = ({
           user-select: text;
           -webkit-user-select: text;
           pointer-events: auto;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
         }
         .ritual-pdf-sheet .textLayer :is(span, br) {
           color: transparent !important;
@@ -810,7 +888,7 @@ export const PdfReader = ({
           transform-origin: 0% 0%;
         }
         .ritual-pdf-sheet .textLayer ::selection {
-          background: rgba(59, 130, 246, 0.35);
+          background: ${pdfThemeStyle.selectionBg};
           border-radius: 2px;
         }
         .ritual-pdf-sheet .textLayer span[role="img"] {
@@ -826,7 +904,7 @@ export const PdfReader = ({
           border-radius: 2px;
         }
         .ritual-pdf-link:hover {
-          background-color: rgba(59, 130, 246, 0.14);
+          background-color: ${theme.dark ? "rgba(127, 179, 255, 0.22)" : "rgba(59, 130, 246, 0.14)"};
         }
         .ritual-pdf-highlight {
           position: absolute;
@@ -834,8 +912,9 @@ export const PdfReader = ({
           cursor: pointer;
           z-index: 3;
           border-radius: 2px;
-          mix-blend-mode: multiply;
-          transition: opacity 0.15s ease;
+          mix-blend-mode: ${pdfThemeStyle.highlightBlend};
+          opacity: ${pdfThemeStyle.highlightOpacity};
+          transition: opacity 0.15s ease, filter 0.25s ease;
         }
         .ritual-pdf-highlight:hover {
           opacity: 0.9 !important;
@@ -914,7 +993,7 @@ export const PdfReader = ({
           <div
             className="w-[2px] self-stretch z-10 pointer-events-none"
             style={{
-              background: "linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.12))",
+              background: pdfThemeStyle.spineGutter,
             }}
           />
         )}
