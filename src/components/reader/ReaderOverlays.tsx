@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Bookmark, BookOpen, Check, ChevronLeft, ChevronRight, List, Minus, Moon, Music2, Plus, Search, Settings2, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Bookmark, BookOpen, Check, ChevronLeft, ChevronRight, Columns2, List, Maximize2, Minimize2, Minus, Moon, Music2, Plus, Search, Settings2, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { Bookmark as ReaderBookmark, Highlight } from "@/hooks/use-reader-store";
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, FONTS, HIGHLIGHT_COLORS, THEME_ORDER, THEMES, type ReaderSettings, type ThemeId } from "@/lib/reader-themes";
 import type { ReaderApi, SearchHit, TocItem } from "@/components/readers/EpubReader";
@@ -38,7 +38,7 @@ function useDialogFocus<T extends HTMLElement>(open: boolean, onClose: () => voi
   return ref;
 }
 
-export function ReaderTopBar({ title, author, theme, visible, bookmarked, musicPlaying, onClose, onBookmark, onContents, onSettings, onMusic }: { title: string; author: string; theme: (typeof THEMES)[ThemeId]; visible: boolean; bookmarked: boolean; musicPlaying?: boolean; onClose: () => void; onBookmark: () => void; onContents: () => void; onSettings: () => void; onMusic: () => void }) {
+export function ReaderTopBar({ title, author, theme, visible, bookmarked, musicPlaying, onClose, onBookmark, onContents, onSettings, onMusic, onFullscreen, isFullscreen }: { title: string; author: string; theme: (typeof THEMES)[ThemeId]; visible: boolean; bookmarked: boolean; musicPlaying?: boolean; onClose: () => void; onBookmark: () => void; onContents: () => void; onSettings: () => void; onMusic: () => void; onFullscreen?: () => void; isFullscreen?: boolean }) {
   return <div className={`absolute inset-x-0 top-0 z-50 flex items-center justify-between gap-1 px-2 pt-[max(6px,env(safe-area-inset-top))] pb-5 transition-all duration-200 sm:px-4 ${visible ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0 pointer-events-none"}`} style={{ color: theme.fg, background: `linear-gradient(${theme.bg}f2,${theme.bg}00)` }}>
     <div className="flex shrink-0 items-center">
       <button className={iconButton} onClick={onClose} aria-label="Close book"><X size={20} /></button>
@@ -48,17 +48,21 @@ export function ReaderTopBar({ title, author, theme, visible, bookmarked, musicP
     <div className="flex shrink-0 items-center">
       <button className={`${iconButton} relative`} onClick={onMusic} aria-label={musicPlaying ? "Music for reading (playing)" : "Music for reading"} title="Music (M)"><Music2 size={19} />{musicPlaying && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full" style={{ background: theme.link }} aria-hidden />}</button>
       <button className={iconButton} onClick={onSettings} aria-label="Themes and settings" title="Settings (T)"><Settings2 size={19} /></button>
+      {onFullscreen && <button className={iconButton} onClick={onFullscreen} aria-label={isFullscreen ? "Exit fullscreen (F)" : "Enter fullscreen (F)"} title={isFullscreen ? "Exit fullscreen (F)" : "Enter fullscreen (F)"}>{isFullscreen ? <Minimize2 size={19} /> : <Maximize2 size={19} />}</button>}
       <button className={`${iconButton} ${bookmarked ? "text-amber-600" : ""}`} onClick={onBookmark} aria-label={bookmarked ? "Remove bookmark" : "Bookmark this page"} aria-pressed={bookmarked}><Bookmark size={19} fill={bookmarked ? "currentColor" : "none"} /></button>
     </div>
   </div>;
 }
 
-export function ReaderFooter({ theme, visible, location, relocation, onSeek, onMenu, canPrevChapter, canNextChapter, onChapter, zoom }: { theme: (typeof THEMES)[ThemeId]; visible: boolean; location: string | null; relocation: Relocation; onSeek: (percent: number) => void; onMenu: () => void; canPrevChapter: boolean; canNextChapter: boolean; onChapter: (dir: 1 | -1) => void; zoom?: { value: number; onChange: (zoom: number) => void } }) {
+export function ReaderFooter({ theme, visible, location, relocation, onSeek, onMenu, canPrevChapter, canNextChapter, onChapter, zoom, spread }: { theme: (typeof THEMES)[ThemeId]; visible: boolean; location: string | null; relocation: Relocation; onSeek: (percent: number) => void; onMenu: () => void; canPrevChapter: boolean; canNextChapter: boolean; onChapter: (dir: 1 | -1) => void; zoom?: { value: number; onChange: (zoom: number) => void }; spread?: { isSpread: boolean; onToggle: () => void } }) {
   const [labelMode, setLabelMode] = useState(0);
   const [seeking, setSeeking] = useState(false);
   const [seek, setSeek] = useState(relocation.percent * 100);
   useEffect(() => { if (!seeking) setSeek(relocation.percent * 100); }, [relocation.percent, seeking]);
-  const label = labelMode === 0 ? `${relocation.pagesLeftInChapter} pages left in this chapter` : labelMode === 1 ? `Page ${relocation.page}${relocation.totalPages ? ` of ${relocation.totalPages}` : ""}` : `${Math.round(relocation.percent * 100)}% read`;
+  const pageLabel = spread?.isSpread && relocation.totalPages && relocation.page < relocation.totalPages
+    ? `Pages ${relocation.page}–${Math.min(relocation.page + 1, relocation.totalPages)} of ${relocation.totalPages}`
+    : `Page ${relocation.page}${relocation.totalPages ? ` of ${relocation.totalPages}` : ""}`;
+  const label = labelMode === 0 ? `${relocation.pagesLeftInChapter} pages left in this chapter` : labelMode === 1 ? pageLabel : `${Math.round(relocation.percent * 100)}% read`;
   return <div className={`absolute inset-x-0 bottom-0 z-50 px-3 pb-[max(8px,env(safe-area-inset-bottom))] pt-8 transition-all duration-200 sm:px-4 ${visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0 pointer-events-none"}`} style={{ color: theme.fg, background: `linear-gradient(${theme.bg}00,${theme.bg}f5 32%)` }}>
     <input aria-label="Reading position" className="reader-scrubber block h-7 w-full cursor-pointer appearance-none bg-transparent" type="range" min="0" max="100" step="0.1" value={seeking ? seek : relocation.percent * 100} onPointerDown={() => setSeeking(true)} onChange={(e) => { setSeeking(true); setSeek(Number(e.target.value)); }} onPointerUp={() => { setSeeking(false); onSeek(seek / 100); }} onKeyUp={() => { setSeeking(false); onSeek(seek / 100); }} style={{ "--reader-progress": `${seeking ? seek : relocation.percent * 100}%`, "--reader-muted": theme.muted } as CSSProperties} />
     <div className="flex items-center justify-between gap-1">
@@ -66,6 +70,16 @@ export function ReaderFooter({ theme, visible, location, relocation, onSeek, onM
       <button className={iconButton} onClick={() => onChapter(-1)} disabled={!canPrevChapter} aria-label="Previous chapter" title="Previous chapter"><ChevronLeft size={20} /></button>
       <button className="min-w-0 flex-1 truncate py-2 text-center text-xs opacity-80 hover:opacity-100" onClick={() => setLabelMode((x) => (x + 1) % 3)} title="Change progress display">{relocation.chapter?.label && <span className="mr-2 font-medium opacity-80">{relocation.chapter.label}</span>}<span className="opacity-70">{label}</span></button>
       <button className={iconButton} onClick={() => onChapter(1)} disabled={!canNextChapter} aria-label="Next chapter" title="Next chapter"><ChevronRight size={20} /></button>
+      {spread && (
+        <button
+          className={`${iconButton} ${spread.isSpread ? "text-amber-500 font-semibold" : "opacity-75 hover:opacity-100"}`}
+          onClick={spread.onToggle}
+          aria-label={spread.isSpread ? "Two-page spread active (click for single page)" : "Single page active (click for two-page spread)"}
+          title={spread.isSpread ? "Two-page spread (click for single page)" : "Single page (click for two-page spread)"}
+        >
+          <Columns2 size={19} />
+        </button>
+      )}
       {zoom && <>
         <span className="mx-1 h-5 w-px opacity-20" style={{ background: theme.fg }} aria-hidden />
         <button className={iconButton} onClick={() => zoom.onChange(zoom.value - 0.5)} disabled={zoom.value <= 1} aria-label="Zoom out"><ZoomOut size={19} /></button>

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { extractDocxContent, estimateDocxPages } from "@/lib/docx";
-import { loadPdfjs } from "@/lib/pdf";
+import { loadPdfjs, getPdfConfig } from "@/lib/pdf";
 import { ACCEPT_FORMATS, FORMAT_LABELS, validateBookFile, type BookFormat } from "@/lib/book-formats";
 import { errorText, preflightEpub } from "@/lib/epub-repair";
 import { Button } from "@/components/ui/button";
@@ -185,32 +185,58 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onPrepareUpload, o
       draft.totalPages = Math.max(1, Math.ceil(text.length / 2000));
     } else if (format === "pdf") {
       const pdfjsLib = await loadPdfjs();
-      // A damaged file is refused; a merely slow one still imports with the file name
-      const loaded = await Promise.race([
-        pdfjsLib.getDocument(draft.fileUrl).promise.then((pdf) => ({ pdf }), (error: unknown) => ({ error })),
-        new Promise<{ timeout: true }>((resolve) => window.setTimeout(() => resolve({ timeout: true }), 15000)),
-      ]);
-      if ("error" in loaded) throw new Error(`This PDF couldn't be read (${errorText(loaded.error)}). It may be damaged or password-protected.`);
-      const pdf = "pdf" in loaded ? loaded.pdf : null;
+      const pdfConfig = getPdfConfig();
+      let pdf: any = null;
+      try {
+        const buffer = await file.arrayBuffer();
+        const data = new Uint8Array(buffer);
+        const loadingTask = pdfjsLib.getDocument({
+          data,
+          ...pdfConfig,
+        });
+        const res = await Promise.race([
+          loadingTask.promise.then((doc) => ({ doc }), (err: unknown) => ({ err })),
+          new Promise<{ timeout: true }>((resolve) => window.setTimeout(() => resolve({ timeout: true }), 15000)),
+        ]);
+        if ("doc" in res) pdf = res.doc;
+        else if ("err" in res) throw res.err;
+      } catch (directErr) {
+        // Fallback to URL loading if arrayBuffer parsing failed
+        console.warn("Direct buffer parsing failed, trying URL:", directErr);
+        const fallbackTask = pdfjsLib.getDocument({
+          url: draft.fileUrl,
+          withCredentials: false,
+          ...pdfConfig,
+        });
+        const fallbackRes = await Promise.race([
+          fallbackTask.promise.then((doc) => ({ doc }), (err: unknown) => ({ err })),
+          new Promise<{ timeout: true }>((resolve) => window.setTimeout(() => resolve({ timeout: true }), 15000)),
+        ]);
+        if ("doc" in fallbackRes) pdf = fallbackRes.doc;
+        else if ("err" in fallbackRes) throw new Error(`This PDF couldn't be read (${errorText(fallbackRes.err)}). It may be damaged or password-protected.`);
+      }
+
       if (pdf) {
         draft.totalPages = pdf.numPages;
-        const meta = await withTimeout(pdf.getMetadata(), 5000, null);
+        const meta = await withTimeout(pdf.getMetadata().catch(() => null), 5000, null);
         const info = (meta?.info ?? {}) as Record<string, unknown>;
         if (clean(info.Title)) draft.title = clean(info.Title);
         if (clean(info.Author)) draft.author = clean(info.Author);
         try {
           const page1 = await withTimeout(pdf.getPage(1), 5000, null);
           if (page1) {
-            const viewport = page1.getViewport({ scale: 0.5 });
+            const baseVp = page1.getViewport({ scale: 1 });
+            const scale = Math.min(2, 360 / Math.max(1, baseVp.width));
+            const viewport = page1.getViewport({ scale });
             const canvas = document.createElement("canvas");
             const ctx = canvas.getContext("2d");
             if (ctx) {
-              canvas.width = viewport.width;
-              canvas.height = viewport.height;
-              const renderTask = page1.render({ canvasContext: ctx, viewport, canvas });
-              const rendered = await withTimeout(renderTask.promise.then(() => true), 8000, false);
+              canvas.width = Math.round(viewport.width);
+              canvas.height = Math.round(viewport.height);
+              const renderTask = page1.render({ canvasContext: ctx, viewport });
+              const rendered = await withTimeout(renderTask.promise.then(() => true).catch(() => false), 8000, false);
               if (rendered) {
-                draft.coverUrl = canvas.toDataURL("image/jpeg", 0.8);
+                draft.coverUrl = canvas.toDataURL("image/jpeg", 0.85);
               } else {
                 renderTask.cancel();
               }

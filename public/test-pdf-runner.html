@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apple Books PDF Presentation Test</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: #18181b;
+      color: #f4f4f5;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+    .reader-shell {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background: #18181b;
+    }
+    /* Top Bar */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      background: linear-gradient(rgba(24, 24, 27, 0.95), rgba(24, 24, 27, 0));
+      z-index: 50;
+    }
+    .book-meta {
+      text-align: center;
+    }
+    .book-title {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .book-author {
+      font-size: 12px;
+      opacity: 0.6;
+    }
+    .btn-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(255, 255, 255, 0.08);
+      color: #f4f4f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+    }
+    /* Canvas / Sheet Container */
+    .viewport {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+    }
+    .spread-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+    }
+    .ritual-pdf-sheet {
+      position: relative;
+      background-color: #ffffff;
+      border-radius: 3px;
+      user-select: text;
+      -webkit-user-select: text;
+      box-shadow: 0 22px 55px -12px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+      transition: box-shadow 0.2s ease;
+    }
+    .ritual-pdf-sheet .textLayer {
+      position: absolute;
+      inset: 0;
+      overflow: clip;
+      opacity: 1;
+      line-height: 1;
+      transform-origin: 0 0;
+      z-index: 2;
+      user-select: text;
+      -webkit-user-select: text;
+      pointer-events: auto;
+    }
+    .ritual-pdf-sheet .textLayer :is(span, br) {
+      color: transparent !important;
+      position: absolute;
+      white-space: pre;
+      cursor: text;
+      transform-origin: 0% 0%;
+    }
+    .ritual-pdf-sheet .textLayer ::selection {
+      background: rgba(59, 130, 246, 0.35);
+      border-radius: 2px;
+    }
+    .spine-gutter {
+      width: 3px;
+      align-self: stretch;
+      background: linear-gradient(to right, rgba(0,0,0,0.18), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.18));
+      z-index: 10;
+    }
+    .ritual-pdf-highlight {
+      position: absolute;
+      pointer-events: auto;
+      cursor: pointer;
+      z-index: 3;
+      border-radius: 2px;
+      background-color: rgba(234, 179, 8, 0.35);
+      mix-blend-mode: multiply;
+    }
+    /* Selection Menu */
+    .selection-popup {
+      position: absolute;
+      top: 140px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(30, 30, 32, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+      z-index: 100;
+    }
+    .color-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: transform 0.15s;
+    }
+    .color-dot:hover {
+      transform: scale(1.15);
+    }
+    .menu-action {
+      font-size: 13px;
+      color: #f4f4f5;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 6px;
+    }
+    .menu-action:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    /* Footer */
+    .bottom-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 24px 20px;
+      background: linear-gradient(rgba(24, 24, 27, 0), rgba(24, 24, 27, 0.95) 40%);
+      z-index: 50;
+    }
+    .scrubber {
+      width: 100%;
+      height: 4px;
+      -webkit-appearance: none;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
+      outline: none;
+    }
+    .scrubber::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #f4f4f5;
+      cursor: pointer;
+    }
+    .footer-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .page-label {
+      font-size: 12px;
+      opacity: 0.75;
+    }
+  </style>
+</head>
+<body>
+  <div class="reader-shell">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="btn-group">
+        <button class="icon-btn" aria-label="Close">✕</button>
+        <button class="icon-btn" aria-label="Contents">☰</button>
+      </div>
+      <div class="book-meta">
+        <div class="book-title" id="ui-title">Ritual Test PDF</div>
+        <div class="book-author" id="ui-author">Test Author</div>
+      </div>
+      <div class="btn-group">
+        <button class="icon-btn" id="btn-fullscreen" title="Fullscreen (F)" aria-label="Fullscreen">⛶</button>
+        <button class="icon-btn" title="Bookmark (B)" aria-label="Bookmark">★</button>
+      </div>
+    </header>
+
+    <!-- Document Viewport -->
+    <main class="viewport" id="viewport">
+      <div class="spread-container" id="spread-container">
+        <!-- Sheet Left (Page 1) -->
+        <div class="ritual-pdf-sheet" id="sheet-1" style="width: 520px; height: 690px;">
+          <canvas id="canvas-1" width="1040" height="1380" style="width: 520px; height: 690px; display: block;"></canvas>
+          <div class="textLayer" id="text-layer-1" style="width: 520px; height: 690px;">
+            <span style="left: 55px; top: 140px; font-size: 32px; font-family: Helvetica, sans-serif; position: absolute; color: transparent; cursor: text;">Hello Ritual page 1</span>
+          </div>
+          <!-- Highlight Overlay -->
+          <div class="ritual-pdf-highlight" style="left: 52px; top: 138px; width: 310px; height: 38px;"></div>
+        </div>
+
+        <!-- Center Spine (Spread Mode) -->
+        <div class="spine-gutter" id="spine" style="display: none;"></div>
+
+        <!-- Sheet Right (Page 2 - Spread Mode) -->
+        <div class="ritual-pdf-sheet" id="sheet-2" style="width: 520px; height: 690px; display: none;">
+          <canvas id="canvas-2" width="1040" height="1380" style="width: 520px; height: 690px; display: block;"></canvas>
+          <div class="textLayer" id="text-layer-2" style="width: 520px; height: 690px;">
+            <span style="left: 55px; top: 140px; font-size: 32px; font-family: Helvetica, sans-serif; position: absolute; color: transparent; cursor: text;">Hello Ritual page 2</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Selection Menu Popup -->
+      <div class="selection-popup" id="selection-popup" style="display: none;">
+        <span class="color-dot" style="background: #facc15;" title="Yellow"></span>
+        <span class="color-dot" style="background: #4ade80;" title="Green"></span>
+        <span class="color-dot" style="background: #f472b6;" title="Pink"></span>
+        <span class="color-dot" style="background: #c084fc;" title="Purple"></span>
+        <button class="menu-action">Note</button>
+        <button class="menu-action">Look Up</button>
+        <button class="menu-action">Copy</button>
+        <button class="menu-action">Search</button>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bottom-bar">
+      <input type="range" class="scrubber" min="1" max="600" value="1" id="scrubber">
+      <div class="footer-controls">
+        <button class="icon-btn" id="btn-prev" aria-label="Previous">❮</button>
+        <div class="page-label" id="page-label">Page 1 of 600 • 0% read</div>
+        <div class="btn-group">
+          <button class="icon-btn" id="btn-spread" title="Toggle Two-Page Spread" aria-label="Spread">☵</button>
+          <button class="icon-btn" id="btn-zoom-out" title="Zoom Out">-</button>
+          <button class="icon-btn" id="btn-zoom-in" title="Zoom In">+</button>
+        </div>
+        <button class="icon-btn" id="btn-next" aria-label="Next">❯</button>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // Draw crisp page content on canvas
+    function drawPage(canvasId, text, pageNum) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Subtle paper border
+      ctx.strokeStyle = '#e4e4e7';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+
+      // Header rule
+      ctx.fillStyle = '#71717a';
+      ctx.font = '500 24px -apple-system, sans-serif';
+      ctx.fillText('Ritual Reader • Apple Books Presentation', 90, 80);
+
+      ctx.strokeStyle = '#e4e4e7';
+      ctx.beginPath();
+      ctx.moveTo(90, 110);
+      ctx.lineTo(canvas.width - 90, 110);
+      ctx.stroke();
+
+      // Main Text
+      ctx.fillStyle = '#18181b';
+      ctx.font = 'bold 48px Georgia, serif';
+      ctx.fillText(text, 90, 260);
+
+      // Paragraph lines
+      ctx.fillStyle = '#3f3f46';
+      ctx.font = '28px Georgia, serif';
+      ctx.fillText('This document is presented with authentic paper depth,', 90, 360);
+      ctx.fillText('crisp vector typography, and an interactive text layer.', 90, 420);
+      ctx.fillText('You can select text, drag highlights, and read in spread mode.', 90, 480);
+
+      // Footer page indicator
+      ctx.fillStyle = '#a1a1aa';
+      ctx.font = '22px -apple-system, sans-serif';
+      ctx.fillText('Page ' + pageNum + ' of 600', 90, canvas.height - 80);
+    }
+
+    drawPage('canvas-1', 'Hello Ritual page 1', 1);
+    drawPage('canvas-2', 'Hello Ritual page 2', 2);
+
+    let isSpread = false;
+    let isFullscreen = false;
+    const sheet2 = document.getElementById('sheet-2');
+    const spine = document.getElementById('spine');
+    const btnSpread = document.getElementById('btn-spread');
+    const btnFullscreen = document.getElementById('btn-fullscreen');
+    const popup = document.getElementById('selection-popup');
+
+    btnSpread.addEventListener('click', () => {
+      isSpread = !isSpread;
+      sheet2.style.display = isSpread ? 'block' : 'none';
+      spine.style.display = isSpread ? 'block' : 'none';
+      btnSpread.style.color = isSpread ? '#eab308' : '#f4f4f5';
+      document.getElementById('page-label').textContent = isSpread ? 'Pages 1-2 of 600 • Spread Mode' : 'Page 1 of 600 • 0% read';
+    });
+
+    btnFullscreen.addEventListener('click', () => {
+      isFullscreen = !isFullscreen;
+      btnFullscreen.textContent = isFullscreen ? '⛶' : '⛶';
+      btnFullscreen.style.color = isFullscreen ? '#38bdf8' : '#f4f4f5';
+    });
+
+    // Show popup
+    window.showSelectionMenu = function() {
+      popup.style.display = 'flex';
+    };
+
+    window.toggleSpread = function() {
+      btnSpread.click();
+    };
+  </script>
+</body>
+</html>

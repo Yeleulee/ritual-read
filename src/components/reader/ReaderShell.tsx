@@ -86,6 +86,8 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
   const [chromeVisible, setChromeVisible] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [pdfZoom, setPdfZoom] = useState(1);
+  const [pdfSpread, setPdfSpread] = useState(() => (typeof window !== "undefined" ? window.innerWidth >= 900 : false));
+  const userToggledSpreadRef = useRef(false);
   const [pinching, setPinching] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
   const pageTurnerRef = useRef<PageTurnerHandle>(null);
@@ -205,6 +207,15 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
     catch { setFullscreen((v) => !v); }
   };
   useEffect(() => { const onChange = () => setFullscreen(!!document.fullscreenElement); document.addEventListener("fullscreenchange", onChange); return () => document.removeEventListener("fullscreenchange", onChange); }, []);
+  // Auto-adapt Two-Page Spread on desktop/laptop screens unless manually toggled
+  useEffect(() => {
+    const onResize = () => {
+      if (userToggledSpreadRef.current) return;
+      setPdfSpread(window.innerWidth >= 900);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -260,6 +271,7 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
       else if (e.key.toLowerCase() === "t") setSettingsOpen(true);
       else if (e.key.toLowerCase() === "c") setContentsOpen(true);
       else if (e.key.toLowerCase() === "m") setMusicOpen(true);
+      else if (e.key.toLowerCase() === "f") { e.preventDefault(); toggleFullscreen(); }
       showChrome(2500);
     };
     window.addEventListener("keydown", key);
@@ -273,7 +285,7 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
     const pageStart = saved && /^\d+$/.test(saved) ? saved : null;
     const textStart = saved && saved.startsWith("txt:") ? saved : null;
     if (isEpub && resolvedUrl) return <EpubReader fileUrl={resolvedUrl} locationsKey={book.id} settings={settings} theme={theme} initialLocation={epubStart} highlights={highlights} onReady={onReaderReady} onToc={setToc} onRelocated={onRelocated} onSelected={onSelection} onHighlightClick={(id, rect) => { const h = highlights.find((item) => item.id === id); if (h) setSelection({ cfiRange: h.cfi_range, text: h.text, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } }); }} onTap={readerTap} onGesture={(phase, p) => pageTurnerRef.current?.feed(phase, p)} />;
-    if (isPdf && resolvedUrl) return <PdfReader key={book.id} fileUrl={resolvedUrl} theme={theme} initialLocation={pageStart ?? String(Math.max(1, Math.round((book.progress / 100) * Math.max(1, book.totalPages))))} onReady={onReaderReady} onToc={setToc} onRelocated={onRelocated} onTap={readerTap} onZoom={setPdfZoom} onPinch={setPinching} />;
+    if (isPdf && resolvedUrl) return <PdfReader key={book.id} fileUrl={resolvedUrl} theme={theme} settings={settings} initialLocation={pageStart ?? String(Math.max(1, Math.round((book.progress / 100) * Math.max(1, book.totalPages))))} highlights={highlights} spread={pdfSpread} onReady={onReaderReady} onToc={setToc} onRelocated={onRelocated} onSelected={onSelection} onHighlightClick={(id, rect) => { const h = highlights.find((item) => item.id === id); if (h) setSelection({ cfiRange: h.cfi_range, text: h.text, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } }); }} onTap={readerTap} onZoom={setPdfZoom} onPinch={setPinching} />;
     if (isPpt && resolvedUrl) return <PptReader key={book.id} fileUrl={resolvedUrl} theme={theme} initialLocation={pageStart} onReady={onReaderReady} onToc={setToc} onRelocated={onRelocated} onTap={readerTap} />;
     // File-backed books wait for their URL rather than falling through to the text reader
     if (book.fileUrl && (isEpub || isPdf || isPpt)) return <div className="flex h-full items-center justify-center text-sm" style={{ color: theme.muted }}>Preparing book…</div>;
@@ -281,7 +293,7 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
     if (!isText && !(book.content && book.content.trim())) return <div className="flex h-full items-center justify-center px-6 text-center text-sm" style={{ color: theme.muted }}>This book is a {book.fileType?.toUpperCase() || "unknown"} file, which the reader can't open. Supported formats: {FORMAT_LABELS.join(", ")}. Remove it and import a converted copy.</div>;
     const text = book.content ?? SAMPLE;
     return <TextReader key={book.id} content={text} settings={settings} theme={theme} initialLocation={textStart} highlights={highlights} onReady={onReaderReady} onRelocated={onRelocated} onSelected={onSelection} onHighlightClick={(id, rect) => { const h = highlights.find((item) => item.id === id); if (h) setSelection({ cfiRange: h.cfi_range, text: h.text, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } }); }} onTap={readerTap} />;
-  }, [isEpub, isPdf, isPpt, isText, resolvedUrl, book.id, book.fileUrl, book.fileType, book.content, book.progress, book.totalPages, settings, theme, hydrated, position?.location, highlights, onReaderReady, onRelocated, readerTap]);
+  }, [isEpub, isPdf, isPpt, isText, resolvedUrl, book.id, book.fileUrl, book.fileType, book.content, book.progress, book.totalPages, settings, theme, hydrated, position?.location, highlights, pdfSpread, onReaderReady, onRelocated, onSelection, readerTap]);
 
   if (resolving && book.fileType) return <div className="flex h-[75vh] items-center justify-center text-sm text-muted-foreground">Preparing book…</div>;
 
@@ -291,8 +303,8 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
     <div ref={shellRef} className="fixed inset-0 z-50 overflow-hidden" style={{ background: theme.bg, color: theme.fg }}>
       {resolveError ? <div className="flex h-full items-center justify-center p-6 text-sm">{resolveError}</div> : <PageTurner ref={pageTurnerRef} api={api} mode={pageTurn} turnSpeed={settings.turnSpeed} theme={theme} canNext={!relocation.atEnd} canPrev={!relocation.atStart} pageKey={`${relocation.location}|${theme.id}|${settings.fontId}|${settings.fontSize}|${settings.lineHeight}|${settings.bold}|${settings.margins}`} disabled={anySheetOpen || !!selection || pinching || pdfZoom > 1} onTapCenter={readerTap} onTurned={hideChrome}>{reader}</PageTurner>}
       {settings.brightness < 1 && <div className="pointer-events-none absolute inset-0 z-40 bg-black" style={{ opacity: 1 - settings.brightness }} />}
-      <ReaderTopBar title={book.title} author={book.author} theme={theme} visible={chromeVisible && !selection} bookmarked={isBookmarked} musicPlaying={musicPlaying} onClose={onBackToLibrary} onBookmark={toggleBookmark} onContents={() => setContentsOpen(true)} onSettings={() => setSettingsOpen(true)} onMusic={() => setMusicOpen(true)} />
-      <ReaderFooter theme={theme} visible={chromeVisible && !selection} location={location} relocation={relocation} onSeek={(p) => { void api?.display(p); }} onMenu={() => { setMenuOpen(true); setChromeVisible(true); }} canPrevChapter={flatToc.length > 0 && chapterIndex > 0} canNextChapter={flatToc.length > 0 && chapterIndex < flatToc.length - 1} onChapter={stepChapter} zoom={isPdf ? { value: pdfZoom, onChange: (z) => api?.zoomTo?.(z) } : undefined} />
+      <ReaderTopBar title={book.title} author={book.author} theme={theme} visible={chromeVisible && !selection} bookmarked={isBookmarked} musicPlaying={musicPlaying} onClose={onBackToLibrary} onBookmark={toggleBookmark} onContents={() => setContentsOpen(true)} onSettings={() => setSettingsOpen(true)} onMusic={() => setMusicOpen(true)} onFullscreen={toggleFullscreen} isFullscreen={fullscreen} />
+      <ReaderFooter theme={theme} visible={chromeVisible && !selection} location={location} relocation={relocation} onSeek={(p) => { void api?.display(p); }} onMenu={() => { setMenuOpen(true); setChromeVisible(true); }} canPrevChapter={flatToc.length > 0 && chapterIndex > 0} canNextChapter={flatToc.length > 0 && chapterIndex < flatToc.length - 1} onChapter={stepChapter} zoom={isPdf ? { value: pdfZoom, onChange: (z) => api?.zoomTo?.(z) } : undefined} spread={isPdf ? { isSpread: pdfSpread, onToggle: () => { userToggledSpreadRef.current = true; setPdfSpread((s) => !s); } } : undefined} />
       <ReaderChromeHandle theme={theme} visible={!chromeVisible && !selection && !anySheetOpen} musicPlaying={musicPlaying} onShow={() => showChrome()} />
       <ReaderMenu open={menuOpen} onClose={() => setMenuOpen(false)} theme={theme} onContents={() => { setMenuOpen(false); setContentsOpen(true); }} onSearch={() => { setMenuOpen(false); setSearchOpen(true); }} onSettings={() => { setMenuOpen(false); setSettingsOpen(true); }} onMusic={() => { setMenuOpen(false); setMusicOpen(true); }} onFullscreen={toggleFullscreen} onAssistant={() => { setMenuOpen(false); toast({ title: "Assistant", description: "Open the Assistant tab to continue with your book context." }); }} />
       <ThemesSettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} settings={settings} update={update} theme={theme} capabilities={capabilities} formatLabel={formatInfo?.label} />

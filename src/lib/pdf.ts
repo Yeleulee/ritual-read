@@ -6,3 +6,13 @@ export async function loadPdfjs() {
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
   return pdfjs;
 }
+
+/** Standard configuration for decoding CJK/complex character sets and standard 14 PDF fonts offline */
+export function getPdfConfig() {
+  const base = typeof window !== "undefined" && window.location?.origin ? window.location.origin : "";
+  return {
+    cMapUrl: `${base}/pdfjs/cmaps/`,
+    cMapPacked: true,
+    standardFontDataUrl: `${base}/pdfjs/standard_fonts/`,
+  };
+}
