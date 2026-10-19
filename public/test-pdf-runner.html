@@ -74,22 +74,27 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: 0;
       position: relative;
+      overflow-y: auto;
+      overflow-x: hidden;
+      width: 100%;
     }
     .spread-container {
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 0;
+      width: 100%;
+      min-height: 100%;
     }
     .ritual-pdf-sheet {
       position: relative;
       background-color: #ffffff;
-      border-radius: 3px;
+      border-radius: 0;
       user-select: text;
       -webkit-user-select: text;
-      box-shadow: 0 22px 55px -12px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.08);
+      box-shadow: none;
       overflow: hidden;
       transition: box-shadow 0.2s ease;
     }
@@ -271,6 +276,7 @@
         <div class="page-label" id="page-label">Page 1 of 600 • 0% read</div>
         <div class="btn-group">
           <button class="icon-btn" id="btn-spread" title="Toggle Two-Page Spread" aria-label="Spread">☵</button>
+          <button class="icon-btn" id="btn-fit" title="Toggle Fit to Width (Full Screen)" aria-label="Fit Width" style="color: #eab308;">⇄</button>
           <button class="icon-btn" id="btn-zoom-out" title="Zoom Out">-</button>
           <button class="icon-btn" id="btn-zoom-in" title="Zoom In">+</button>
         </div>
@@ -295,7 +301,7 @@
       // Header rule
       ctx.fillStyle = '#71717a';
       ctx.font = '500 24px -apple-system, sans-serif';
-      ctx.fillText('Ritual Reader • Apple Books Presentation', 90, 80);
+      ctx.fillText('Ritual Reader • Apple Books Full Screen Presentation', 90, 80);
 
       ctx.strokeStyle = '#e4e4e7';
       ctx.beginPath();
@@ -311,9 +317,9 @@
       // Paragraph lines
       ctx.fillStyle = '#3f3f46';
       ctx.font = '28px Georgia, serif';
-      ctx.fillText('This document is presented with authentic paper depth,', 90, 360);
-      ctx.fillText('crisp vector typography, and an interactive text layer.', 90, 420);
-      ctx.fillText('You can select text, drag highlights, and read in spread mode.', 90, 480);
+      ctx.fillText('This document spans 100% of the screen width with zero black side bars.', 90, 360);
+      ctx.fillText('Presented with authentic paper depth, crisp vector typography, and interactive text layer.', 90, 420);
+      ctx.fillText('Enjoy continuous edge-to-edge reading in Two-Page Spread mode.', 90, 480);
 
       // Footer page indicator
       ctx.fillStyle = '#a1a1aa';
@@ -325,19 +331,57 @@
     drawPage('canvas-2', 'Hello Ritual page 2', 2);
 
     let isSpread = false;
+    let isFitWidth = true;
     let isFullscreen = false;
+    const sheet1 = document.getElementById('sheet-1');
     const sheet2 = document.getElementById('sheet-2');
     const spine = document.getElementById('spine');
     const btnSpread = document.getElementById('btn-spread');
+    const btnFit = document.getElementById('btn-fit');
     const btnFullscreen = document.getElementById('btn-fullscreen');
     const popup = document.getElementById('selection-popup');
 
+    function updateLayout() {
+      if (isFitWidth) {
+        if (isSpread) {
+          sheet1.style.width = 'calc(50vw - 1px)';
+          sheet1.style.height = 'calc((50vw - 1px) * 1.33)';
+          sheet2.style.width = 'calc(50vw - 1px)';
+          sheet2.style.height = 'calc((50vw - 1px) * 1.33)';
+          sheet2.style.display = 'block';
+          spine.style.display = 'block';
+          spine.style.width = '2px';
+        } else {
+          sheet1.style.width = '100vw';
+          sheet1.style.height = 'calc(100vw * 1.33)';
+          sheet2.style.display = 'none';
+          spine.style.display = 'none';
+        }
+      } else {
+        sheet1.style.width = '520px';
+        sheet1.style.height = '690px';
+        sheet2.style.width = '520px';
+        sheet2.style.height = '690px';
+        sheet2.style.display = isSpread ? 'block' : 'none';
+        spine.style.display = isSpread ? 'block' : 'none';
+        spine.style.width = '3px';
+      }
+      btnSpread.style.color = isSpread ? '#eab308' : '#f4f4f5';
+      btnFit.style.color = isFitWidth ? '#eab308' : '#f4f4f5';
+      document.getElementById('page-label').textContent = isSpread ? 'Pages 1-2 of 600 • Spread Mode (Full Width)' : 'Page 1 of 600 • Full Width';
+    }
+
+    // Initialize in Fit Width mode
+    updateLayout();
+
     btnSpread.addEventListener('click', () => {
       isSpread = !isSpread;
-      sheet2.style.display = isSpread ? 'block' : 'none';
-      spine.style.display = isSpread ? 'block' : 'none';
-      btnSpread.style.color = isSpread ? '#eab308' : '#f4f4f5';
-      document.getElementById('page-label').textContent = isSpread ? 'Pages 1-2 of 600 • Spread Mode' : 'Page 1 of 600 • 0% read';
+      updateLayout();
+    });
+
+    btnFit.addEventListener('click', () => {
+      isFitWidth = !isFitWidth;
+      updateLayout();
     });
 
     btnFullscreen.addEventListener('click', () => {
@@ -353,6 +397,10 @@
 
     window.toggleSpread = function() {
       btnSpread.click();
+    };
+
+    window.toggleFit = function() {
+      btnFit.click();
     };
   </script>
 </body>

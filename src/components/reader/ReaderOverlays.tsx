@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Bookmark, BookOpen, Check, ChevronLeft, ChevronRight, Columns2, List, Maximize2, Minimize2, Minus, Moon, Music2, Plus, Search, Settings2, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeftRight, Bookmark, BookOpen, Check, ChevronLeft, ChevronRight, Columns2, List, Maximize2, Minimize2, Minus, Moon, Music2, Plus, Search, Settings2, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { Bookmark as ReaderBookmark, Highlight } from "@/hooks/use-reader-store";
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, FONTS, HIGHLIGHT_COLORS, THEME_ORDER, THEMES, type ReaderSettings, type ThemeId } from "@/lib/reader-themes";
 import type { ReaderApi, SearchHit, TocItem } from "@/components/readers/EpubReader";
@@ -54,7 +54,7 @@ export function ReaderTopBar({ title, author, theme, visible, bookmarked, musicP
   </div>;
 }
 
-export function ReaderFooter({ theme, visible, location, relocation, onSeek, onMenu, canPrevChapter, canNextChapter, onChapter, zoom, spread }: { theme: (typeof THEMES)[ThemeId]; visible: boolean; location: string | null; relocation: Relocation; onSeek: (percent: number) => void; onMenu: () => void; canPrevChapter: boolean; canNextChapter: boolean; onChapter: (dir: 1 | -1) => void; zoom?: { value: number; onChange: (zoom: number) => void }; spread?: { isSpread: boolean; onToggle: () => void } }) {
+export function ReaderFooter({ theme, visible, location, relocation, onSeek, onMenu, canPrevChapter, canNextChapter, onChapter, zoom, spread, fit }: { theme: (typeof THEMES)[ThemeId]; visible: boolean; location: string | null; relocation: Relocation; onSeek: (percent: number) => void; onMenu: () => void; canPrevChapter: boolean; canNextChapter: boolean; onChapter: (dir: 1 | -1) => void; zoom?: { value: number; onChange: (zoom: number) => void }; spread?: { isSpread: boolean; onToggle: () => void }; fit?: { mode: "width" | "page"; onToggle: () => void } }) {
   const [labelMode, setLabelMode] = useState(0);
   const [seeking, setSeeking] = useState(false);
   const [seek, setSeek] = useState(relocation.percent * 100);
@@ -78,6 +78,16 @@ export function ReaderFooter({ theme, visible, location, relocation, onSeek, onM
           title={spread.isSpread ? "Two-page spread (click for single page)" : "Single page (click for two-page spread)"}
         >
           <Columns2 size={19} />
+        </button>
+      )}
+      {fit && (
+        <button
+          className={`${iconButton} ${fit.mode === "width" ? "text-amber-500 font-semibold" : "opacity-75 hover:opacity-100"}`}
+          onClick={fit.onToggle}
+          aria-label={fit.mode === "width" ? "Fit to Width active (click for Fit to Page)" : "Fit to Page active (click for Fit to Width)"}
+          title={fit.mode === "width" ? "Fit to Width: Full screen width (W)" : "Fit to Page: Entire page visible (W)"}
+        >
+          <ArrowLeftRight size={18} />
         </button>
       )}
       {zoom && <>

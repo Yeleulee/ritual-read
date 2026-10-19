@@ -11,6 +11,7 @@ interface PdfReaderProps {
   initialLocation?: string | null; // page number as string
   highlights?: Highlight[];
   spread?: boolean;
+  fitMode?: "width" | "page";
   onReady?: (api: ReaderApi) => void;
   onToc?: (toc: TocItem[]) => void;
   onRelocated?: (info: RelocatedInfo) => void;
@@ -50,6 +51,7 @@ export const PdfReader = ({
   initialLocation,
   highlights = [],
   spread = false,
+  fitMode = "width",
   onReady,
   onToc,
   onRelocated,
@@ -158,6 +160,9 @@ export const PdfReader = ({
     pageRef.current = clamped;
     setPage(clamped);
     if (n) emit(clamped, n);
+    if (containerRef.current) {
+      containerRef.current.scrollTop = 0;
+    }
   };
 
   // Re-emit location when spread mode changes
@@ -488,13 +493,16 @@ export const PdfReader = ({
         const p = await doc.getPage(pageNum);
         const baseVp = p.getViewport({ scale: 1 });
 
-        // Fit to Screen: maximize viewport height and width without scrollbars
-        const padX = isDual ? 20 : 28;
-        const padY = 28;
-        const availW = Math.max(100, isDual ? (container.clientWidth - padX * 2 - 4) / 2 : container.clientWidth - padX * 2);
+        // Sizing: Fit to Width expands to 100% screen width; Fit to Page fits screen height & width
+        const isFitWidth = fitMode === "width";
+        const padX = isFitWidth ? 0 : (isDual ? 20 : 28);
+        const padY = isFitWidth ? 0 : 28;
+        const availW = Math.max(100, isDual ? Math.floor((container.clientWidth - (isFitWidth ? 2 : padX * 2 + 4)) / 2) : container.clientWidth - padX * 2);
         const availH = Math.max(100, container.clientHeight - padY);
 
-        const fitScale = Math.min(availW / baseVp.width, availH / baseVp.height);
+        const widthScale = availW / baseVp.width;
+        const heightScale = availH / baseVp.height;
+        const fitScale = isFitWidth ? widthScale : Math.min(widthScale, heightScale);
         const scale = fitScale * zoom;
         const dpr = Math.min(2.5, window.devicePixelRatio || 1);
 
@@ -632,10 +640,10 @@ export const PdfReader = ({
         if (e?.name !== "RenderingCancelledException") console.error("PDF page render error:", e);
       }
     },
-    [isDual, zoom]
+    [isDual, zoom, fitMode]
   );
 
-  // Trigger page render when page, spread, zoom, or container size changes
+  // Trigger page render when page, spread, zoom, fitMode, or container size changes
   useEffect(() => {
     if (loading || error) return;
     renderSinglePage(leftPage, canvasRef.current, textLayerRef.current, primarySheetRef.current, false);
@@ -646,7 +654,7 @@ export const PdfReader = ({
       setAnnotations2([]);
       setPageHighlights2([]);
     }
-  }, [leftPage, rightPage, isDual, zoom, containerDims, loading, error, renderSinglePage, highlights]);
+  }, [leftPage, rightPage, isDual, zoom, fitMode, containerDims, loading, error, renderSinglePage, highlights]);
 
   // A page change resets zoom to fit-to-screen
   useEffect(() => {
@@ -743,6 +751,7 @@ export const PdfReader = ({
   };
 
   const zoomed = zoom > 1;
+  const isFitWidth = fitMode === "width";
 
   // Paper sheet drop shadow matching luxury Apple Books paper aesthetic
   const paperShadow = theme.dark
@@ -755,6 +764,8 @@ export const PdfReader = ({
       className={
         zoomed
           ? "h-full w-full overflow-auto overscroll-contain select-none"
+          : isFitWidth
+          ? "h-full w-full overflow-y-auto overflow-x-hidden select-none p-0"
           : "flex h-full w-full items-center justify-center overflow-hidden select-none p-2 sm:p-3"
       }
       style={{
@@ -843,15 +854,17 @@ export const PdfReader = ({
         </div>
       ) : null}
 
-      <div className={`flex items-center justify-center gap-0 ${loading || error ? "hidden" : ""}`}>
+      <div className={`min-h-full w-full flex items-center justify-center gap-0 ${loading || error ? "hidden" : ""}`}>
         {/* Primary Page Sheet (Single Page or Left Page of Spread) */}
         <div
           ref={primarySheetRef}
           className="ritual-pdf-sheet shrink-0"
           style={{
-            boxShadow: paperShadow,
-            borderTopRightRadius: isDual ? 0 : 3,
-            borderBottomRightRadius: isDual ? 0 : 3,
+            boxShadow: isFitWidth ? "none" : paperShadow,
+            borderTopRightRadius: isDual && rightPage ? 0 : (isFitWidth ? 0 : 3),
+            borderBottomRightRadius: isDual && rightPage ? 0 : (isFitWidth ? 0 : 3),
+            borderTopLeftRadius: isFitWidth ? 0 : 3,
+            borderBottomLeftRadius: isFitWidth ? 0 : 3,
           }}
         >
           <canvas ref={canvasRef} className="block" />
@@ -912,9 +925,11 @@ export const PdfReader = ({
             ref={secondarySheetRef}
             className="ritual-pdf-sheet shrink-0"
             style={{
-              boxShadow: paperShadow,
+              boxShadow: isFitWidth ? "none" : paperShadow,
               borderTopLeftRadius: 0,
               borderBottomLeftRadius: 0,
+              borderTopRightRadius: isFitWidth ? 0 : 3,
+              borderBottomRightRadius: isFitWidth ? 0 : 3,
             }}
           >
             <canvas ref={canvas2Ref} className="block" />
