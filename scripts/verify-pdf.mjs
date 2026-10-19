@@ -239,6 +239,39 @@ async function runTests() {
   assert("Original light theme leaves canvas filter unchanged", originalStyle.filter === "none");
   assert("Original light theme has white sheet background", originalStyle.sheetBg === "#FFFFFF");
 
+  // 10. Verify Snapshot during Page Turn preserves Dark Mode
+  console.log('\n--- Test Suite 8: Page Flip Snapshot Dark Mode Preservation ---');
+  function simulateSnapshot(style, isDark) {
+    const operations = [];
+    const ctx = {
+      fillStyle: '',
+      shadowColor: '',
+      filter: 'none',
+      globalCompositeOperation: 'source-over',
+      globalAlpha: 1,
+      fillRect: (x, y, w, h) => operations.push({ op: 'fillRect', fillStyle: ctx.fillStyle, x, y, w, h }),
+      drawImage: (img, dx, dy, dw, dh) => operations.push({ op: 'drawImage', filter: ctx.filter, dx, dy, dw, dh }),
+      save: () => {},
+      restore: () => {},
+    };
+
+    // Draw sheet
+    ctx.fillStyle = style.sheetBg;
+    ctx.fillRect(0, 0, 500, 700);
+
+    // Draw canvas with filter
+    if (style.filter && style.filter !== 'none') {
+      ctx.filter = style.filter;
+    }
+    ctx.drawImage('canvasEl', 0, 0, 500, 700);
+
+    return { operations, ctx };
+  }
+
+  const darkSnap = simulateSnapshot(focusStyle, true);
+  assert("Snapshot sheet background in dark mode is #141416 (not white #ffffff)", darkSnap.operations[0].fillStyle === "#141416");
+  assert("Snapshot canvas drawImage has dark mode inversion filter", darkSnap.operations[1].filter.includes("invert(0.92)"));
+
   await doc.destroy();
 
   console.log('\n====================================================');

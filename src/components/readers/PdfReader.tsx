@@ -200,6 +200,80 @@ export const PdfReader = ({
     return null;
   };
 
+  // Apple Books PDF Theme Filter & Canvas Inversion
+  const pdfThemeStyle = useMemo(() => {
+    switch (theme.id) {
+      case "focus": // Pure Dark / OLED Night
+        return {
+          filter: "invert(0.92) hue-rotate(180deg) contrast(1.05) brightness(0.95)",
+          sheetBg: "#141416",
+          selectionBg: theme.selection || "rgba(127, 179, 255, 0.35)",
+          highlightBlend: "screen" as const,
+          highlightOpacity: 0.65,
+          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.7), rgba(255,255,255,0.06) 50%, rgba(0,0,0,0.7))",
+        };
+      case "calm": // Warm Espresso / Dark Sepia
+        return {
+          filter: "invert(0.88) sepia(0.25) hue-rotate(180deg) brightness(0.92) contrast(1.05)",
+          sheetBg: "#282420",
+          selectionBg: theme.selection || "rgba(215, 167, 107, 0.3)",
+          highlightBlend: "screen" as const,
+          highlightOpacity: 0.65,
+          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.65), rgba(255,255,255,0.05) 50%, rgba(0,0,0,0.65))",
+        };
+      case "paper": // Sepia Parchment Eye-Comfort
+        return {
+          filter: "sepia(0.35) contrast(0.96) brightness(0.97)",
+          sheetBg: "#F6EEDC",
+          selectionBg: theme.selection || "rgba(138, 90, 43, 0.25)",
+          highlightBlend: "multiply" as const,
+          highlightOpacity: 0.38,
+          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.14), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.14))",
+        };
+      case "quiet": // Soft Matte Gray
+        return {
+          filter: "brightness(0.94) contrast(0.98)",
+          sheetBg: "#EDEDED",
+          selectionBg: theme.selection || "rgba(62, 92, 138, 0.25)",
+          highlightBlend: "multiply" as const,
+          highlightOpacity: 0.35,
+          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.12))",
+        };
+      case "bold":
+        return {
+          filter: "contrast(1.04)",
+          sheetBg: "#FFFFFF",
+          selectionBg: theme.selection || "rgba(10, 79, 160, 0.25)",
+          highlightBlend: "multiply" as const,
+          highlightOpacity: 0.38,
+          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.12))",
+        };
+      case "original":
+      default:
+        if (theme.dark) {
+          return {
+            filter: "invert(0.92) hue-rotate(180deg) contrast(1.05) brightness(0.95)",
+            sheetBg: "#141416",
+            selectionBg: theme.selection || "rgba(127, 179, 255, 0.35)",
+            highlightBlend: "screen" as const,
+            highlightOpacity: 0.65,
+            spineGutter: "linear-gradient(to right, rgba(0,0,0,0.7), rgba(255,255,255,0.06) 50%, rgba(0,0,0,0.7))",
+          };
+        }
+        return {
+          filter: "none",
+          sheetBg: "#FFFFFF",
+          selectionBg: theme.selection || "rgba(59, 130, 246, 0.35)",
+          highlightBlend: "multiply" as const,
+          highlightOpacity: 0.35,
+          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.12))",
+        };
+    }
+  }, [theme.id, theme.dark, theme.selection]);
+
+  const pdfThemeStyleRef = useRef(pdfThemeStyle);
+  pdfThemeStyleRef.current = pdfThemeStyle;
+
   const apiRef = useRef<ReaderApi>();
   if (!apiRef.current) {
     apiRef.current = {
@@ -262,32 +336,78 @@ export const PdfReader = ({
         const ctx = out.getContext("2d");
         if (!ctx) return null;
 
-        ctx.fillStyle = themeRef.current.bg;
+        const currentTheme = themeRef.current;
+        const currentStyle = pdfThemeStyleRef.current;
+
+        ctx.fillStyle = currentTheme.bg;
         ctx.fillRect(0, 0, out.width, out.height);
+
+        const cRect = container.getBoundingClientRect();
 
         const drawSheet = (sheetEl: HTMLElement) => {
           const canvasEl = sheetEl.querySelector("canvas");
           if (!canvasEl) return;
-          const cRect = container.getBoundingClientRect();
           const sRect = sheetEl.getBoundingClientRect();
           const dx = (sRect.left - cRect.left) * dpr;
           const dy = (sRect.top - cRect.top) * dpr;
           const dw = sRect.width * dpr;
           const dh = sRect.height * dpr;
 
+          // 1. Sheet paper backdrop with shadow matching theme paper color
           ctx.save();
-          ctx.shadowColor = "rgba(0,0,0,0.2)";
+          ctx.shadowColor = currentTheme.dark ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.18)";
           ctx.shadowBlur = 12 * dpr;
           ctx.shadowOffsetY = 4 * dpr;
-          ctx.fillStyle = "#ffffff";
+          ctx.fillStyle = currentStyle.sheetBg;
           ctx.fillRect(dx, dy, dw, dh);
           ctx.restore();
 
+          // 2. Draw PDF canvas with Dark Mode / Eye-Comfort filter applied
+          ctx.save();
+          if (currentStyle.filter && currentStyle.filter !== "none") {
+            ctx.filter = currentStyle.filter;
+          }
           ctx.drawImage(canvasEl, dx, dy, dw, dh);
+          ctx.restore();
+
+          // 3. Draw active highlight overlays on this sheet
+          const hlEls = sheetEl.querySelectorAll<HTMLElement>(".ritual-pdf-highlight");
+          hlEls.forEach((hlEl) => {
+            const hr = hlEl.getBoundingClientRect();
+            const hx = (hr.left - cRect.left) * dpr;
+            const hy = (hr.top - cRect.top) * dpr;
+            const hw = hr.width * dpr;
+            const hh = hr.height * dpr;
+            ctx.save();
+            ctx.globalCompositeOperation = (currentStyle.highlightBlend as GlobalCompositeOperation) || "source-over";
+            ctx.globalAlpha = currentStyle.highlightOpacity;
+            ctx.fillStyle = hlEl.style.backgroundColor || "#facc15";
+            ctx.fillRect(hx, hy, hw, hh);
+            ctx.restore();
+          });
         };
 
         drawSheet(sheet1);
-        if (isDualRef.current && secondarySheetRef.current) drawSheet(secondarySheetRef.current);
+        if (isDualRef.current && secondarySheetRef.current) {
+          drawSheet(secondarySheetRef.current);
+
+          // Draw center spine gutter shadow between sheets in spread mode
+          const s1 = sheet1.getBoundingClientRect();
+          const s2 = secondarySheetRef.current.getBoundingClientRect();
+          const spineX = (s1.right - cRect.left) * dpr;
+          const spineW = Math.max(2 * dpr, (s2.left - s1.right) * dpr);
+          const spineY = (Math.min(s1.top, s2.top) - cRect.top) * dpr;
+          const spineH = Math.min(s1.height, s2.height) * dpr;
+          ctx.save();
+          ctx.fillStyle = currentTheme.dark ? "rgba(0,0,0,0.7)" : "rgba(0,0,0,0.12)";
+          ctx.fillRect(spineX, spineY, spineW, spineH);
+          ctx.restore();
+        }
+
+        // Fallback for environments without 2D ctx.filter support
+        if (currentStyle.filter && currentStyle.filter !== "none" && ctx.filter !== currentStyle.filter) {
+          out.style.filter = currentStyle.filter;
+        }
 
         return out;
       },
@@ -510,16 +630,19 @@ export const PdfReader = ({
         const cssVp = p.getViewport({ scale });
 
         // Canvas sizing
+        const style = pdfThemeStyleRef.current;
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
         canvas.width = Math.round(renderVp.width);
         canvas.height = Math.round(renderVp.height);
         canvas.style.width = `${Math.round(cssVp.width)}px`;
         canvas.style.height = `${Math.round(cssVp.height)}px`;
+        canvas.style.filter = style.filter;
 
         // Sheet sizing
         sheetContainer.style.width = `${Math.round(cssVp.width)}px`;
         sheetContainer.style.height = `${Math.round(cssVp.height)}px`;
+        sheetContainer.style.backgroundColor = style.sheetBg;
 
         // Text layer sizing & CSS variables
         textLayerContainer.innerHTML = "";
@@ -753,77 +876,6 @@ export const PdfReader = ({
   const zoomed = zoom > 1;
   const isFitWidth = fitMode === "width";
 
-  // Apple Books PDF Theme Filter & Canvas Inversion
-  const pdfThemeStyle = useMemo(() => {
-    switch (theme.id) {
-      case "focus": // Pure Dark / OLED Night
-        return {
-          filter: "invert(0.92) hue-rotate(180deg) contrast(1.05) brightness(0.95)",
-          sheetBg: "#141416",
-          selectionBg: theme.selection || "rgba(127, 179, 255, 0.35)",
-          highlightBlend: "screen" as const,
-          highlightOpacity: 0.65,
-          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.7), rgba(255,255,255,0.06) 50%, rgba(0,0,0,0.7))",
-        };
-      case "calm": // Warm Espresso / Dark Sepia
-        return {
-          filter: "invert(0.88) sepia(0.25) hue-rotate(180deg) brightness(0.92) contrast(1.05)",
-          sheetBg: "#282420",
-          selectionBg: theme.selection || "rgba(215, 167, 107, 0.3)",
-          highlightBlend: "screen" as const,
-          highlightOpacity: 0.65,
-          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.65), rgba(255,255,255,0.05) 50%, rgba(0,0,0,0.65))",
-        };
-      case "paper": // Sepia Parchment Eye-Comfort
-        return {
-          filter: "sepia(0.35) contrast(0.96) brightness(0.97)",
-          sheetBg: "#F6EEDC",
-          selectionBg: theme.selection || "rgba(138, 90, 43, 0.25)",
-          highlightBlend: "multiply" as const,
-          highlightOpacity: 0.38,
-          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.14), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.14))",
-        };
-      case "quiet": // Soft Matte Gray
-        return {
-          filter: "brightness(0.94) contrast(0.98)",
-          sheetBg: "#EDEDED",
-          selectionBg: theme.selection || "rgba(62, 92, 138, 0.25)",
-          highlightBlend: "multiply" as const,
-          highlightOpacity: 0.35,
-          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.12))",
-        };
-      case "bold":
-        return {
-          filter: "contrast(1.04)",
-          sheetBg: "#FFFFFF",
-          selectionBg: theme.selection || "rgba(10, 79, 160, 0.25)",
-          highlightBlend: "multiply" as const,
-          highlightOpacity: 0.38,
-          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.12))",
-        };
-      case "original":
-      default:
-        if (theme.dark) {
-          return {
-            filter: "invert(0.92) hue-rotate(180deg) contrast(1.05) brightness(0.95)",
-            sheetBg: "#141416",
-            selectionBg: theme.selection || "rgba(127, 179, 255, 0.35)",
-            highlightBlend: "screen" as const,
-            highlightOpacity: 0.65,
-            spineGutter: "linear-gradient(to right, rgba(0,0,0,0.7), rgba(255,255,255,0.06) 50%, rgba(0,0,0,0.7))",
-          };
-        }
-        return {
-          filter: "none",
-          sheetBg: "#FFFFFF",
-          selectionBg: theme.selection || "rgba(59, 130, 246, 0.35)",
-          highlightBlend: "multiply" as const,
-          highlightOpacity: 0.35,
-          spineGutter: "linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.12))",
-        };
-    }
-  }, [theme.id, theme.dark, theme.selection]);
-
   // Paper sheet drop shadow matching luxury Apple Books paper aesthetic
   const paperShadow = theme.dark
     ? "0 22px 55px -12px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.08)"
@@ -939,6 +991,7 @@ export const PdfReader = ({
           ref={primarySheetRef}
           className="ritual-pdf-sheet shrink-0"
           style={{
+            backgroundColor: pdfThemeStyle.sheetBg,
             boxShadow: isFitWidth ? "none" : paperShadow,
             borderTopRightRadius: isDual && rightPage ? 0 : (isFitWidth ? 0 : 3),
             borderBottomRightRadius: isDual && rightPage ? 0 : (isFitWidth ? 0 : 3),
@@ -946,7 +999,7 @@ export const PdfReader = ({
             borderBottomLeftRadius: isFitWidth ? 0 : 3,
           }}
         >
-          <canvas ref={canvasRef} className="block" />
+          <canvas ref={canvasRef} className="block" style={{ filter: pdfThemeStyle.filter }} />
           <div ref={textLayerRef} className="textLayer" />
 
           {/* Link Annotations */}
@@ -1004,6 +1057,7 @@ export const PdfReader = ({
             ref={secondarySheetRef}
             className="ritual-pdf-sheet shrink-0"
             style={{
+              backgroundColor: pdfThemeStyle.sheetBg,
               boxShadow: isFitWidth ? "none" : paperShadow,
               borderTopLeftRadius: 0,
               borderBottomLeftRadius: 0,
@@ -1011,7 +1065,7 @@ export const PdfReader = ({
               borderBottomRightRadius: isFitWidth ? 0 : 3,
             }}
           >
-            <canvas ref={canvas2Ref} className="block" />
+            <canvas ref={canvas2Ref} className="block" style={{ filter: pdfThemeStyle.filter }} />
             <div ref={textLayer2Ref} className="textLayer" />
 
             {/* Link Annotations */}
