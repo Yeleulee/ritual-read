@@ -506,7 +506,10 @@ Colors are in HSL format for proper theming.
     50% { transform: scale(1.002, 1.008); }
   }
 
-  /* Animated open-book logo — sized by font-size (1em ≈ one glyph) */
+  /* Animated open-book logo â€” sized by font-size (1em â‰ˆ one glyph)
+     Uses explicit colour tokens so the book stays visible on both light
+     and dark backgrounds (the old currentColor approach turned the whole
+     logo white when placed on dark panels like the sign-in aside). */
   .book-logo {
     position: relative;
     display: inline-block;
@@ -518,14 +521,16 @@ Colors are in HSL format for proper theming.
     cursor: pointer;
     user-select: none;
     color: inherit;
-    --book-ink: currentColor;
-    --book-paper: hsl(var(--muted));
+    --book-cover: #1c1917;
+    --book-paper: #f5efe6;
+    --book-ink: #141210;
+    --book-spine: #e9752f;
   }
 
-  @supports (color: color-mix(in srgb, red, blue)) {
-    .book-logo {
-      --book-paper: color-mix(in srgb, currentColor 8%, hsl(var(--background)));
-    }
+  /* Brighten the cover on dark surfaces so it is not invisible */
+  .dark .book-logo,
+  [data-theme="dark"] .book-logo {
+    --book-cover: #3a3530;
   }
 
   .book-logo__base,
@@ -539,7 +544,7 @@ Colors are in HSL format for proper theming.
   }
 
   .book-logo__cover {
-    fill: var(--book-ink);
+    fill: var(--book-cover);
     stroke: var(--book-ink);
     stroke-width: 4;
     stroke-linejoin: round;
@@ -555,7 +560,7 @@ Colors are in HSL format for proper theming.
 
   .book-logo__spine {
     fill: none;
-    stroke: var(--book-ink);
+    stroke: var(--book-spine);
     stroke-width: 4;
     stroke-linecap: round;
   }

@@ -63,6 +63,16 @@ const TURN_EASE: [number, number, number, number] = [0.3, 0.05, 0.2, 1];
 const isLiteDevice = () =>
   typeof window !== "undefined" && (window.matchMedia?.("(pointer: coarse)").matches || window.innerWidth < 900);
 
+const triggerTurnHaptic = () => {
+  if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+    try {
+      navigator.vibrate(12);
+    } catch {
+      /* ignore */
+    }
+  }
+};
+
 const withTimeout = <T,>(p: Promise<T>, ms: number, fallback: T) => Promise.race([p, new Promise<T>((r) => window.setTimeout(() => r(fallback), ms))]);
 const nextFrames = (n: number) => new Promise<void>((resolve) => { const step = (k: number) => (k <= 0 ? resolve() : requestAnimationFrame(() => step(k - 1))); step(n); });
 
@@ -324,6 +334,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
 
       if (effectiveMode === "none" || effectiveMode === "scroll") {
         await (dir === 1 ? api.next() : api.prev());
+        triggerTurnHaptic();
         onTurned?.(dir);
         turning.current = false;
         return true;
@@ -345,6 +356,7 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
           // Nothing to animate with — still turn, just without the sheet
           activeRef.current = null;
           await (dir === 1 ? api.next() : api.prev());
+          triggerTurnHaptic();
           onTurned?.(dir);
           turning.current = false;
           return false;
@@ -390,7 +402,10 @@ export const PageTurner = forwardRef<PageTurnerHandle, PageTurnerProps>(function
         // Put the live reader back where the sheet says it is
         await (dir === 1 ? api?.prev() : api?.next());
         await nextFrames(2);
-      } else onTurned?.(dir);
+      } else {
+        triggerTurnHaptic();
+        onTurned?.(dir);
+      }
       finish();
     },
     [api, finish, onTurned, t, py, fullTurnSec],

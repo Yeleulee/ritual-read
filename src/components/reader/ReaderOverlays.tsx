@@ -105,8 +105,39 @@ export function ReaderFooter({ theme, visible, location, relocation, onSeek, onM
     ? `Pages ${relocation.page}–${Math.min(relocation.page + 1, relocation.totalPages)} of ${relocation.totalPages}`
     : `Page ${relocation.page}${relocation.totalPages ? ` of ${relocation.totalPages}` : ""}`;
   const label = labelMode === 0 ? `${relocation.pagesLeftInChapter} pages left in this chapter` : labelMode === 1 ? pageLabel : `${Math.round(relocation.percent * 100)}% read`;
+  const scrubPage = Math.max(1, Math.min(relocation.totalPages || 1, Math.round((seek / 100) * (relocation.totalPages || 1)) || 1));
+  const clampedPercent = Math.min(92, Math.max(8, seek));
   return <div className={`absolute inset-x-0 bottom-0 z-50 px-3 pb-[max(8px,env(safe-area-inset-bottom))] pt-8 transition-all duration-200 sm:px-4 ${visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0 pointer-events-none"}`} style={{ color: theme.fg, background: `linear-gradient(${theme.bg}00,${theme.bg}f5 32%)` }}>
-    <input aria-label="Reading position" className="reader-scrubber block h-7 w-full cursor-pointer appearance-none bg-transparent" type="range" min="0" max="100" step="0.1" value={seeking ? seek : relocation.percent * 100} onPointerDown={() => setSeeking(true)} onChange={(e) => { setSeeking(true); setSeek(Number(e.target.value)); }} onPointerUp={() => { setSeeking(false); onSeek(seek / 100); }} onKeyUp={() => { setSeeking(false); onSeek(seek / 100); }} style={{ "--reader-progress": `${seeking ? seek : relocation.percent * 100}%`, "--reader-muted": theme.muted } as CSSProperties} />
+    <div className="relative w-full">
+      {seeking && (
+        <div
+          className="pointer-events-none absolute -top-10 z-50 flex -translate-x-1/2 flex-col items-center transition-all duration-75"
+          style={{ left: `${clampedPercent}%` }}
+        >
+          <div
+            className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold shadow-2xl backdrop-blur-md border animate-in fade-in zoom-in-95 duration-150"
+            style={{
+              background: theme.dark ? "rgba(28, 28, 30, 0.92)" : "rgba(255, 255, 255, 0.95)",
+              color: theme.fg,
+              borderColor: `${theme.muted}40`,
+            }}
+          >
+            <span>Page {scrubPage}</span>
+            {relocation.totalPages > 0 && <span className="opacity-60 font-normal">of {relocation.totalPages}</span>}
+            <span className="opacity-40">·</span>
+            <span className="tabular-nums font-normal opacity-75">{Math.round(seek)}%</span>
+          </div>
+          <div
+            className="h-1.5 w-1.5 rotate-45 -mt-1 border-r border-b"
+            style={{
+              background: theme.dark ? "rgba(28, 28, 30, 0.92)" : "rgba(255, 255, 255, 0.95)",
+              borderColor: `${theme.muted}40`,
+            }}
+          />
+        </div>
+      )}
+      <input aria-label="Reading position" className="reader-scrubber block h-7 w-full cursor-pointer appearance-none bg-transparent" type="range" min="0" max="100" step="0.1" value={seeking ? seek : relocation.percent * 100} onPointerDown={() => setSeeking(true)} onChange={(e) => { setSeeking(true); setSeek(Number(e.target.value)); }} onPointerUp={() => { setSeeking(false); onSeek(seek / 100); }} onKeyUp={() => { setSeeking(false); onSeek(seek / 100); }} style={{ "--reader-progress": `${seeking ? seek : relocation.percent * 100}%`, "--reader-muted": theme.muted } as CSSProperties} />
+    </div>
     <div className="flex items-center justify-between gap-1">
       {/* Chapter stepping lives next to the chapter name so the whole row reads as one control */}
       <button className={iconButton} onClick={() => onChapter(-1)} disabled={!canPrevChapter} aria-label="Previous chapter" title="Previous chapter"><ChevronLeft size={20} /></button>

@@ -288,7 +288,10 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
 
   const reader = useMemo(() => {
     // Only hand a reader a position saved by the same format; a stale one from another reader would fail to open
-    const saved = hydrated ? position?.location ?? null : null;
+    // Always use the locally-cached position immediately — waiting for
+    // hydration to complete causes the reader to mount at page 1 and
+    // overwrite the stored progress before the cloud round-trip finishes.
+    const saved = position?.location ?? null;
     const epubStart = saved && saved.startsWith("epubcfi(") ? saved : null;
     const pageStart = saved && /^\d+$/.test(saved) ? saved : null;
     const textStart = saved && saved.startsWith("txt:") ? saved : null;
@@ -301,7 +304,7 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
     if (!isText && !(book.content && book.content.trim())) return <div className="flex h-full items-center justify-center px-6 text-center text-sm" style={{ color: theme.muted }}>This book is a {book.fileType?.toUpperCase() || "unknown"} file, which the reader can't open. Supported formats: {FORMAT_LABELS.join(", ")}. Remove it and import a converted copy.</div>;
     const text = book.content ?? SAMPLE;
     return <TextReader key={book.id} content={text} settings={settings} theme={theme} initialLocation={textStart} highlights={highlights} onReady={onReaderReady} onRelocated={onRelocated} onSelected={onSelection} onHighlightClick={(id, rect) => { const h = highlights.find((item) => item.id === id); if (h) setSelection({ cfiRange: h.cfi_range, text: h.text, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } }); }} onTap={readerTap} />;
-  }, [isEpub, isPdf, isPpt, isText, resolvedUrl, book.id, book.fileUrl, book.fileType, book.content, book.progress, book.totalPages, settings, theme, hydrated, position?.location, highlights, pdfSpread, pdfFitMode, onReaderReady, onRelocated, onSelection, readerTap]);
+  }, [isEpub, isPdf, isPpt, isText, resolvedUrl, book.id, book.fileUrl, book.fileType, book.content, book.progress, book.totalPages, settings, theme, position?.location, highlights, pdfSpread, pdfFitMode, onReaderReady, onRelocated, onSelection, readerTap]);
 
   if (resolving && book.fileType) return <div className="flex h-[75vh] items-center justify-center text-sm text-muted-foreground">Preparing book…</div>;
 

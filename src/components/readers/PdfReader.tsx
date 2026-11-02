@@ -95,6 +95,8 @@ export const PdfReader = ({
   const pinch = useRef<{ pointers: Map<number, { x: number; y: number }>; startDist: number; startZoom: number } | null>(null);
   const suppressTap = useRef(false);
   const lastTextRef = useRef("");
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const singleTapTimerRef = useRef<number | null>(null);
 
   const cb = useRef({ onReady, onToc, onRelocated, onPageText, onSelected, onHighlightClick, onTap, onZoom, onPinch });
   cb.current = { onReady, onToc, onRelocated, onPageText, onSelected, onHighlightClick, onTap, onZoom, onPinch };
@@ -522,6 +524,9 @@ export const PdfReader = ({
 
     return () => {
       cancelled = true;
+      if (singleTapTimerRef.current) {
+        window.clearTimeout(singleTapTimerRef.current);
+      }
       try {
         renderTaskRef.current?.cancel();
         renderTask2Ref.current?.cancel();
@@ -534,9 +539,15 @@ export const PdfReader = ({
   }, [fileUrl]);
 
   useEffect(() => {
-    if (!initialLocation || initialLocation === initialAppliedRef.current || !docRef.current) return;
+    if (!initialLocation || initialLocation === initialAppliedRef.current) return;
+    // Always store the target so the doc-load effect uses it even if
+    // the document hasn't finished loading yet
+    const target = parseInt(initialLocation, 10) || 1;
+    pageRef.current = target;
     initialAppliedRef.current = initialLocation;
-    goTo(parseInt(initialLocation, 10) || 1);
+    if (docRef.current) {
+      goTo(target);
+    }
   }, [initialLocation]);
 
   // Track container dimensions with ResizeObserver
@@ -628,16 +639,46 @@ export const PdfReader = ({
 
         const renderVp = p.getViewport({ scale: scale * dpr });
         const cssVp = p.getViewport({ scale });
-
-        // Canvas sizing
         const style = pdfThemeStyleRef.current;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
+
+        // Double-buffer: Render into an off-screen canvas first so the current visible
+        // page does not flash or disappear while rendering.
+        const offscreen = document.createElement("canvas");
+        offscreen.width = Math.round(renderVp.width);
+        offscreen.height = Math.round(renderVp.height);
+        const offCtx = offscreen.getContext("2d");
+        if (!offCtx) return;
+
+        // Cancel previous render task
+        if (isRightSide) {
+          try {
+            renderTask2Ref.current?.cancel();
+          } catch {
+            /* ignore */
+          }
+          renderTask2Ref.current = p.render({ canvasContext: offCtx, viewport: renderVp });
+          await renderTask2Ref.current.promise;
+        } else {
+          try {
+            renderTaskRef.current?.cancel();
+          } catch {
+            /* ignore */
+          }
+          renderTaskRef.current = p.render({ canvasContext: offCtx, viewport: renderVp });
+          await renderTaskRef.current.promise;
+        }
+
+        // Atomically transfer rendered result to visible canvas without any white flash
         canvas.width = Math.round(renderVp.width);
         canvas.height = Math.round(renderVp.height);
         canvas.style.width = `${Math.round(cssVp.width)}px`;
         canvas.style.height = `${Math.round(cssVp.height)}px`;
         canvas.style.filter = style.filter;
+
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(offscreen, 0, 0);
+        }
 
         // Sheet sizing
         sheetContainer.style.width = `${Math.round(cssVp.width)}px`;
@@ -652,23 +693,14 @@ export const PdfReader = ({
         textLayerContainer.style.setProperty("--scale-round-x", "1px");
         textLayerContainer.style.setProperty("--scale-round-y", "1px");
 
-        // Cancel previous render task
-        if (isRightSide) {
-          try {
-            renderTask2Ref.current?.cancel();
-          } catch {
-            /* ignore */
+        // Pre-warm neighboring pages in the background into PDF.js cache
+        if (doc) {
+          if (pageNum + 1 <= doc.numPages) doc.getPage(pageNum + 1).catch(() => {});
+          if (pageNum - 1 >= 1) doc.getPage(pageNum - 1).catch(() => {});
+          if (isDual) {
+            if (pageNum + 2 <= doc.numPages) doc.getPage(pageNum + 2).catch(() => {});
+            if (pageNum + 3 <= doc.numPages) doc.getPage(pageNum + 3).catch(() => {});
           }
-          renderTask2Ref.current = p.render({ canvasContext: ctx, viewport: renderVp });
-          await renderTask2Ref.current.promise;
-        } else {
-          try {
-            renderTaskRef.current?.cancel();
-          } catch {
-            /* ignore */
-          }
-          renderTaskRef.current = p.render({ canvasContext: ctx, viewport: renderVp });
-          await renderTaskRef.current.promise;
         }
 
         // Render PDF.js TextLayer for live text selection
@@ -823,7 +855,7 @@ export const PdfReader = ({
   };
 
   // Apple Books Tap Zones:
-  // Left 20% = Prev Page | Right 20% = Next Page | Center 60% = Toggle Controls
+  // Left 20% = Prev Page | Right 20% = Next Page | Center 60% = Toggle Controls or Double-Tap Zoom
   const handleContainerClick = (e: React.MouseEvent) => {
     if (suppressTap.current) {
       suppressTap.current = false;
@@ -846,18 +878,63 @@ export const PdfReader = ({
     }
 
     const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
     const ratio = clickX / rect.width;
 
-    if (ratio < 0.2) {
-      // Left edge: previous page
-      apiRef.current?.prev();
-    } else if (ratio > 0.8) {
-      // Right edge: next page
-      apiRef.current?.next();
-    } else {
-      // Center zone: toggle reading controls
-      cb.current.onTap?.();
+    // Check for double-tap gesture
+    const now = performance.now();
+    const lastTap = lastTapRef.current;
+    const isDoubleTap =
+      lastTap &&
+      now - lastTap.time < 350 &&
+      Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 35;
+
+    if (isDoubleTap) {
+      // Cancel pending single tap
+      if (singleTapTimerRef.current) {
+        window.clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+      lastTapRef.current = null;
+
+      // Toggle zoom: If zoomed, zoom back to fit; if fit, zoom in 2.2x centered on tap
+      if (zoomRef.current > 1) {
+        setZoom(1);
+      } else {
+        const targetZoom = 2.2;
+        setZoom(targetZoom);
+        const container = containerRef.current;
+        if (container) {
+          const scrollX = Math.max(0, clickX * targetZoom - container.clientWidth / 2);
+          const scrollY = Math.max(0, clickY * targetZoom - container.clientHeight / 2);
+          window.requestAnimationFrame(() => {
+            container.scrollTo({ left: scrollX, top: scrollY, behavior: "smooth" });
+          });
+        }
+      }
+      return;
     }
+
+    lastTapRef.current = { time: now, x: e.clientX, y: e.clientY };
+
+    // Edge taps turn page immediately (no delay for responsive paging)
+    if (ratio < 0.2) {
+      apiRef.current?.prev();
+      return;
+    }
+    if (ratio > 0.8) {
+      apiRef.current?.next();
+      return;
+    }
+
+    // In center content zone, wait briefly to distinguish single tap from double tap
+    if (singleTapTimerRef.current) {
+      window.clearTimeout(singleTapTimerRef.current);
+    }
+    singleTapTimerRef.current = window.setTimeout(() => {
+      singleTapTimerRef.current = null;
+      cb.current.onTap?.();
+    }, 280);
   };
 
   const handleLinkClick = async (ann: PageAnnotation, ev: React.MouseEvent) => {

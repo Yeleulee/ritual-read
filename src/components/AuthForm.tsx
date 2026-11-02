@@ -123,7 +123,7 @@ export const AuthForm = () => {
       <aside className="hidden lg:flex lg:col-span-7 lg:sticky lg:top-0 lg:h-dvh flex-col justify-between border-r border-white/10 bg-[linear-gradient(135deg,#0B0B0B_0%,#161514_55%,#242220_100%)] text-white px-10 xl:px-14 py-8">
         <div className="flex items-center justify-between">
           <Link to="/" aria-label="Ritual Reader — home" className="inline-flex">
-            <Logo label="" className="text-3xl text-white" />
+            <Logo label="" className="text-3xl" />
           </Link>
           <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-white/60">Sign in</p>
         </div>
@@ -168,9 +168,11 @@ export const AuthForm = () => {
 
         <div className="flex-1 flex items-center">
           <div className="w-full max-w-sm mx-auto">
-            {/* Below lg the statement panel is hidden, so carry the illustration into a compact banner */}
-            <div className="lg:hidden mt-4 mb-6 sm:mb-8 overflow-hidden rounded-sm bg-[linear-gradient(135deg,#0B0B0B_0%,#161514_55%,#242220_100%)] text-white">
-              <div className="aspect-[21/8] max-h-60 w-full">
+            {/* Below lg the statement panel is hidden, so carry the illustration into a compact banner.
+                On very small screens (< 640px) use a taller, roomier aspect ratio so the scene
+                is readable; on sm+ tablets the wider letterbox looks polished. */}
+            <div className="lg:hidden mt-4 mb-6 sm:mb-8 overflow-hidden rounded-lg bg-[linear-gradient(135deg,#0B0B0B_0%,#161514_55%,#242220_100%)] text-white">
+              <div className="aspect-[16/9] sm:aspect-[21/9] w-full">
                 <ReadingNookIllustration crop="wide" fit="slice" className="h-full w-full" />
               </div>
               <div className="flex items-center justify-between border-t border-white/10 px-4 py-2.5">
