@@ -506,7 +506,7 @@ Colors are in HSL format for proper theming.
     50% { transform: scale(1.002, 1.008); }
   }
 
-  /* Animated open-book logo â€” sized by font-size (1em â‰ˆ one glyph)
+  /* Animated open-book logo — sized by font-size (1em ≈ one glyph)
      Uses explicit colour tokens so the book stays visible on both light
      and dark backgrounds (the old currentColor approach turned the whole
      logo white when placed on dark panels like the sign-in aside). */
