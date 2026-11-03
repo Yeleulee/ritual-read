@@ -526,7 +526,7 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
               onSelect={(e) => detectMention(e.currentTarget.value, e.currentTarget.selectionStart)}
               onKeyDown={handleKeyDown}
               onBlur={() => setMention(null)}
-              placeholder={bookTitle ? `Ask about "${bookTitle}" or anything...` : "Ask ChatGPT"}
+              placeholder={bookTitle ? `Ask about "${bookTitle}" or anything...` : "Ask anything..."}
               rows={1}
               aria-label="Message"
               aria-autocomplete="list"
