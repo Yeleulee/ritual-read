@@ -260,7 +260,7 @@ export function ReaderShell({ book, onBackToLibrary, onProgress }: ReaderShellPr
 
   const toggleDarkMode = useCallback(() => {
     const nextTheme: ThemeId = theme.dark ? "original" : "focus";
-    update({ theme: nextTheme });
+    update({ theme: nextTheme, autoNight: false });
   }, [theme.dark, update]);
 
   useEffect(() => {

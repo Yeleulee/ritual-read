@@ -291,7 +291,23 @@ Colors are in HSL format for proper theming.
   animation-delay: var(--rise-delay, 0ms);
 }
 
-@media (prefers-reduced-motion: reduce) {
+
+  /* Mobile performance optimization: reduce non-composited SVG repaints */
+  @media (max-width: 768px) {
+    .auth-scene__mote,
+    .auth-scene__comet,
+    .auth-scene__page {
+      display: none !important;
+    }
+    .auth-scene__chain,
+    .auth-scene__plant,
+    .auth-scene__steam,
+    .auth-scene__star {
+      animation: none !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
   .animate-rise,
   .animate-grow-x {
     animation-duration: 1ms;

@@ -1,14 +1,14 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { User, Session } from '@supabase/supabase-js';
+import { User, Session, AuthError } from '@supabase/supabase-js';
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string) => Promise<{ error: any }>;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signInWithGoogle: () => Promise<{ error: any }>;
+  signUp: (email: string, password: string) => Promise<{ error: AuthError | Error | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: AuthError | Error | null }>;
+  signInWithGoogle: () => Promise<{ error: AuthError | Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -31,6 +31,13 @@ const devUser = {
   user_metadata: { full_name: 'Local Reader' },
   created_at: new Date(0).toISOString(),
 } as unknown as User;
+
+const getAuthRedirectUrl = () => {
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/app`;
+  }
+  return 'https://ritual-read.vercel.app/app';
+};
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -76,6 +83,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: getAuthRedirectUrl(),
+      },
     });
     return { error };
   };
@@ -103,7 +113,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}`,
+          redirectTo: getAuthRedirectUrl(),
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',

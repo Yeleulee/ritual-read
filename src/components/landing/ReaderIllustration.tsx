@@ -442,7 +442,7 @@ export function ReaderIllustration({ className }: { className?: string }) {
     window.addEventListener("pointercancel", up);
   };
   const onPointerMove = (e: React.PointerEvent) => {
-    if (spin.current.dragging) return;
+    if (spin.current.dragging || e.pointerType === "touch") return;
     const r = wrap.current?.getBoundingClientRect();
     if (!r) return;
     const book = director.current?.bookAt(e.clientX, e.clientY) ?? null;

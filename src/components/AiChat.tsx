@@ -13,6 +13,11 @@ import {
   BookOpen,
   Bot,
   User,
+  History,
+  PanelLeft,
+  PanelLeftClose,
+  Trash2,
+  MessageSquare,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,6 +62,47 @@ interface SpeechRecognitionInstance {
   onend: (() => void) | null;
   onerror: ((event: { error: string }) => void) | null;
   onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: ChatEntry[];
+}
+
+const SESSIONS_STORAGE_KEY = "rr:ai:chat_history_sessions";
+const SIDEBAR_STORAGE_KEY = "rr:ai:chat_history_open";
+
+const readSessions = (): ChatSession[] => {
+  try {
+    const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as ChatSession[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeSessions = (sessions: ChatSession[]) => {
+  try {
+    localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+  } catch {
+    /* ignore quota */
+  }
+};
+
+function formatSessionTime(timestamp: number): string {
+  const diff = Date.now() - timestamp;
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days}d ago`;
+  return new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 // "@" at the start or after whitespace, followed by a query that doesn't begin with a space
@@ -131,6 +177,75 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [thinkMode, setThinkMode] = useState(false);
   const [isListening, setIsListening] = useState(false);
+
+  // Chat Sessions History State
+  const [sessions, setSessions] = useState<ChatSession[]>(readSessions);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+      if (saved !== null) return saved === "true";
+      return typeof window !== "undefined" && window.innerWidth >= 1024;
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleHistory = () => {
+    setIsHistoryOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
+  const selectSession = (session: ChatSession) => {
+    setCurrentSessionId(session.id);
+    setMessages(session.messages);
+    setSendError(null);
+    setInput("");
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setIsHistoryOpen(false);
+    }
+  };
+
+  const startNewChat = () => {
+    setCurrentSessionId(null);
+    setMessages([]);
+    setInput("");
+    setTaggedBooks([]);
+    setSendError(null);
+    inputRef.current?.focus();
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setIsHistoryOpen(false);
+    }
+  };
+
+  const deleteSession = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setSessions((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      writeSessions(next);
+      return next;
+    });
+    if (currentSessionId === id) {
+      setCurrentSessionId(null);
+      setMessages([]);
+    }
+    toast({ title: "Conversation deleted" });
+  };
+
+  const clearAllHistory = () => {
+    setSessions([]);
+    writeSessions([]);
+    setCurrentSessionId(null);
+    setMessages([]);
+    toast({ title: "Chat history cleared" });
+  };
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -235,10 +350,7 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
   }, []);
 
   const clearChat = () => {
-    setMessages([]);
-    setInput("");
-    setTaggedBooks([]);
-    setSendError(null);
+    startNewChat();
   };
 
   const copyMessage = (text: string, index: number) => {
@@ -395,12 +507,41 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
       books: refs.length ? refs : undefined,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const nextUserMessages = [...messages, userMessage];
+    setMessages(nextUserMessages);
     setInput("");
     setTaggedBooks([]);
     setMention(null);
     setIsSending(true);
     setSendError(null);
+
+    const now = Date.now();
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+      sessionId = String(now);
+      setCurrentSessionId(sessionId);
+      const title = text.slice(0, 44) + (text.length > 44 ? "…" : "");
+      const newSession: ChatSession = {
+        id: sessionId,
+        title,
+        createdAt: now,
+        updatedAt: now,
+        messages: nextUserMessages,
+      };
+      setSessions((prev) => {
+        const next = [newSession, ...prev];
+        writeSessions(next);
+        return next;
+      });
+    } else {
+      setSessions((prev) => {
+        const next = prev.map((s) =>
+          s.id === sessionId ? { ...s, messages: nextUserMessages, updatedAt: now } : s
+        );
+        writeSessions(next);
+        return next;
+      });
+    }
 
     try {
       let bookTexts: TaggedBookText[] = [];
@@ -419,13 +560,30 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
         messages: [...system, ...history, { role: "user", content: userMessage.content }],
       });
       if (!response.trim()) throw new Error("The assistant returned an empty reply. Try again.");
-      setMessages((prev) => [...prev, { role: "assistant", content: response.trim() }]);
+      const assistantMessage: ChatEntry = { role: "assistant", content: response.trim() };
+      const finalMessages = [...nextUserMessages, assistantMessage];
+      setMessages(finalMessages);
+      setSessions((prev) => {
+        const next = prev.map((s) =>
+          s.id === sessionId ? { ...s, messages: finalMessages, updatedAt: Date.now() } : s
+        );
+        writeSessions(next);
+        return next;
+      });
     } catch (error) {
       console.error("Chat error:", error);
       const reason = error instanceof Error && error.message ? error.message : "Something went wrong. Try again.";
       setSendError(reason);
       setInput(text);
       setTaggedBooks(tagged);
+      if (messages.length === 0 && sessionId) {
+        setSessions((prev) => {
+          const next = prev.filter((s) => s.id !== sessionId);
+          writeSessions(next);
+          return next;
+        });
+        setCurrentSessionId(null);
+      }
     } finally {
       setIsSending(false);
       setIsReadingBooks(false);
@@ -649,34 +807,172 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
   return (
     <div
       ref={panelRef}
-      className="relative flex h-[calc(var(--vvh,100dvh)-150px)] min-h-[580px] w-full flex-col bg-transparent overflow-hidden"
+      className="relative flex h-[calc(var(--vvh,100dvh)-150px)] min-h-[580px] w-full flex-row bg-transparent overflow-hidden rounded-2xl border border-border/40"
     >
-      {/* Top Navigation Bar: Minimal and clean */}
-      <header className="flex h-11 shrink-0 items-center justify-between px-3 sm:px-6 z-10">
-        <div>
-          {bookTitle ? (
-            <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs text-muted-foreground">
-              <BookOpen className="h-3.5 w-3.5 text-primary/70 shrink-0" />
-              <span className="truncate max-w-[240px] font-medium text-foreground/85">{bookTitle}</span>
-            </div>
-          ) : null}
+      {/* Mobile backdrop when history drawer is open */}
+      {isHistoryOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs sm:hidden"
+          onClick={() => setIsHistoryOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Minimizable History Drawer */}
+      <aside
+        className={cn(
+          "transition-all duration-300 ease-in-out flex flex-col shrink-0 bg-background/95 sm:bg-muted/15 border-r border-border/60 z-40",
+          "fixed sm:relative inset-y-0 left-0 h-full",
+          isHistoryOpen
+            ? "w-[270px] sm:w-[260px] md:w-[280px] opacity-100 translate-x-0 shadow-2xl sm:shadow-none"
+            : "-translate-x-full sm:translate-x-0 sm:w-0 sm:opacity-0 sm:pointer-events-none overflow-hidden border-r-0"
+        )}
+      >
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-border/50 px-3">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              History
+            </span>
+            {sessions.length > 0 && (
+              <Badge variant="secondary" className="h-4 px-1.5 text-[10px] rounded-full">
+                {sessions.length}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={startNewChat}
+              className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
+              title="New Chat"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleHistory}
+              className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
+              title="Minimize history"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
-        <div>
-          {messages.length > 0 && (
+        {/* Sessions list */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {sessions.length === 0 ? (
+            <div className="py-12 text-center text-xs text-muted-foreground px-3">
+              <MessageSquare className="h-6 w-6 mx-auto mb-2 opacity-30" />
+              <p className="font-medium text-foreground/75">No chat history</p>
+              <p className="mt-1 text-[11px] opacity-65">Conversations will be saved here automatically.</p>
+            </div>
+          ) : (
+            sessions.map((session) => {
+              const isActive = session.id === currentSessionId;
+              return (
+                <div
+                  key={session.id}
+                  onClick={() => selectSession(session)}
+                  className={cn(
+                    "group relative flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-xs cursor-pointer transition-colors",
+                    isActive
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "text-foreground/80 hover:bg-muted/70 hover:text-foreground"
+                  )}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <MessageSquare className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-primary" : "text-muted-foreground/60")} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate leading-snug">{session.title}</p>
+                      <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                        {formatSessionTime(session.updatedAt)}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => deleteSession(e, session.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive rounded transition-all shrink-0"
+                    title="Delete chat"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Clear All Footer */}
+        {sessions.length > 0 && (
+          <div className="border-t border-border/50 p-2 shrink-0">
             <Button
               variant="ghost"
               size="sm"
-              onClick={clearChat}
-              className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground rounded-full px-3"
-              title="Start a new conversation"
+              onClick={clearAllHistory}
+              className="w-full h-7 text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 justify-center gap-1.5 rounded-lg"
+            >
+              <Trash2 className="h-3 w-3" />
+              <span>Clear History</span>
+            </Button>
+          </div>
+        )}
+      </aside>
+
+      {/* Main Conversation Column */}
+      <div className="relative flex flex-1 flex-col overflow-hidden min-w-0">
+        {/* Top Navigation Bar */}
+        <header className="flex h-12 shrink-0 items-center justify-between px-3 sm:px-6 z-10 border-b border-border/30">
+          <div className="flex items-center gap-2 min-w-0">
+            {!isHistoryOpen && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleHistory}
+                className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground rounded-lg px-2.5"
+                title="Open chat history"
+              >
+                <PanelLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">History</span>
+                {sessions.length > 0 && (
+                  <Badge variant="secondary" className="h-4 px-1.5 text-[10px] rounded-full">
+                    {sessions.length}
+                  </Badge>
+                )}
+              </Button>
+            )}
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={startNewChat}
+              className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground rounded-lg px-2.5"
+              title="Start a new chat"
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              <span>New Chat</span>
+              <span className="hidden sm:inline">New Chat</span>
             </Button>
-          )}
-        </div>
-      </header>
+
+            {bookTitle ? (
+              <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs text-muted-foreground ml-1">
+                <BookOpen className="h-3.5 w-3.5 text-primary/70 shrink-0" />
+                <span className="truncate max-w-[160px] sm:max-w-[220px] font-medium text-foreground/85">{bookTitle}</span>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {messages.length > 0 && currentSessionId && (
+              <span className="text-[11px] text-muted-foreground truncate max-w-[160px] hidden md:inline-block">
+                {sessions.find((s) => s.id === currentSessionId)?.title}
+              </span>
+            )}
+          </div>
+        </header>
 
       {/* Main Conversation Transcript */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-6">
@@ -831,6 +1127,7 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

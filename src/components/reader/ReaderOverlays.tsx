@@ -223,7 +223,7 @@ export function ThemesSettingsSheet({ open, onClose, settings, update, theme, ca
   const [customize, setCustomize] = useState(false);
   const ref = useDialogFocus<HTMLElement>(open, onClose);
   if (!open) return null;
-  const set = <K extends keyof ReaderSettings,>(key: K, value: ReaderSettings[K]) => update({ [key]: value } as Partial<ReaderSettings>);
+  const set = <K extends keyof ReaderSettings,>(key: K, value: ReaderSettings[K]) => update({ [key]: value, ...(key === "theme" ? { autoNight: false } : {}) } as Partial<ReaderSettings>);
   const turnModes = (["curl", "slide", "scroll"] as const).filter((m) => m !== "scroll" || capabilities.scroll);
   // "none" was retired (a tap already turns instantly in every mode); older saves fall back to slide
   const activeTurn = settings.pageTurn === "none" || (settings.pageTurn === "scroll" && !capabilities.scroll) ? "slide" : settings.pageTurn;

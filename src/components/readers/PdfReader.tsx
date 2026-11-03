@@ -331,87 +331,51 @@ export const PdfReader = ({
         const sheet1 = primarySheetRef.current;
         if (!container || !sheet1) return null;
 
-        const out = document.createElement("canvas");
-        const dpr = Math.min(2, window.devicePixelRatio || 1);
-        out.width = Math.round(container.clientWidth * dpr);
-        out.height = Math.round(container.clientHeight * dpr);
-        const ctx = out.getContext("2d");
-        if (!ctx) return null;
-
         const currentTheme = themeRef.current;
         const currentStyle = pdfThemeStyleRef.current;
 
-        ctx.fillStyle = currentTheme.bg;
-        ctx.fillRect(0, 0, out.width, out.height);
+        const wrap = document.createElement("div");
+        wrap.className = "w-full h-full flex items-center justify-center overflow-hidden pointer-events-none";
+        wrap.style.cssText = `width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;background-color:${currentTheme.bg};`;
 
-        const cRect = container.getBoundingClientRect();
+        const cloneSheet = (sourceSheet: HTMLElement) => {
+          const srcCanvas = sourceSheet.querySelector("canvas");
+          if (!srcCanvas) return;
+          const sheetClone = document.createElement("div");
+          sheetClone.className = sourceSheet.className;
+          sheetClone.style.cssText = sourceSheet.style.cssText;
+          sheetClone.style.backgroundColor = currentStyle.sheetBg;
 
-        const drawSheet = (sheetEl: HTMLElement) => {
-          const canvasEl = sheetEl.querySelector("canvas");
-          if (!canvasEl) return;
-          const sRect = sheetEl.getBoundingClientRect();
-          const dx = (sRect.left - cRect.left) * dpr;
-          const dy = (sRect.top - cRect.top) * dpr;
-          const dw = sRect.width * dpr;
-          const dh = sRect.height * dpr;
-
-          // 1. Sheet paper backdrop with shadow matching theme paper color
-          ctx.save();
-          ctx.shadowColor = currentTheme.dark ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.18)";
-          ctx.shadowBlur = 12 * dpr;
-          ctx.shadowOffsetY = 4 * dpr;
-          ctx.fillStyle = currentStyle.sheetBg;
-          ctx.fillRect(dx, dy, dw, dh);
-          ctx.restore();
-
-          // 2. Draw PDF canvas with Dark Mode / Eye-Comfort filter applied
-          ctx.save();
-          if (currentStyle.filter && currentStyle.filter !== "none") {
-            ctx.filter = currentStyle.filter;
+          const c = document.createElement("canvas");
+          c.width = srcCanvas.width;
+          c.height = srcCanvas.height;
+          c.style.cssText = srcCanvas.style.cssText;
+          // Apply pure CSS filter so dark mode is 100% consistent across all browsers (including Safari)
+          c.style.filter = currentStyle.filter;
+          const cCtx = c.getContext("2d");
+          if (cCtx) {
+            cCtx.drawImage(srcCanvas, 0, 0);
           }
-          ctx.drawImage(canvasEl, dx, dy, dw, dh);
-          ctx.restore();
+          sheetClone.appendChild(c);
 
-          // 3. Draw active highlight overlays on this sheet
-          const hlEls = sheetEl.querySelectorAll<HTMLElement>(".ritual-pdf-highlight");
-          hlEls.forEach((hlEl) => {
-            const hr = hlEl.getBoundingClientRect();
-            const hx = (hr.left - cRect.left) * dpr;
-            const hy = (hr.top - cRect.top) * dpr;
-            const hw = hr.width * dpr;
-            const hh = hr.height * dpr;
-            ctx.save();
-            ctx.globalCompositeOperation = (currentStyle.highlightBlend as GlobalCompositeOperation) || "source-over";
-            ctx.globalAlpha = currentStyle.highlightOpacity;
-            ctx.fillStyle = hlEl.style.backgroundColor || "#facc15";
-            ctx.fillRect(hx, hy, hw, hh);
-            ctx.restore();
+          const hlEls = sourceSheet.querySelectorAll<HTMLElement>(".ritual-pdf-highlight");
+          hlEls.forEach((hl) => {
+            const hlClone = document.createElement("div");
+            hlClone.className = hl.className;
+            hlClone.style.cssText = hl.style.cssText;
+            sheetClone.appendChild(hlClone);
           });
+
+          wrap.appendChild(sheetClone);
         };
 
-        drawSheet(sheet1);
+        cloneSheet(sheet1);
         if (isDualRef.current && secondarySheetRef.current) {
-          drawSheet(secondarySheetRef.current);
-
-          // Draw center spine gutter shadow between sheets in spread mode
-          const s1 = sheet1.getBoundingClientRect();
-          const s2 = secondarySheetRef.current.getBoundingClientRect();
-          const spineX = (s1.right - cRect.left) * dpr;
-          const spineW = Math.max(2 * dpr, (s2.left - s1.right) * dpr);
-          const spineY = (Math.min(s1.top, s2.top) - cRect.top) * dpr;
-          const spineH = Math.min(s1.height, s2.height) * dpr;
-          ctx.save();
-          ctx.fillStyle = currentTheme.dark ? "rgba(0,0,0,0.7)" : "rgba(0,0,0,0.12)";
-          ctx.fillRect(spineX, spineY, spineW, spineH);
-          ctx.restore();
+          cloneSheet(secondarySheetRef.current);
         }
 
-        // Fallback for environments without 2D ctx.filter support
-        if (currentStyle.filter && currentStyle.filter !== "none" && ctx.filter !== currentStyle.filter) {
-          out.style.filter = currentStyle.filter;
-        }
-
-        return out;
+        (wrap as any).rrKey = "pdf-sheet";
+        return wrap as any;
       },
       visibleText() {
         return lastTextRef.current;
