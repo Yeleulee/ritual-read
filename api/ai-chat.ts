@@ -278,19 +278,20 @@ export async function generateReply(input: unknown, env: Env, referer = "https:/
         slot.provider === "gemini"
           ? await callGemini(slot.key, model, parsed.messages, Math.min(ATTEMPT_TIMEOUT_MS, remaining))
           : await callOpenRouter(slot.key, model, parsed.messages, Math.min(ATTEMPT_TIMEOUT_MS, remaining), referer);
-      if (!attempt.ok) {
-        failures.push(attempt);
-        if (attempt.scope === "model") {
-          restingUntil.set(modelId(slot, model), Date.now() + restFor(attempt));
-          continue;
-        }
-        if (attempt.scope === "key") restingUntil.set(slotId(slot), Date.now() + restFor(attempt));
-        else refused.add(slot.provider);
-        break;
+      if (attempt.ok) {
+        restingUntil.delete(slotId(slot));
+        restingUntil.delete(modelId(slot, model));
+        return { status: 200, body: { reply: attempt.reply } };
       }
-      restingUntil.delete(slotId(slot));
-      restingUntil.delete(modelId(slot, model));
-      return { status: 200, body: { reply: attempt.reply } };
+      const failure: Failure = attempt;
+      failures.push(failure);
+      if (failure.scope === "model") {
+        restingUntil.set(modelId(slot, model), Date.now() + restFor(failure));
+        continue;
+      }
+      if (failure.scope === "key") restingUntil.set(slotId(slot), Date.now() + restFor(failure));
+      else refused.add(slot.provider);
+      break;
     }
   }
 
