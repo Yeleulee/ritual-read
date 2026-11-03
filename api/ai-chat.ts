@@ -274,23 +274,23 @@ export async function generateReply(input: unknown, env: Env, referer = "https:/
         outOfTime = true;
         break;
       }
-      const attempt =
+      const attempt: Attempt =
         slot.provider === "gemini"
           ? await callGemini(slot.key, model, parsed.messages, Math.min(ATTEMPT_TIMEOUT_MS, remaining))
           : await callOpenRouter(slot.key, model, parsed.messages, Math.min(ATTEMPT_TIMEOUT_MS, remaining), referer);
-      if (attempt.ok) {
-        restingUntil.delete(slotId(slot));
-        restingUntil.delete(modelId(slot, model));
-        return { status: 200, body: { reply: attempt.reply } };
+      if (!attempt.ok) {
+        failures.push(attempt);
+        if (attempt.scope === "model") {
+          restingUntil.set(modelId(slot, model), Date.now() + restFor(attempt));
+          continue;
+        }
+        if (attempt.scope === "key") restingUntil.set(slotId(slot), Date.now() + restFor(attempt));
+        else refused.add(slot.provider);
+        break;
       }
-      failures.push(attempt);
-      if (attempt.scope === "model") {
-        restingUntil.set(modelId(slot, model), Date.now() + restFor(attempt));
-        continue;
-      }
-      if (attempt.scope === "key") restingUntil.set(slotId(slot), Date.now() + restFor(attempt));
-      else refused.add(slot.provider);
-      break;
+      restingUntil.delete(slotId(slot));
+      restingUntil.delete(modelId(slot, model));
+      return { status: 200, body: { reply: attempt.reply } };
     }
   }
 
