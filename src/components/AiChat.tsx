@@ -7,14 +7,10 @@ import {
   Plus,
   Code2,
   Mic,
-  AudioWaveform,
   RotateCcw,
   Copy,
   Check,
   BookOpen,
-  Image as ImageIcon,
-  PenLine,
-  Globe,
   Bot,
   User,
 } from "lucide-react";
@@ -48,6 +44,19 @@ interface Mention {
   start: number;
   end: number;
   query: string;
+}
+
+interface SpeechRecognitionInstance {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
 }
 
 // "@" at the start or after whitespace, followed by a query that doesn't begin with a space
@@ -128,6 +137,8 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
   const panelRef = useRef<HTMLDivElement | null>(null);
   const dismissedAt = useRef<number | null>(null);
   const pendingCaret = useRef<number | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const baseTextRef = useRef<string>("");
 
   const bookTitle = context.match(/Currently reading: "([^"]+)"/)?.[1];
 
@@ -239,6 +250,20 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
     });
   };
 
+  // Cleanup speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {
+          /* ignore */
+        }
+        recognitionRef.current = null;
+      }
+    };
+  }, []);
+
   // Web Speech API Voice Dictation
   const toggleVoice = () => {
     /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -247,31 +272,92 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
     if (!SpeechRecognition) {
       toast({
         title: "Voice dictation not available",
-        description: "Your browser does not support the Web Speech API.",
+        description: "Your browser does not support the Web Speech API. Try Google Chrome or Microsoft Edge.",
+        variant: "destructive",
       });
       return;
     }
 
-    try {
-      if (isListening) {
-        setIsListening(false);
-        return;
+    if (isListening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          /* ignore */
+        }
+        recognitionRef.current = null;
       }
+      setIsListening(false);
+      return;
+    }
+
+    try {
       const recognition = new SpeechRecognition();
-      recognition.lang = "en-US";
-      recognition.interimResults = false;
-      recognition.onstart = () => setIsListening(true);
-      recognition.onend = () => setIsListening(false);
-      recognition.onerror = () => setIsListening(false);
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0]?.[0]?.transcript;
-        if (transcript) {
-          setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      recognition.lang = navigator.language || "en-US";
+      recognition.interimResults = true;
+      recognition.continuous = true;
+
+      baseTextRef.current = input;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        recognitionRef.current = null;
+      };
+
+      recognition.onerror = (event: any) => {
+        setIsListening(false);
+        recognitionRef.current = null;
+        if (event.error === "not-allowed" || event.error === "permission-denied") {
+          toast({
+            title: "Microphone permission required",
+            description: "Please allow microphone access in your browser to record voice.",
+            variant: "destructive",
+          });
+        } else if (event.error === "no-speech") {
+          // Handled quietly without alarming the user
+        } else if (event.error !== "aborted") {
+          toast({
+            title: "Voice recognition issue",
+            description: `Could not transcribe voice (${event.error}). Please try again.`,
+            variant: "destructive",
+          });
         }
       };
+
+      recognition.onresult = (event: any) => {
+        let finalTranscript = "";
+        let interimTranscript = "";
+
+        for (let i = 0; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+
+        const dictated = (finalTranscript + (interimTranscript ? " " + interimTranscript : "")).trim();
+        if (dictated) {
+          const base = baseTextRef.current.trim();
+          setInput(base ? `${base} ${dictated}` : dictated);
+        }
+      };
+
+      recognitionRef.current = recognition;
       recognition.start();
-    } catch {
+    } catch (err) {
+      console.error("Speech recognition start failed:", err);
       setIsListening(false);
+      recognitionRef.current = null;
+      toast({
+        title: "Microphone error",
+        description: "Could not access microphone. Please check permissions.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -467,42 +553,38 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
                 <span>Think</span>
               </button>
 
-              {/* Dictation / Microphone button */}
+              {/* Dictation / Record Voice button */}
               <button
                 type="button"
                 onClick={toggleVoice}
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-full transition-colors",
                   isListening
-                    ? "text-red-500 bg-red-500/10 animate-pulse"
+                    ? "text-red-500 bg-red-500/15 animate-pulse ring-1 ring-red-500/50"
                     : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10"
                 )}
-                title={isListening ? "Listening... click to stop" : "Voice dictation"}
-                aria-label="Voice input"
+                title={isListening ? "Recording voice... click to stop" : "Record voice (dictation)"}
+                aria-label={isListening ? "Stop recording voice" : "Record voice"}
               >
-                <Mic className="h-4 w-4" />
+                <Mic className={cn("h-4 w-4", isListening && "animate-pulse")} />
               </button>
 
-              {/* Blue Circular Action button (Send or AudioWaveform) */}
+              {/* Blue Circular Send button (always Send, no live voice icon) */}
               <button
                 type="button"
                 onClick={() => {
                   if (input.trim()) sendMessage(input);
                 }}
-                disabled={isSending}
+                disabled={isSending || !input.trim()}
                 className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-full text-white transition-all shadow-sm",
+                  "flex h-8 w-8 items-center justify-center rounded-full transition-all shadow-sm",
                   input.trim()
-                    ? "bg-blue-600 hover:bg-blue-500 hover:scale-105 active:scale-95"
-                    : "bg-blue-600/90 hover:bg-blue-600"
+                    ? "bg-blue-600 text-white hover:bg-blue-500 hover:scale-105 active:scale-95"
+                    : "bg-muted text-muted-foreground/40 cursor-not-allowed"
                 )}
-                aria-label={input.trim() ? "Send message" : "Voice mode"}
+                aria-label="Send message"
               >
-                {input.trim() ? (
-                  <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
-                ) : (
-                  <AudioWaveform className="h-4 w-4" />
-                )}
+                <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
               </button>
             </div>
           </div>
@@ -628,36 +710,6 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
 
                 {renderInputCapsule(true)}
               </form>
-
-              {/* Exact Actions List below capsule */}
-              <div className="flex flex-col items-start gap-3.5 mt-6 text-sm text-muted-foreground/80 w-full max-w-2xl px-3 sm:px-4">
-                <button
-                  type="button"
-                  onClick={() => sendMessage("Create a detailed visualization or scene description of the concepts in this book.")}
-                  className="flex items-center gap-3 hover:text-foreground transition-colors group text-left"
-                >
-                  <ImageIcon className="h-4 w-4 text-muted-foreground/70 group-hover:text-foreground transition-colors" />
-                  <span>Create an image or sticker</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => sendMessage("Help me write comprehensive notes, analysis, or an essay on this book.")}
-                  className="flex items-center gap-3 hover:text-foreground transition-colors group text-left"
-                >
-                  <PenLine className="h-4 w-4 text-muted-foreground/70 group-hover:text-foreground transition-colors" />
-                  <span>Write or edit</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => sendMessage("Search and cross-reference key themes, external facts, and related works.")}
-                  className="flex items-center gap-3 hover:text-foreground transition-colors group text-left"
-                >
-                  <Globe className="h-4 w-4 text-muted-foreground/70 group-hover:text-foreground transition-colors" />
-                  <span>Search the web</span>
-                </button>
-              </div>
             </div>
           ) : (
             /* Active Message Thread */
