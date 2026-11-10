@@ -96,7 +96,7 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
                 onClick={() => setGoalMinutes(m)}
                 aria-pressed={state.goalMinutesPerDay === m}
                 className={cn(
-                  "h-10 font-mono text-xs tabular-nums transition-colors",
+                  "min-h-[44px] h-11 font-mono text-xs tabular-nums transition-colors",
                   state.goalMinutesPerDay === m ? "bg-foreground text-background" : "hover:bg-muted",
                 )}
               >

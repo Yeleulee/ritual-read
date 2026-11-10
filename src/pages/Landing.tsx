@@ -43,7 +43,7 @@ const Landing = () => {
   return (
     <div className="theme-paper min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-[2px] border-b border-border">
+      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border/40 transition-colors">
         <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between">
           <Wordmark iconOnly />
           <div className="flex items-center gap-2">
@@ -81,7 +81,7 @@ const Landing = () => {
         <section id="features" className="px-4 sm:px-6 lg:px-10 py-20 md:py-28">
           <div className="grid md:grid-cols-12 gap-8 md:gap-6 mb-14">
             <p className="eyebrow md:col-span-3">02 — What's inside</p>
-            <h2 className="display text-4xl sm:text-5xl md:col-span-9 max-w-3xl">
+            <h2 className="display text-4xl sm:text-5xl md:col-span-9 max-w-3xl text-balance">
               Four things, done properly. <span className="text-muted-foreground">Nothing you have to manage.</span>
             </h2>
           </div>
@@ -131,7 +131,7 @@ const Landing = () => {
         {/* Closing */}
         <section className="px-4 sm:px-6 lg:px-10 py-24 md:py-32">
           <div className="grid md:grid-cols-12 gap-8 items-end">
-            <h2 className="display text-5xl sm:text-6xl lg:text-7xl md:col-span-8">
+            <h2 className="display text-5xl sm:text-6xl lg:text-7xl md:col-span-8 text-balance">
               Build a reading ritual<br />
               <span className="text-muted-foreground">you'll actually keep.</span>
             </h2>

@@ -523,7 +523,10 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onPrepareUpload, o
                 onClick={() => onBookSelect(book)}
                 className="block w-full text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background"
               >
-                <div className="relative aspect-[2/3] w-full overflow-hidden border border-border bg-muted transition-transform duration-300 ease-out group-hover:-translate-y-1">
+                <div className="relative aspect-[2/3] w-full overflow-hidden rounded-r-[3px] border border-border/70 bg-muted shadow-[0_4px_16px_rgba(0,0,0,0.06)] transition-all duration-300 ease-out group-hover:-translate-y-1.5 group-hover:shadow-[0_12px_28px_rgba(0,0,0,0.14)]">
+                  {/* Apple Books spine lighting highlight */}
+                  <div className="pointer-events-none absolute inset-y-0 left-0 w-3 bg-gradient-to-r from-black/20 via-black/5 to-transparent z-10" />
+                  <div className="pointer-events-none absolute inset-y-0 left-[2px] w-[1px] bg-white/20 z-10" />
                   {book.coverUrl ? (
                     <img src={book.coverUrl} alt="" className="h-full w-full object-cover" />
                   ) : (
@@ -540,7 +543,7 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onPrepareUpload, o
                 <Rule value={book.progress} className="mt-3" />
                 <h3 className="mt-3 font-serif text-lg leading-snug line-clamp-2">{book.title}</h3>
                 <p className="mt-0.5 text-sm text-muted-foreground truncate">{book.author}</p>
-                <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground tabular-nums">
                   {Math.round(book.progress)}% · {book.totalPages} pp · {formatLastRead(book.lastRead)}
                 </p>
               </button>

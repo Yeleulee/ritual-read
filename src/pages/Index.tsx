@@ -9,7 +9,8 @@ import { AiChat } from "@/components/AiChat";
 import { AuthForm } from "@/components/AuthForm";
 import { useAuth } from "@/hooks/use-auth";
 import { useBooks } from "@/hooks/use-books";
-import { Moon, Sun, Home, LogOut } from "lucide-react";
+import { Moon, Sun, Home, LogOut, Library, BookOpen, TrendingUp, Flame, Sparkles } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Link, useSearchParams } from "react-router-dom";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -96,7 +97,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-[2px] border-b border-border">
+      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border/40 transition-colors">
         <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between gap-4">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -141,12 +142,12 @@ const Index = () => {
         </div>
       </header>
 
-      <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-10 py-6">
+      <div className="mx-auto max-w-[1400px] px-4 sm:px-6 lg:px-10 py-6 pb-28 md:pb-8">
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
-          <TabsList className="flex w-full overflow-x-auto scrollbar-hide gap-8">
+          <TabsList className="hidden md:flex w-full overflow-x-auto scrollbar-hide gap-8">
             <TabsTrigger value="library" className="flex-none">Library</TabsTrigger>
-            <TabsTrigger value="reader" className="flex-none" disabled={!currentBook}>Reader</TabsTrigger>
+            <TabsTrigger value="reader" className="flex-none">Reader</TabsTrigger>
             <TabsTrigger value="progress" className="flex-none">Progress</TabsTrigger>
             <TabsTrigger value="streaks" className="flex-none">Streaks</TabsTrigger>
             <TabsTrigger value="assistant" className="flex-none">Assistant</TabsTrigger>
@@ -171,11 +172,21 @@ const Index = () => {
                 onProgress={updateBookProgress}
               />
             ) : (
-              <div className="text-center py-24 border border-dashed border-border">
+              <div className="text-center py-20 px-4 border border-dashed border-border/70 rounded-2xl bg-card/25 backdrop-blur-sm max-w-2xl mx-auto">
                 <p className="eyebrow">Reader</p>
-                <h3 className="display text-3xl mt-3 text-muted-foreground">
-                  Select a book to start reading
+                <h3 className="display text-2xl sm:text-3xl mt-3 text-foreground/90">
+                  Select a volume to start reading
                 </h3>
+                <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
+                  Pick up where you left off, or open a volume from your library.
+                </p>
+                <Button
+                  onClick={() => setActiveTab("library")}
+                  className="mt-6 rounded-full px-6 gap-2"
+                >
+                  <Library className="w-4 h-4" />
+                  <span>Browse Library</span>
+                </Button>
               </div>
             )}
           </TabsContent>
@@ -198,6 +209,41 @@ const Index = () => {
             />
           </TabsContent>
         </Tabs>
+
+        {/* Apple HIG Floating Bottom Tab Bar on Mobile */}
+        <nav
+          aria-label="Mobile Navigation"
+          className="fixed bottom-3 left-3 right-3 z-40 md:hidden bg-background/85 backdrop-blur-xl border border-border/50 shadow-[0_8px_32px_rgba(0,0,0,0.14)] rounded-2xl px-2 py-1.5 pb-[max(6px,env(safe-area-inset-bottom))]"
+        >
+          <div className="grid grid-cols-5 items-center">
+            {[
+              { id: "library", label: "Library", icon: Library },
+              { id: "reader", label: "Reader", icon: BookOpen },
+              { id: "progress", label: "Progress", icon: TrendingUp },
+              { id: "streaks", label: "Streaks", icon: Flame },
+              { id: "assistant", label: "Assistant", icon: Sparkles },
+            ].map(({ id, label, icon: Icon }) => {
+              const isActive = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveTab(id)}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1 min-h-[44px] py-1 rounded-xl transition-all select-none",
+                    isActive
+                      ? "text-primary font-medium"
+                      : "text-muted-foreground/75 hover:text-foreground active:scale-95"
+                  )}
+                  aria-selected={isActive}
+                >
+                  <Icon className={cn("h-5 w-5 transition-transform", isActive && "scale-110")} />
+                  <span className="text-[10px] leading-none tracking-tight">{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
       </div>
     </div>
   );
