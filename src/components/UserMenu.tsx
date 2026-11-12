@@ -155,8 +155,13 @@ export const UserMenu = ({ context = "app", className }: UserMenuProps) => {
           {/* Practice Summary Cards */}
           <div className="grid grid-cols-3 gap-2.5 text-center">
             <div className="border rounded-xl p-3 bg-muted/20">
-              <span className="font-mono text-2xl font-light text-foreground">{streak.current}</span>
-              <p className="text-[11px] font-mono uppercase text-muted-foreground mt-1">Current Streak</p>
+              <div className="flex items-center justify-center gap-1.5">
+                <span className="font-mono text-2xl font-light text-foreground">{streak.current}</span>
+                <Flame className={cn("w-4 h-4", streak.current === 0 ? "text-amber-500/50" : "text-amber-500 fill-amber-500 animate-pulse")} />
+              </div>
+              <p className="text-[11px] font-mono uppercase text-muted-foreground mt-1">
+                {streak.current === 0 ? "Day 1 Ready" : "Current Streak"}
+              </p>
             </div>
             <div className="border rounded-xl p-3 bg-muted/20">
               <span className="font-mono text-2xl font-light text-foreground">{streak.longest}</span>
