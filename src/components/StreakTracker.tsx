@@ -1,6 +1,7 @@
 import { useReadingStats } from "@/hooks/use-reading-stats";
 import { cn } from "@/lib/utils";
 import { SectionHeader, Stat, StatGrid, Panel, Rule } from "@/components/dashboard/primitives";
+import { PracticeHeatmap } from "@/components/practice/PracticeHeatmap";
 
 interface StreakTrackerProps {
   detailed?: boolean;
@@ -107,6 +108,11 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
           <p className="mt-3 text-xs text-muted-foreground">Twenty minutes is enough to finish a book a month.</p>
         </Panel>
       </div>
+
+      {/* GitHub-style Practice Heatmap */}
+      <Panel title="Questions Practiced (Streak Tracker)">
+        <PracticeHeatmap weeks={22} />
+      </Panel>
 
       {/* Milestones */}
       <Panel

@@ -3,13 +3,14 @@ import { BookLibrary } from "@/components/BookLibrary";
 import { ReaderShell } from "@/components/reader/ReaderShell";
 import { StreakTracker } from "@/components/StreakTracker";
 import { ProgressDashboard } from "@/components/ProgressDashboard";
+import { PracticeDashboard } from "@/components/practice/PracticeDashboard";
 import { RitualModeButton } from "@/components/RitualModeButton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AiChat } from "@/components/AiChat";
 import { AuthForm } from "@/components/AuthForm";
 import { useAuth } from "@/hooks/use-auth";
-import { useBooks } from "@/hooks/use-books";
-import { Moon, Sun, Home, LogOut, Library, BookOpen, TrendingUp, Flame, Sparkles } from "lucide-react";
+import { useBooks, type BookItem } from "@/hooks/use-books";
+import { Moon, Sun, Home, LogOut, Library, BookOpen, TrendingUp, Flame, Sparkles, GraduationCap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link, useSearchParams } from "react-router-dom";
 import { useTheme } from "next-themes";
@@ -19,13 +20,13 @@ import { UserMenu } from "@/components/UserMenu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 
-const TABS = ["library", "reader", "progress", "streaks", "assistant"] as const;
+const TABS = ["library", "reader", "practice", "progress", "streaks", "assistant"] as const;
 
 const Index = () => {
   const { theme, setTheme } = useTheme();
   const { user, loading: authLoading, signOut } = useAuth();
   const { books, loading: booksLoading, addBook, prepareUpload, discardUpload, updateBookProgress, removeBook } = useBooks();
-  const [currentBook, setCurrentBook] = useState<any>(null);
+  const [currentBook, setCurrentBook] = useState<BookItem | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
   const [activeTab, setActiveTabState] = useState(() => (TABS.includes(requestedTab as (typeof TABS)[number]) && requestedTab !== "reader" ? requestedTab! : "library"));
@@ -59,7 +60,7 @@ const Index = () => {
     return <AuthForm />;
   }
 
-  const handleBookSelect = (book: any) => {
+  const handleBookSelect = (book: BookItem) => {
     setCurrentBook(book);
     setActiveTabState("reader");
     setSearchParams({ book: book.id }, { replace: true });
@@ -70,7 +71,7 @@ const Index = () => {
     setActiveTab("library");
   };
 
-  const handleAddBook = async (newBook: any) => {
+  const handleAddBook = async (newBook: Parameters<typeof addBook>[0]) => {
     // Rethrow so the add dialog stays open on failure (the hook already toasts the error)
     const addedBook = await addBook(newBook);
     if (addedBook) {
@@ -148,6 +149,7 @@ const Index = () => {
           <TabsList className="hidden md:flex w-full overflow-x-auto scrollbar-hide gap-8">
             <TabsTrigger value="library" className="flex-none">Library</TabsTrigger>
             <TabsTrigger value="reader" className="flex-none">Reader</TabsTrigger>
+            <TabsTrigger value="practice" className="flex-none">Practice</TabsTrigger>
             <TabsTrigger value="progress" className="flex-none">Progress</TabsTrigger>
             <TabsTrigger value="streaks" className="flex-none">Streaks</TabsTrigger>
             <TabsTrigger value="assistant" className="flex-none">Assistant</TabsTrigger>
@@ -191,6 +193,10 @@ const Index = () => {
             )}
           </TabsContent>
 
+          <TabsContent value="practice" className="animate-page-fade">
+            <PracticeDashboard books={books} />
+          </TabsContent>
+
           <TabsContent value="progress" className="animate-page-fade">
             <ProgressDashboard books={books} />
           </TabsContent>
@@ -215,10 +221,11 @@ const Index = () => {
           aria-label="Mobile Navigation"
           className="fixed bottom-3 left-3 right-3 z-40 md:hidden bg-background/85 backdrop-blur-xl border border-border/50 shadow-[0_8px_32px_rgba(0,0,0,0.14)] rounded-2xl px-2 py-1.5 pb-[max(6px,env(safe-area-inset-bottom))]"
         >
-          <div className="grid grid-cols-5 items-center">
+          <div className="grid grid-cols-6 items-center">
             {[
               { id: "library", label: "Library", icon: Library },
               { id: "reader", label: "Reader", icon: BookOpen },
+              { id: "practice", label: "Practice", icon: GraduationCap },
               { id: "progress", label: "Progress", icon: TrendingUp },
               { id: "streaks", label: "Streaks", icon: Flame },
               { id: "assistant", label: "Assistant", icon: Sparkles },
