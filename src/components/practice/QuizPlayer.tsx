@@ -35,6 +35,7 @@ export function QuizPlayer({ practiceSet, onFinish, onBack }: QuizPlayerProps) {
   const [submittedAnswers, setSubmittedAnswers] = useState<Record<string, boolean>>({});
   const [flaggedQuestions, setFlaggedQuestions] = useState<Record<string, boolean>>({});
   const [instantFeedback, setInstantFeedback] = useState(true);
+  const [showGrid, setShowGrid] = useState(false);
   const [startTime] = useState(Date.now());
   const [timeSpent, setTimeSpent] = useState(0);
 
@@ -158,14 +159,75 @@ export function QuizPlayer({ practiceSet, onFinish, onBack }: QuizPlayerProps) {
       {/* Question Header & Progress Bar */}
       <div className="space-y-2">
         <div className="flex items-baseline justify-between">
-          <p className="eyebrow">
-            Question {currentIndex + 1} of {total}
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="eyebrow">
+              Question {currentIndex + 1} of {total}
+            </p>
+            {total >= 10 && (
+              <button
+                type="button"
+                onClick={() => setShowGrid(!showGrid)}
+                className="text-[11px] font-mono text-primary hover:underline cursor-pointer"
+              >
+                {showGrid ? "Hide Grid" : "Question Grid ▾"}
+              </button>
+            )}
+          </div>
           <span className="font-mono text-xs text-muted-foreground">
-            {answeredCount} answered
+            {answeredCount} of {total} answered
           </span>
         </div>
         <Rule value={progressPercent} />
+
+        {/* 100-Question Quick Jump Matrix */}
+        {showGrid && (
+          <div className="p-3.5 border rounded-xl bg-card/70 space-y-2.5 mt-2 animate-in fade-in-50">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-muted-foreground">
+              <span>Exam Navigator (Click to Jump)</span>
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Answered
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Flagged
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full border border-border inline-block" /> Open
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-10 sm:grid-cols-20 gap-1 max-h-48 overflow-y-auto pr-1">
+              {questions.map((q, idx) => {
+                const isCurrent = idx === currentIndex;
+                const isAnswered = !!selectedAnswers[q.id];
+                const isFlagged = !!flaggedQuestions[q.id];
+                return (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => {
+                      setCurrentIndex(idx);
+                      setShowGrid(false);
+                    }}
+                    className={cn(
+                      "h-7 rounded text-[11px] font-mono font-medium transition-all flex items-center justify-center relative",
+                      isCurrent
+                        ? "bg-foreground text-background font-bold ring-2 ring-primary ring-offset-1"
+                        : isAnswered
+                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-semibold"
+                        : "bg-muted/40 text-muted-foreground hover:bg-muted border border-border/50",
+                    )}
+                  >
+                    {idx + 1}
+                    {isFlagged && (
+                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Question Card */}

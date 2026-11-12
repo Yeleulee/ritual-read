@@ -252,44 +252,59 @@ function shuffleArray<T>(arr: T[]): T[] {
   return copy;
 }
 
-/** Pick a key term or number from a sentence for blanking out */
-function pickBlankTarget(sentence: string): { phrase: string; index: number; kind: "number" | "proper" | "term" } | null {
+/** Collect all potential blank targets in a sentence */
+function getAllBlankTargets(sentence: string): Array<{ phrase: string; index: number; kind: "number" | "proper" | "term" }> {
+  const targets: Array<{ phrase: string; index: number; kind: "number" | "proper" | "term" }> = [];
+  const seen = new Set<string>();
+
   // 1. Quoted terms
-  const quoted = [...sentence.matchAll(/"([^"]{3,30})"/g)];
-  if (quoted.length > 0) {
-    const pick = quoted[Math.floor(Math.random() * quoted.length)];
-    return { phrase: pick[1], index: pick.index! + 1, kind: "term" };
+  for (const m of sentence.matchAll(/"([^"]{3,30})"/g)) {
+    const phrase = m[1];
+    if (!seen.has(phrase.toLowerCase())) {
+      seen.add(phrase.toLowerCase());
+      targets.push({ phrase, index: m.index! + 1, kind: "term" });
+    }
   }
 
-  // 2. Key proper noun phrases (skip sentence-initial common starters)
-  const proper = [...sentence.matchAll(/\b([A-Z][a-zA-Z]{2,}(?:\s[A-Z][a-zA-Z]+){0,2})\b/g)].filter(
-    (m) => !STOPWORDS.has(m[1].toLowerCase()) && m.index! > 0
-  );
-  if (proper.length > 0) {
-    const pick = proper[Math.floor(Math.random() * proper.length)];
-    return { phrase: pick[1], index: pick.index!, kind: "proper" };
+  // 2. Proper noun phrases
+  for (const m of sentence.matchAll(/\b([A-Z][a-zA-Z]{2,}(?:\s[A-Z][a-zA-Z]+){0,2})\b/g)) {
+    const phrase = m[1];
+    if (!STOPWORDS.has(phrase.toLowerCase()) && m.index! > 0 && !seen.has(phrase.toLowerCase())) {
+      seen.add(phrase.toLowerCase());
+      targets.push({ phrase, index: m.index!, kind: "proper" });
+    }
   }
 
-  // 3. Significant content words (6+ chars, non-stopword)
-  const words = [...sentence.matchAll(/\b([a-zA-Z]{5,})\b/g)].filter(
-    (m) => !STOPWORDS.has(m[1].toLowerCase())
-  );
-  if (words.length > 0) {
-    // Prefer longer domain terms
-    words.sort((a, b) => b[1].length - a[1].length);
-    const pool = words.slice(0, Math.min(3, words.length));
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    return { phrase: pick[1], index: pick.index!, kind: "term" };
+  // 3. Numbers / percentages / years
+  for (const m of sentence.matchAll(/\b(\d{2,4}(?:\.\d+)?%?)\b/g)) {
+    const phrase = m[1];
+    if (!seen.has(phrase)) {
+      seen.add(phrase);
+      targets.push({ phrase, index: m.index!, kind: "number" });
+    }
   }
 
-  // 4. Meaningful numbers / years
-  const nums = [...sentence.matchAll(/\b(\d{2,4}(?:\.\d+)?%?)\b/g)];
-  if (nums.length > 0) {
-    const pick = nums[Math.floor(Math.random() * nums.length)];
-    return { phrase: pick[1], index: pick.index!, kind: "number" };
+  // 4. Content words (5+ chars, non-stopword)
+  const contentWords: Array<{ phrase: string; index: number; kind: "term" }> = [];
+  for (const m of sentence.matchAll(/\b([a-zA-Z]{5,})\b/g)) {
+    const phrase = m[1];
+    if (!STOPWORDS.has(phrase.toLowerCase()) && !seen.has(phrase.toLowerCase())) {
+      seen.add(phrase.toLowerCase());
+      contentWords.push({ phrase, index: m.index!, kind: "term" });
+    }
   }
+  // Sort longer words first
+  contentWords.sort((a, b) => b.phrase.length - a.phrase.length);
+  targets.push(...contentWords);
 
-  return null;
+  return targets;
+}
+
+/** Pick a key term or number from a sentence for blanking out */
+function pickBlankTarget(sentence: string, targetOffset = 0): { phrase: string; index: number; kind: "number" | "proper" | "term" } | null {
+  const all = getAllBlankTargets(sentence);
+  if (all.length === 0) return null;
+  return all[targetOffset % all.length];
 }
 
 /** Generate unique distractors from the material (case-insensitive deduplication) */
@@ -325,8 +340,8 @@ function generateDistractors(correct: string, allSentences: string[], count = 3)
 }
 
 /** Build a multiple-choice question from a sentence */
-function buildMCQ(sentence: string, allSentences: string[], idx: number, title: string): PracticeQuestion | null {
-  const target = pickBlankTarget(sentence);
+function buildMCQ(sentence: string, allSentences: string[], idx: number, title: string, targetOffset = 0): PracticeQuestion | null {
+  const target = pickBlankTarget(sentence, targetOffset);
   if (!target) return null;
   const distractors = generateDistractors(target.phrase, allSentences, 3);
   if (distractors.length < 3) return null;
@@ -352,8 +367,8 @@ function buildMCQ(sentence: string, allSentences: string[], idx: number, title: 
 }
 
 /** Build a true/false question */
-function buildTrueFalse(sentence: string, allSentences: string[], idx: number, title: string): PracticeQuestion | null {
-  const makeTrue = Math.random() > 0.5;
+function buildTrueFalse(sentence: string, allSentences: string[], idx: number, title: string, targetOffset = 0): PracticeQuestion | null {
+  const makeTrue = targetOffset % 2 === 0;
 
   if (makeTrue) {
     return {
@@ -372,7 +387,7 @@ function buildTrueFalse(sentence: string, allSentences: string[], idx: number, t
     };
   }
 
-  const target = pickBlankTarget(sentence);
+  const target = pickBlankTarget(sentence, targetOffset);
   if (!target) {
     return {
       id: `q-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -390,11 +405,12 @@ function buildTrueFalse(sentence: string, allSentences: string[], idx: number, t
     };
   }
 
-  const distractors = generateDistractors(target.phrase, allSentences, 1);
+  const distractors = generateDistractors(target.phrase, allSentences, 3);
   if (distractors.length === 0) return null;
+  const pickedDistractor = distractors[targetOffset % distractors.length];
 
   const falseSentence =
-    sentence.slice(0, target.index) + distractors[0] + sentence.slice(target.index + target.phrase.length);
+    sentence.slice(0, target.index) + pickedDistractor + sentence.slice(target.index + target.phrase.length);
   return {
     id: `q-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     type: "true-false",
@@ -404,7 +420,7 @@ function buildTrueFalse(sentence: string, allSentences: string[], idx: number, t
       { id: "False", text: "False" },
     ],
     correctAnswer: "False",
-    explanation: `The study material actually states "${target.phrase}" rather than "${distractors[0]}".`,
+    explanation: `The study material actually states "${target.phrase}" rather than "${pickedDistractor}".`,
     sourceExcerpt: sentence,
     difficulty: "medium",
     topic: title,
@@ -412,8 +428,8 @@ function buildTrueFalse(sentence: string, allSentences: string[], idx: number, t
 }
 
 /** Build a flashcard */
-function buildFlashcard(sentence: string, idx: number, title: string): PracticeQuestion {
-  const target = pickBlankTarget(sentence);
+function buildFlashcard(sentence: string, idx: number, title: string, targetOffset = 0): PracticeQuestion {
+  const target = pickBlankTarget(sentence, targetOffset);
   const prompt = target
     ? `Fill in and explain the missing concept:\n"${sentence.slice(0, target.index)}________${sentence.slice(target.index + target.phrase.length)}"`
     : `Explain this concept from ${title}:\n"${sentence.slice(0, 90)}${sentence.length > 90 ? "..." : ""}"`;
@@ -568,32 +584,44 @@ export async function generatePracticeQuestions(options: GenerateOptions): Promi
 
   const picked = shuffleArray(allSentences);
   const questions: PracticeQuestion[] = [];
+  const seenQuestionKeys = new Set<string>();
   let idx = 0;
 
-  for (const sentence of picked) {
-    if (questions.length >= questionCount) break;
-    idx++;
+  // Multi-pass extraction to effortlessly satisfy up to 100 questions from the material
+  for (let pass = 0; pass < 8 && questions.length < questionCount; pass++) {
+    for (const sentence of picked) {
+      if (questions.length >= questionCount) break;
+      idx++;
 
-    let q: PracticeQuestion | null = null;
-    const effectiveType =
-      questionType === "mixed"
-        ? (["multiple-choice", "true-false", "multiple-choice"] as const)[idx % 3]
-        : questionType;
+      let q: PracticeQuestion | null = null;
+      let effectiveType = questionType;
 
-    if (effectiveType === "true-false") {
-      q = buildTrueFalse(sentence, allSentences, idx, topicFocus || materialTitle);
-    } else if (effectiveType === "flashcard") {
-      q = buildFlashcard(sentence, idx, topicFocus || materialTitle);
-    } else {
-      // Try MCQ first; if not enough unique distractors in short doc, gracefully fall back to True/False
-      q =
-        buildMCQ(sentence, allSentences, idx, topicFocus || materialTitle) ||
-        buildTrueFalse(sentence, allSentences, idx, topicFocus || materialTitle);
-    }
+      if (questionType === "mixed") {
+        const types = ["multiple-choice", "true-false", "multiple-choice", "flashcard"] as const;
+        effectiveType = types[(idx + pass) % types.length];
+      } else if (pass > 0 && questionType === "multiple-choice") {
+        // If a subsequent pass needs to diversify questions for 50-100 question mock exams
+        effectiveType = pass % 2 === 1 ? "multiple-choice" : "true-false";
+      }
 
-    if (q) {
-      if (difficulty !== "comprehensive") q.difficulty = difficulty;
-      questions.push(q);
+      if (effectiveType === "true-false") {
+        q = buildTrueFalse(sentence, allSentences, idx, topicFocus || materialTitle, pass);
+      } else if (effectiveType === "flashcard") {
+        q = buildFlashcard(sentence, idx, topicFocus || materialTitle, pass);
+      } else {
+        q =
+          buildMCQ(sentence, allSentences, idx, topicFocus || materialTitle, pass) ||
+          buildTrueFalse(sentence, allSentences, idx, topicFocus || materialTitle, pass);
+      }
+
+      if (q) {
+        const key = q.question.toLowerCase().trim();
+        if (!seenQuestionKeys.has(key)) {
+          seenQuestionKeys.add(key);
+          if (difficulty !== "comprehensive") q.difficulty = difficulty;
+          questions.push(q);
+        }
+      }
     }
   }
 

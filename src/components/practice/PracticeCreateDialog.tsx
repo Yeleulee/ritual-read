@@ -420,53 +420,69 @@ export function PracticeCreateDialog({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                {/* Number of Questions */}
-                <div className="space-y-1.5">
+              {/* Number of Questions */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
                   <Label className="text-xs font-mono uppercase text-muted-foreground">
                     Question Count
                   </Label>
-                  <div className="flex items-center gap-1.5">
-                    {[5, 10, 15, 20].map((num) => (
-                      <button
-                        key={num}
-                        type="button"
-                        onClick={() => setQuestionCount(num)}
-                        className={cn(
-                          "flex-1 py-1.5 rounded-lg border text-xs font-mono font-medium transition-colors",
-                          questionCount === num
-                            ? "bg-foreground text-background border-foreground"
-                            : "border-border/60 hover:bg-muted text-foreground/80"
-                        )}
-                      >
-                        {num}
-                      </button>
-                    ))}
-                  </div>
+                  {questionCount === 100 ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                      <Sparkles className="w-3 h-3 text-amber-500" /> 100-Question Exam Mode
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-mono text-muted-foreground">
+                      {questionCount} questions
+                    </span>
+                  )}
                 </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {[5, 10, 20, 50, 100].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => setQuestionCount(num)}
+                      className={cn(
+                        "py-2 rounded-lg border text-xs font-mono font-medium transition-all text-center",
+                        questionCount === num
+                          ? num === 100
+                            ? "bg-amber-500 text-amber-950 border-amber-600 font-semibold shadow-xs"
+                            : "bg-foreground text-background border-foreground font-semibold"
+                          : "border-border/60 hover:bg-muted text-foreground/80",
+                      )}
+                    >
+                      {num === 100 ? "100 🎯" : num}
+                    </button>
+                  ))}
+                </div>
+                {questionCount === 100 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-mono">
+                    ⚡ 100 questions will be generated from your material for a full mock examination experience.
+                  </p>
+                )}
+              </div>
 
-                {/* Difficulty */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-mono uppercase text-muted-foreground">
-                    Difficulty Level
-                  </Label>
-                  <div className="flex items-center gap-1.5">
-                    {(["easy", "medium", "hard"] as const).map((diff) => (
-                      <button
-                        key={diff}
-                        type="button"
-                        onClick={() => setDifficulty(diff)}
-                        className={cn(
-                          "flex-1 py-1.5 rounded-lg border text-xs capitalize font-medium transition-colors",
-                          difficulty === diff
-                            ? "bg-foreground text-background border-foreground"
-                            : "border-border/60 hover:bg-muted text-foreground/80"
-                        )}
-                      >
-                        {diff}
-                      </button>
-                    ))}
-                  </div>
+              {/* Difficulty */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-mono uppercase text-muted-foreground">
+                  Difficulty Level
+                </Label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(["easy", "medium", "hard"] as const).map((diff) => (
+                    <button
+                      key={diff}
+                      type="button"
+                      onClick={() => setDifficulty(diff)}
+                      className={cn(
+                        "py-1.5 rounded-lg border text-xs capitalize font-medium transition-colors text-center",
+                        difficulty === diff
+                          ? "bg-foreground text-background border-foreground"
+                          : "border-border/60 hover:bg-muted text-foreground/80",
+                      )}
+                    >
+                      {diff}
+                    </button>
+                  ))}
                 </div>
               </div>
 
