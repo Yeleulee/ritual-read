@@ -1,13 +1,22 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo } from "react";
 import { extractDocxContent, estimateDocxPages } from "@/lib/docx";
 import { loadPdfjs, getPdfConfig } from "@/lib/pdf";
 import { ACCEPT_FORMATS, FORMAT_LABELS, validateBookFile, type BookFormat } from "@/lib/book-formats";
 import { errorText, preflightEpub } from "@/lib/epub-repair";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, X } from "lucide-react";
+import { Loader2, Plus, X, Search, ArrowUpDown, Check } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { SectionHeader, Rule, Empty } from "@/components/dashboard/primitives";
 import {
@@ -104,6 +113,9 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onPrepareUpload, o
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "failed">("idle");
   const fileInput = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "reading" | "finished">("all");
+  const [sortBy, setSortBy] = useState<"recent" | "title" | "progress" | "pages">("recent");
 
   const startUpload = (file: File) => {
     discardUpload();
@@ -384,6 +396,47 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onPrepareUpload, o
   const inProgress = books.filter((b) => b.progress > 0 && b.progress < 100).length;
   const finished = books.filter((b) => b.progress >= 100).length;
 
+  const filteredBooks = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    const result = books.filter((book) => {
+      if (statusFilter === "reading" && (book.progress <= 0 || book.progress >= 100)) {
+        return false;
+      }
+      if (statusFilter === "finished" && book.progress < 100) {
+        return false;
+      }
+      if (q) {
+        const titleMatch = (book.title || "").toLowerCase().includes(q);
+        const authorMatch = (book.author || "").toLowerCase().includes(q);
+        const formatMatch = (book.fileType || "").toLowerCase().includes(q);
+        if (!titleMatch && !authorMatch && !formatMatch) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    result.sort((a, b) => {
+      if (sortBy === "recent") {
+        const timeA = a.lastRead ? new Date(a.lastRead).getTime() : 0;
+        const timeB = b.lastRead ? new Date(b.lastRead).getTime() : 0;
+        return timeB - timeA;
+      }
+      if (sortBy === "title") {
+        return (a.title || "").localeCompare(b.title || "");
+      }
+      if (sortBy === "progress") {
+        return b.progress - a.progress;
+      }
+      if (sortBy === "pages") {
+        return (b.totalPages || 0) - (a.totalPages || 0);
+      }
+      return 0;
+    });
+
+    return result;
+  }, [books, searchQuery, statusFilter, sortBy]);
+
   const addDialog = (
     <Dialog open={isAddDialogOpen} onOpenChange={handleDialogChange}>
       <DialogTrigger asChild>
@@ -392,10 +445,11 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onPrepareUpload, o
           Add book
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md overflow-hidden rounded-lg">
-        <DialogHeader>
+      <DialogContent className="max-w-md overflow-hidden rounded-2xl p-6 gap-4">
+        <DialogHeader className="space-y-1.5 text-left">
           <p className="eyebrow">Library</p>
-          <DialogTitle className="display text-3xl">Add a book</DialogTitle>
+          <DialogTitle className="text-2xl sm:text-[26px] font-serif font-normal tracking-tight text-foreground">Add a book</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground leading-relaxed">{FORMAT_LABELS.join(", ")}. Metadata and estimated pages are extracted automatically.</DialogDescription>
         </DialogHeader>
         {/* min-w-0: a grid item's auto min-width would otherwise grow to the file input's intrinsic (filename) width */}
         <div className="min-w-0 space-y-5 pt-2">
@@ -503,6 +557,97 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onPrepareUpload, o
         action={addDialog}
       />
 
+      {books.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+          {/* Live Search */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/70 pointer-events-none" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search shelf by title, author, or format..."
+              className="pl-9 pr-8 h-9 text-xs rounded-xl bg-muted/20 border-border/70 focus-visible:ring-1 focus-visible:ring-streak/30 focus-visible:border-streak"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Status Segmented Pill */}
+            <div className="bg-muted/40 p-1 rounded-xl flex gap-1 border border-border/50 text-xs">
+              {[
+                { id: "all", label: "All", count: books.length },
+                { id: "reading", label: "Reading", count: inProgress },
+                { id: "finished", label: "Finished", count: finished },
+              ].map((pill) => (
+                <button
+                  key={pill.id}
+                  type="button"
+                  onClick={() => setStatusFilter(pill.id as typeof statusFilter)}
+                  className={cn(
+                    "py-1 px-2.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5",
+                    statusFilter === pill.id
+                      ? "bg-background text-foreground shadow-xs border border-border/70 font-semibold"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/40"
+                  )}
+                >
+                  <span>{pill.label}</span>
+                  <span className="text-[10px] tabular-nums font-mono opacity-60">
+                    {pill.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Sort Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5 text-xs font-medium rounded-xl border-border/70 bg-muted/20 px-3 hover:bg-muted/40"
+                >
+                  <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="hidden sm:inline">Sort:</span>
+                  <span className="capitalize text-foreground font-semibold">
+                    {sortBy === "recent" ? "Recent" : sortBy === "progress" ? "Progress" : sortBy === "pages" ? "Pages" : "Title"}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44 rounded-xl">
+                <DropdownMenuLabel className="text-[11px] font-mono uppercase text-muted-foreground">
+                  Sort Shelf
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {[
+                  { id: "recent", label: "Recently Read" },
+                  { id: "title", label: "Title (A–Z)" },
+                  { id: "progress", label: "Reading Progress" },
+                  { id: "pages", label: "Page Count" },
+                ].map((s) => (
+                  <DropdownMenuItem
+                    key={s.id}
+                    onClick={() => setSortBy(s.id as typeof sortBy)}
+                    className="text-xs flex items-center justify-between cursor-pointer"
+                  >
+                    <span>{s.label}</span>
+                    {sortBy === s.id && <Check className="h-3.5 w-3.5 text-streak" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      )}
+
       {books.length === 0 ? (
         <Empty
           title="Nothing here yet."
@@ -514,9 +659,28 @@ export const BookLibrary = ({ books, onBookSelect, onAddBook, onPrepareUpload, o
             </Button>
           }
         />
+      ) : filteredBooks.length === 0 ? (
+        <div className="py-16 text-center border border-dashed border-border/70 rounded-2xl bg-card/25 backdrop-blur-sm">
+          <p className="eyebrow">No matching volumes</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            No books or documents matched "{searchQuery}"
+            {statusFilter !== "all" && ` with status "${statusFilter}"`}.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSearchQuery("");
+              setStatusFilter("all");
+            }}
+            className="mt-4 rounded-full text-xs"
+          >
+            Clear filters
+          </Button>
+        </div>
       ) : (
         <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-6 gap-y-10">
-          {books.map((book) => (
+          {filteredBooks.map((book) => (
             <li key={book.id} className="group relative">
               <button
                 type="button"
