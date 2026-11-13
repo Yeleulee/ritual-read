@@ -244,12 +244,7 @@ export function PracticeDashboard({ books }: PracticeDashboardProps) {
         }
       />
 
-      {/* GitHub-style Practice Activity Heatmap */}
-      <Panel title="Practice Activity">
-        <PracticeHeatmap key={heatmapKey} weeks={20} />
-      </Panel>
-
-      {/* Stats figures */}
+      {/* Figures — Symmetrical 4-stat grid matching Progress */}
       <StatGrid className="grid-cols-2 md:grid-cols-4">
         <Stat label="Practice Sets" value={sets.length} hint="Interactive study sets" />
         <Stat label="Questions Tested" value={stats.totalQuestionsAnswered} hint={`${stats.totalAttempts} sessions taken`} />
@@ -260,6 +255,11 @@ export function PracticeDashboard({ books }: PracticeDashboardProps) {
           hint={`${stats.totalCorrect} correct answers`}
         />
       </StatGrid>
+
+      {/* GitHub-style Practice Activity Heatmap */}
+      <Panel title="Practice Activity" action={<span className="eyebrow">Study questions</span>}>
+        <PracticeHeatmap key={heatmapKey} weeks={20} />
+      </Panel>
 
       {/* Practice Sets List */}
       <div className="space-y-4">
@@ -282,7 +282,7 @@ export function PracticeDashboard({ books }: PracticeDashboardProps) {
             }
           />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {sets.map((set) => {
               const bestPct = set.bestScore?.percentage;
               return (
@@ -304,7 +304,7 @@ export function PracticeDashboard({ books }: PracticeDashboardProps) {
                               bestPct >= 80
                                 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
                                 : bestPct >= 60
-                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                                ? "bg-secondary text-foreground border-border"
                                 : "bg-destructive/10 text-destructive border-destructive/30"
                             )}
                           >

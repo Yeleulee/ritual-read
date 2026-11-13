@@ -140,7 +140,7 @@ export function QuizPlayer({ practiceSet, onFinish, onBack }: QuizPlayerProps) {
             className={cn(
               "flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md transition-colors border",
               flaggedQuestions[currentQ.id]
-                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                ? "bg-streak/15 text-streak border-streak/30"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
@@ -189,7 +189,7 @@ export function QuizPlayer({ practiceSet, onFinish, onBack }: QuizPlayerProps) {
                   <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Answered
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Flagged
+                  <span className="w-2 h-2 rounded-full bg-streak inline-block" /> Flagged
                 </span>
                 <span className="flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full border border-border inline-block" /> Open
@@ -220,7 +220,7 @@ export function QuizPlayer({ practiceSet, onFinish, onBack }: QuizPlayerProps) {
                   >
                     {idx + 1}
                     {isFlagged && (
-                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full" />
+                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-streak rounded-full" />
                     )}
                   </button>
                 );
@@ -361,7 +361,7 @@ export function QuizPlayer({ practiceSet, onFinish, onBack }: QuizPlayerProps) {
             {/* Explanation */}
             <div className="bg-muted/40 rounded-xl p-4 border border-border/50 text-sm leading-relaxed space-y-2">
               <div className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
+                <Lightbulb className="h-3.5 w-3.5 text-streak" />
                 <span>Explanation</span>
               </div>
               <p className="text-foreground/90">{currentQ.explanation}</p>

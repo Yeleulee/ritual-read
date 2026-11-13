@@ -50,7 +50,7 @@ export function QuizResults({
   const getMasteryGrade = (pct: number) => {
     if (pct >= 90) return { label: "Mastery", color: "text-emerald-600 dark:text-emerald-400" };
     if (pct >= 75) return { label: "Proficient", color: "text-primary" };
-    if (pct >= 60) return { label: "Passing", color: "text-amber-600 dark:text-amber-400" };
+    if (pct >= 60) return { label: "Passing", color: "text-foreground" };
     return { label: "Review Recommended", color: "text-destructive" };
   };
 
@@ -293,7 +293,7 @@ export function QuizResults({
               {/* Explanation */}
               <div className="bg-muted/40 rounded-lg p-3 text-xs leading-relaxed border border-border/50 text-foreground/85 space-y-1">
                 <div className="flex items-center gap-1 text-muted-foreground font-mono text-[10px] uppercase">
-                  <Lightbulb className="h-3 w-3 text-amber-500" />
+                  <Lightbulb className="h-3 w-3 text-streak" />
                   <span>Explanation</span>
                 </div>
                 <p>{q.explanation}</p>

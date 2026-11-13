@@ -20,6 +20,8 @@ import { UserMenu } from "@/components/UserMenu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useReadingStats } from "@/hooks/use-reading-stats";
 
+import { SectionHeader } from "@/components/dashboard/primitives";
+
 const TABS = ["library", "reader", "practice", "progress", "streaks", "assistant"] as const;
 
 const Index = () => {
@@ -202,12 +204,15 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="streaks" className="animate-page-fade">
-            <div className="max-w-4xl">
-              <StreakTracker detailed />
-            </div>
+            <StreakTracker detailed />
           </TabsContent>
 
-          <TabsContent value="assistant" className="animate-page-fade">
+          <TabsContent value="assistant" className="animate-page-fade space-y-8">
+            <SectionHeader
+              eyebrow="Assistant"
+              title="Literary Companion"
+              meta={currentBook ? `Discussing "${currentBook.title}" by ${currentBook.author}. You can also tag any book with @.` : "Ask questions about your library, analyze themes, or discuss reading passages."}
+            />
             <AiChat
               context={currentBook ? `Currently reading: "${currentBook.title}" by ${currentBook.author}.\n${currentBook.content || ''}` : ''}
               books={books}

@@ -1,8 +1,8 @@
 import { useReadingStats } from "@/hooks/use-reading-stats";
 import { cn } from "@/lib/utils";
-import { SectionHeader, Stat, StatGrid, Panel } from "@/components/dashboard/primitives";
+import { SectionHeader, Stat, StatGrid, Panel, Rule } from "@/components/dashboard/primitives";
 import { PracticeHeatmap } from "@/components/practice/PracticeHeatmap";
-import { Flame, Clock, CheckCircle2, Sparkles, Target } from "lucide-react";
+import { Flame, Clock, CheckCircle2, Compass } from "lucide-react";
 
 interface StreakTrackerProps {
   detailed?: boolean;
@@ -28,34 +28,34 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
   // Compact header widget
   if (!detailed) {
     return (
-      <div className="group relative flex items-center gap-2.5 px-3 py-1.5 rounded-full border border-border/70 bg-card/60 hover:bg-card hover:border-border transition-all shadow-sm">
+      <div className="group relative flex items-center gap-2.5 px-3 py-1.5 rounded-full border border-border/80 bg-card/80 hover:bg-card hover:border-border transition-all shadow-xs">
         {/* Streak Flame / Day indicator */}
         <div className="flex items-center gap-1.5">
           <div
             className={cn(
-              "grid place-items-center w-5 h-5 rounded-full transition-transform group-hover:scale-110",
-              isZero ? "bg-amber-500/10 text-amber-500" : "bg-orange-500/15 text-orange-500",
+              "grid place-items-center w-5 h-5 rounded-full transition-transform group-hover:scale-105",
+              isZero ? "bg-muted text-muted-foreground" : "bg-streak/15 text-streak",
             )}
           >
-            <Flame className={cn("w-3.5 h-3.5", isZero ? "fill-amber-500/20" : "fill-orange-500 animate-pulse")} />
+            <Flame className="w-3.5 h-3.5" strokeWidth={1.75} />
           </div>
-          <span className="font-mono text-xs font-medium text-foreground tracking-tight">
+          <span className="font-mono text-xs font-medium text-foreground tracking-tight tabular-nums">
             {isZero ? "Day 1" : `${current.currentStreak}d`}
           </span>
         </div>
 
-        <span className="h-3 w-px bg-border/80" />
+        <span className="h-3 w-px bg-border" />
 
         {/* Minutes left / Goal status */}
         <div className="flex items-center gap-1.5">
           {goalMet ? (
-            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="w-3 h-3" /> Met
+            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-foreground">
+              <CheckCircle2 className="w-3 h-3 text-streak" strokeWidth={1.75} /> Met
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 text-[11px] font-mono text-muted-foreground group-hover:text-foreground transition-colors">
-              <Clock className="w-3 h-3 text-amber-500/80" />
-              <span>{minutesLeft}m left</span>
+              <Clock className="w-3 h-3 text-muted-foreground/75" strokeWidth={1.75} />
+              <span className="tabular-nums">{minutesLeft}m left</span>
             </span>
           )}
 
@@ -64,11 +64,7 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
             <div
               className={cn(
                 "h-full rounded-full transition-all duration-500",
-                goalMet
-                  ? "bg-emerald-500"
-                  : current.todayProgress > 0
-                  ? "bg-gradient-to-r from-amber-500 to-emerald-500"
-                  : "bg-amber-500/30",
+                goalMet ? "bg-foreground" : current.todayProgress > 0 ? "bg-streak" : "bg-muted-foreground/30",
               )}
               style={{ width: `${Math.max(goalMet ? 100 : 6, Math.min(100, current.todayProgress))}%` }}
             />
@@ -79,11 +75,15 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
   }
 
   const next = MILESTONES.find((m) => m.days > current.currentStreak);
+  const totalWeeklyMinutes = weekly.reduce((s, d) => s + d.minutes, 0);
+  const activeDaysCount = weekly.filter((d) => d.read).length;
+  const weeklyAvg = Math.round(totalWeeklyMinutes / 7);
 
   return (
     <div className="space-y-10">
+      {/* Section Header */}
       <SectionHeader
-        eyebrow="Streaks & Momentum"
+        eyebrow="Momentum & Streaks"
         title={
           isZero ? (
             "Ignite your daily ritual."
@@ -96,99 +96,82 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
         }
         meta={
           goalMet
-            ? "Today's daily reading goal is achieved!"
-            : `${minutesLeft} more ${minutesLeft === 1 ? "minute" : "minutes"} today unlocks your streak.`
+            ? "Today's daily reading goal is achieved."
+            : `${minutesLeft} more ${minutesLeft === 1 ? "minute" : "minutes"} today to complete today's streak.`
         }
       />
 
-      {/* Motivational Day 1 Banner when streak is 0 */}
+      {/* Motivational Day 1 Editorial Panel when streak is 0 */}
       {isZero && (
-        <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 via-card/70 to-orange-500/5 p-6 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
-            <div className="flex items-start gap-4">
-              <div className="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-amber-500/15 text-amber-500 border border-amber-500/30 shadow-inner">
-                <Flame className="h-6 w-6 fill-amber-500/30 text-amber-500 animate-pulse" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-serif text-xl sm:text-2xl font-normal text-foreground">
-                    Day 1 Ready to Ignite
-                  </h3>
-                  <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 font-mono text-[10px] uppercase font-semibold text-amber-700 dark:text-amber-400">
-                    Next: 1st Day Badge
-                  </span>
-                </div>
-                <p className="mt-1.5 text-sm text-muted-foreground max-w-xl">
-                  {goalMet
-                    ? "Fantastic! You have completed today's reading goal. Your 1-day streak badge is primed and ready."
-                    : `Read for just ${minutesLeft} more ${minutesLeft === 1 ? "minute" : "minutes"} today to officially start your streak.`}
-                </p>
-              </div>
+        <div className="border border-border/70 bg-card/60 p-6 sm:p-7 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 transition-colors">
+          <div className="flex items-start gap-4">
+            <div className="grid h-12 w-12 flex-none place-items-center border border-border bg-background text-streak">
+              <Flame className="h-6 w-6" strokeWidth={1.75} />
             </div>
-
-            <div className="flex items-center gap-2.5 flex-none">
-              <div className="rounded-xl border border-border bg-background/80 px-4 py-2.5 text-center min-w-[120px] shadow-xs">
-                <div className="flex items-center justify-center gap-1 text-[11px] font-mono text-muted-foreground uppercase tracking-wider">
-                  <Clock className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Remaining</span>
-                </div>
-                <div className="mt-1 font-mono text-xl font-light text-foreground">
-                  {goalMet ? "0 min" : `${minutesLeft} min`}
-                </div>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h3 className="font-serif text-xl sm:text-2xl font-normal text-foreground">
+                  Day 1 of your reading ritual
+                </h3>
+                <span className="eyebrow bg-secondary px-2 py-0.5 text-[10px] text-foreground">
+                  Ready to begin
+                </span>
               </div>
+              <p className="mt-1.5 text-sm text-muted-foreground max-w-xl">
+                {goalMet
+                  ? "Great job! You have reached today's reading goal. Your first day milestone is active."
+                  : `Read for ${minutesLeft} more ${minutesLeft === 1 ? "minute" : "minutes"} today to officially start your streak.`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 flex-none">
+            <div className="border border-border bg-background px-5 py-2.5 text-center min-w-[130px]">
+              <p className="eyebrow text-[10px]">Today's Target</p>
+              <p className="font-mono text-xl font-light text-foreground mt-0.5 tabular-nums">
+                {goalMet ? "0 min" : `${minutesLeft} min`}
+              </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Stats Overview */}
-      <StatGrid className="grid-cols-3">
+      {/* Figures — Symmetrical 4-stat grid matching Progress */}
+      <StatGrid className="grid-cols-2 md:grid-cols-4">
         <Stat
           label="Current Streak"
           value={
-            isZero ? (
-              <span className="inline-flex items-center gap-2 text-amber-500 font-sans font-light">
-                0 <Flame className="w-7 h-7 text-amber-500/70" />
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-2 font-sans font-light">
-                {current.currentStreak} <Flame className="w-7 h-7 text-orange-500 fill-orange-500 animate-pulse" />
-              </span>
-            )
-          }
-          hint={
-            isZero ? (
-              <span className="text-amber-600 dark:text-amber-400 font-medium">Ready to ignite today</span>
-            ) : (
-              `${current.currentStreak} consecutive days`
-            )
-          }
-        />
-        <Stat
-          label="Best Streak"
-          value={state.longestStreak}
-          hint={state.longestStreak > 0 ? "Personal record" : "Set your first record"}
-        />
-        <Stat
-          label="Today's Progress"
-          value={
-            <span className={cn(goalMet ? "text-emerald-500 font-normal" : "font-light")}>
-              {Math.min(100, Math.round(current.todayProgress))}%
+            <span className="inline-flex items-center gap-2 font-light">
+              {current.currentStreak}
+              <Flame className="w-7 h-7 text-streak" strokeWidth={1.75} />
             </span>
           }
-          hint={
-            goalMet ? (
-              <span className="text-emerald-600 dark:text-emerald-400 font-medium">Goal achieved!</span>
-            ) : (
-              `${minutesRead} of ${state.goalMinutesPerDay} min (${minutesLeft} min left)`
-            )
-          }
+          hint={isZero ? "Kindle your first day" : `${current.currentStreak} consecutive days`}
+        />
+        <Stat
+          label="Best Record"
+          value={`${state.longestStreak}d`}
+          hint={state.longestStreak > 0 ? "Longest streak achieved" : "Set your first record"}
+        />
+        <Stat
+          label="Today's Reading"
+          value={`${minutesRead} min`}
+          hint={`${Math.min(100, Math.round(current.todayProgress))}% of daily goal`}
+        />
+        <Stat
+          label="Daily Goal"
+          value={`${state.goalMinutesPerDay} min`}
+          hint={goalMet ? "Daily target met today" : `${minutesLeft} min remaining`}
         />
       </StatGrid>
 
-      <div className="grid lg:grid-cols-5 gap-6">
-        {/* Weekly Calendar */}
-        <Panel title="This week" className="lg:col-span-3">
+      {/* Balanced 2-Column Row — Mirroring Progress Currently Reading & Recently Opened */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Weekly Consistency Calendar */}
+        <Panel
+          title="Weekly consistency"
+          action={<span className="eyebrow">{activeDaysCount} / 7 active days</span>}
+        >
           <ol className="grid grid-cols-7 gap-2">
             {weekly.map((d, i) => (
               <li key={i} className="text-center">
@@ -196,7 +179,9 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
                 <div
                   className={cn(
                     "mt-2 flex aspect-square items-center justify-center border font-mono text-sm tabular-nums transition-colors",
-                    d.read ? "border-foreground bg-foreground text-background font-medium" : "border-border text-muted-foreground",
+                    d.read
+                      ? "border-foreground bg-foreground text-background font-medium"
+                      : "border-border text-muted-foreground",
                   )}
                   aria-label={`${d.day}: ${d.read ? `${d.minutes} minutes` : "no reading"}`}
                 >
@@ -205,100 +190,94 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
               </li>
             ))}
           </ol>
-          <p className="mt-4 text-xs text-muted-foreground">Minutes read per day. A filled square is a day the goal was met.</p>
+          <dl className="mt-5 grid grid-cols-3 gap-4 border-t border-border pt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            <div>
+              <dt>Total read</dt>
+              <dd className="mt-1 text-foreground tabular-nums">{totalWeeklyMinutes} min</dd>
+            </div>
+            <div>
+              <dt>Active days</dt>
+              <dd className="mt-1 text-foreground tabular-nums">{activeDaysCount} / 7</dd>
+            </div>
+            <div>
+              <dt>Daily avg.</dt>
+              <dd className="mt-1 text-foreground tabular-nums">{weeklyAvg} min</dd>
+            </div>
+          </dl>
         </Panel>
 
         {/* Daily Goal Configuration & Minutes Progress */}
-        <Panel title="Daily goal" className="lg:col-span-2">
-          <div className="flex items-baseline justify-between">
+        <Panel
+          title="Daily reading target"
+          action={<span className="eyebrow">{goalMet ? "Goal met" : `${minutesLeft}m remaining`}</span>}
+        >
+          <div className="flex items-baseline justify-between gap-4">
             <div className="flex items-baseline gap-2">
-              <span className="font-sans font-light text-5xl leading-none tracking-[-0.03em] tabular-nums">{state.goalMinutesPerDay}</span>
-              <span className="font-serif italic text-xl text-muted-foreground">minutes</span>
-            </div>
-            <div className="text-right">
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-mono text-xs font-medium border",
-                  goalMet
-                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                    : "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-                )}
-              >
-                {goalMet ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-                {goalMet ? "Goal met" : `${minutesLeft}m left`}
+              <span className="font-sans font-light text-5xl leading-none tracking-[-0.03em] tabular-nums">
+                {state.goalMinutesPerDay}
               </span>
+              <span className="font-serif italic text-xl text-muted-foreground">minutes / day</span>
+            </div>
+            <div className="text-right font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground tabular-nums">
+              {minutesRead} of {state.goalMinutesPerDay} min
             </div>
           </div>
 
-          {/* Progress bar */}
           <div className="mt-4">
-            <div className="flex justify-between text-xs text-muted-foreground font-mono mb-1.5">
-              <span>{minutesRead} min read</span>
-              <span>{Math.round(current.todayProgress)}% of target</span>
-            </div>
-            <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all duration-500",
-                  goalMet
-                    ? "bg-emerald-500"
-                    : current.todayProgress > 0
-                    ? "bg-gradient-to-r from-amber-500 to-emerald-500"
-                    : "bg-amber-500/30",
-                )}
-                style={{ width: `${Math.max(goalMet ? 100 : 0, Math.min(100, current.todayProgress))}%` }}
-              />
-            </div>
+            <Rule value={current.todayProgress} />
           </div>
 
           {/* Goal Selector Buttons */}
-          <div className="mt-5 grid grid-cols-5 border border-border divide-x divide-border rounded-lg overflow-hidden">
-            {GOALS.map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setGoalMinutes(m)}
-                aria-pressed={state.goalMinutesPerDay === m}
-                className={cn(
-                  "min-h-[44px] h-11 font-mono text-xs tabular-nums transition-colors",
-                  state.goalMinutesPerDay === m
-                    ? "bg-foreground text-background font-semibold"
-                    : "hover:bg-muted text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {m}m
-              </button>
-            ))}
+          <div className="mt-6">
+            <p className="eyebrow mb-2">Adjust Target</p>
+            <div className="grid grid-cols-5 border border-border divide-x divide-border">
+              {GOALS.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setGoalMinutes(m)}
+                  aria-pressed={state.goalMinutesPerDay === m}
+                  className={cn(
+                    "min-h-[44px] h-11 font-mono text-xs tabular-nums transition-colors",
+                    state.goalMinutesPerDay === m
+                      ? "bg-foreground text-background font-semibold"
+                      : "hover:bg-muted text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {m}m
+                </button>
+              ))}
+            </div>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">
+
+          <p className="mt-4 text-xs text-muted-foreground">
             {goalMet
-              ? "You have reached your goal for today! Keep reading for extra momentum."
+              ? "You have reached your goal for today! Keep reading for extra focus time."
               : current.todayProgress === 0
-              ? "0 min read today. Even a 5-minute session builds your reading ritual."
+              ? "Even a brief 5-minute session builds your reading ritual."
               : `Great momentum! Just ${minutesLeft} more minutes to complete today's goal.`}
           </p>
         </Panel>
       </div>
 
-      {/* GitHub-style Practice Heatmap */}
-      <Panel title="Questions Practiced (Streak Tracker)">
+      {/* GitHub-style Practice Activity Heatmap */}
+      <Panel
+        title="Study & Question Activity"
+        action={<span className="eyebrow">Question momentum</span>}
+      >
         <PracticeHeatmap weeks={22} />
       </Panel>
 
       {/* Milestones */}
       <Panel
-        title="Milestones"
+        title="Ritual Milestones"
         action={
-          next &&
-          (() => {
-            const d = next.days - current.currentStreak;
-            return (
-              <span className="eyebrow flex items-center gap-1.5">
-                <Target className="w-3.5 h-3.5 text-amber-500" />
-                {d} {d === 1 ? "day" : "days"} to {next.label.toLowerCase()}
-              </span>
-            );
-          })()
+          next && (
+            <span className="eyebrow flex items-center gap-1.5">
+              <Compass className="w-3.5 h-3.5 text-streak" strokeWidth={1.75} />
+              {next.days - current.currentStreak} {next.days - current.currentStreak === 1 ? "day" : "days"} to {next.label.toLowerCase()}
+            </span>
+          )
         }
       >
         <ol className="divide-y divide-border -my-2">
@@ -309,35 +288,35 @@ export const StreakTracker = ({ detailed = false }: StreakTrackerProps) => {
               <li
                 key={m.days}
                 className={cn(
-                  "flex items-center justify-between gap-4 py-3 first:pt-2 last:pb-2 transition-colors",
-                  isNextMilestone && "bg-amber-500/5 -mx-5 px-5 rounded-md",
+                  "flex items-center justify-between gap-4 py-3.5 first:pt-2 last:pb-2 transition-colors",
+                  isNextMilestone && "bg-secondary/30 -mx-5 px-5",
                 )}
               >
                 <div className="flex items-center gap-4">
                   <div
                     className={cn(
-                      "grid place-items-center h-4 w-4 rounded-full border text-[9px] font-bold",
+                      "grid place-items-center h-5 w-5 border text-xs font-mono transition-colors",
                       earned
-                        ? "border-emerald-500 bg-emerald-500 text-white"
+                        ? "border-foreground bg-foreground text-background font-bold"
                         : isNextMilestone
-                        ? "border-amber-500 bg-amber-500/20 text-amber-600"
+                        ? "border-streak text-streak bg-streak/10"
                         : "border-border text-muted-foreground",
                     )}
                   >
                     {earned ? "✓" : isNextMilestone ? "•" : ""}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <span className={cn("font-serif text-lg", !earned && !isNextMilestone && "text-muted-foreground")}>
                       {m.label}
                     </span>
                     {isNextMilestone && (
-                      <span className="rounded-full bg-amber-500/20 px-2 py-0.5 font-mono text-[10px] uppercase font-semibold text-amber-700 dark:text-amber-400">
+                      <span className="eyebrow border border-border bg-background px-2 py-0.5 text-[10px]">
                         Next Target
                       </span>
                     )}
                   </div>
                 </div>
-                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground tabular-nums">
                   {earned ? "Reached" : `${m.days} days`}
                 </span>
               </li>

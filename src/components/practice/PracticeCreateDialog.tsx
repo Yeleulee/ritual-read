@@ -427,8 +427,8 @@ export function PracticeCreateDialog({
                     Question Count
                   </Label>
                   {questionCount === 100 ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                      <Sparkles className="w-3 h-3 text-amber-500" /> 100-Question Exam Mode
+                    <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-foreground bg-secondary px-2.5 py-0.5 rounded-full border border-border">
+                      <Sparkles className="w-3 h-3 text-streak" /> 100-Question Exam Mode
                     </span>
                   ) : (
                     <span className="text-[11px] font-mono text-muted-foreground">
@@ -445,19 +445,17 @@ export function PracticeCreateDialog({
                       className={cn(
                         "py-2 rounded-lg border text-xs font-mono font-medium transition-all text-center",
                         questionCount === num
-                          ? num === 100
-                            ? "bg-amber-500 text-amber-950 border-amber-600 font-semibold shadow-xs"
-                            : "bg-foreground text-background border-foreground font-semibold"
+                          ? "bg-foreground text-background border-foreground font-semibold shadow-xs"
                           : "border-border/60 hover:bg-muted text-foreground/80",
                       )}
                     >
-                      {num === 100 ? "100 🎯" : num}
+                      {num === 100 ? "100" : num}
                     </button>
                   ))}
                 </div>
                 {questionCount === 100 && (
-                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-mono">
-                    ⚡ 100 questions will be generated from your material for a full mock examination experience.
+                  <p className="text-[11px] text-muted-foreground font-mono">
+                    100 questions will be generated from your material for a full mock examination experience.
                   </p>
                 )}
               </div>

@@ -90,7 +90,7 @@ export function ReaderTopBar({
         <button className={`${iconButton} relative`} onClick={onMusic} aria-label={musicPlaying ? "Music for reading (playing)" : "Music for reading"} title="Music (M)"><Music2 size={19} />{musicPlaying && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full" style={{ background: theme.link }} aria-hidden />}</button>
         <button className={iconButton} onClick={onSettings} aria-label="Themes and settings" title="Settings (T)"><Settings2 size={19} /></button>
         {onFullscreen && <button className={iconButton} onClick={onFullscreen} aria-label={isFullscreen ? "Exit fullscreen (F)" : "Enter fullscreen (F)"} title={isFullscreen ? "Exit fullscreen (F)" : "Enter fullscreen (F)"}>{isFullscreen ? <Minimize2 size={19} /> : <Maximize2 size={19} />}</button>}
-        <button className={`${iconButton} ${bookmarked ? "text-amber-600" : ""}`} onClick={onBookmark} aria-label={bookmarked ? "Remove bookmark" : "Bookmark this page"} aria-pressed={bookmarked}><Bookmark size={19} fill={bookmarked ? "currentColor" : "none"} /></button>
+        <button className={`${iconButton} ${bookmarked ? "text-streak" : ""}`} onClick={onBookmark} aria-label={bookmarked ? "Remove bookmark" : "Bookmark this page"} aria-pressed={bookmarked}><Bookmark size={19} fill={bookmarked ? "currentColor" : "none"} /></button>
       </div>
     </div>
   );
@@ -145,7 +145,7 @@ export function ReaderFooter({ theme, visible, location, relocation, onSeek, onM
       <button className={iconButton} onClick={() => onChapter(1)} disabled={!canNextChapter} aria-label="Next chapter" title="Next chapter"><ChevronRight size={20} /></button>
       {spread && (
         <button
-          className={`${iconButton} ${spread.isSpread ? "text-amber-500 font-semibold" : "opacity-75 hover:opacity-100"}`}
+          className={`${iconButton} ${spread.isSpread ? "text-streak font-semibold" : "opacity-75 hover:opacity-100"}`}
           onClick={spread.onToggle}
           aria-label={spread.isSpread ? "Two-page spread active (click for single page)" : "Single page active (click for two-page spread)"}
           title={spread.isSpread ? "Two-page spread (click for single page)" : "Single page (click for two-page spread)"}
@@ -155,7 +155,7 @@ export function ReaderFooter({ theme, visible, location, relocation, onSeek, onM
       )}
       {fit && (
         <button
-          className={`${iconButton} ${fit.mode === "width" ? "text-amber-500 font-semibold" : "opacity-75 hover:opacity-100"}`}
+          className={`${iconButton} ${fit.mode === "width" ? "text-streak font-semibold" : "opacity-75 hover:opacity-100"}`}
           onClick={fit.onToggle}
           aria-label={fit.mode === "width" ? "Fit to Width active (click for Fit to Page)" : "Fit to Page active (click for Fit to Width)"}
           title={fit.mode === "width" ? "Fit to Width: Full screen width (W)" : "Fit to Page: Entire page visible (W)"}

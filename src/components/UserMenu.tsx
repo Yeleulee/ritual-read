@@ -157,7 +157,7 @@ export const UserMenu = ({ context = "app", className }: UserMenuProps) => {
             <div className="border rounded-xl p-3 bg-muted/20">
               <div className="flex items-center justify-center gap-1.5">
                 <span className="font-mono text-2xl font-light text-foreground">{streak.current}</span>
-                <Flame className={cn("w-4 h-4", streak.current === 0 ? "text-amber-500/50" : "text-amber-500 fill-amber-500 animate-pulse")} />
+                <Flame className={cn("w-4 h-4", streak.current === 0 ? "text-muted-foreground/50" : "text-streak fill-streak/20")} strokeWidth={1.75} />
               </div>
               <p className="text-[11px] font-mono uppercase text-muted-foreground mt-1">
                 {streak.current === 0 ? "Day 1 Ready" : "Current Streak"}
