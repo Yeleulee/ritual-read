@@ -819,6 +819,65 @@ function parseMockQuestions(raw: string): ParsedMock[] {
   return questions;
 }
 
+/* ───── AI Mock Question Verifier & Error Corrector ───── */
+
+const AI_MOCK_VERIFIER_SYSTEM_PROMPT = `You are a master academic tutor and examination verification specialist.
+The student has provided their own list of practice / mock test questions.
+
+YOUR OBJECTIVE:
+1. FAITHFULLY ADOPT THE USER'S QUESTIONS:
+   - Retain the student's exact questions, concepts, and options. Do NOT discard or replace them with completely unrelated questions.
+   - Standardize formatting: ensure each Multiple Choice question has clear options (A, B, C, D) and True/False has True/False options.
+
+2. FACT-CHECK AND CORRECT ALL MISTAKES IN THE ANSWER KEY:
+   - Carefully solve each question using rigorous academic facts and the provided study context (if any).
+   - If the student's pasted text included an answer key that is INCORRECT:
+     * Set 'correctAnswer' to the true, factually and scientifically correct option ID (e.g. 'A', 'B', 'C', 'D' or 'True'/'False').
+     * In 'explanation', EXPLICITLY state the correction and diagnose the error:
+       "Correction: The provided answer key indicated [X], but the correct answer is [Y] because [detailed explanation of the underlying principle and why option X is a misconception]."
+   - If the student's question had NO answer key (e.g. past exam questions without answers):
+     * Determine the accurate correct answer.
+     * Write a comprehensive, step-by-step pedagogical explanation.
+   - If an MCQ only had 2 or 3 options, supply realistic domain distractors.
+
+3. STRICT NEGATIVE CONSTRAINT:
+   - Never generate author/publisher metadata trivia.
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON array of question objects without markdown code fences.`;
+
+async function generateAiMockQuestions(
+  mockText: string,
+  materialText?: string,
+  materialTitle?: string,
+  topicFocus?: string
+): Promise<PracticeQuestion[]> {
+  const contextBlock =
+    materialText && materialText.trim().length > 60
+      ? `\n\n--- REFERENCE STUDY MATERIAL ---\n${materialText.slice(0, 8000)}\n--- END REFERENCE MATERIAL ---`
+      : "";
+
+  const userPrompt = `Below are the practice / mock test questions provided by the student:
+
+--- STUDENT PASTED QUESTIONS ---
+${mockText}
+--- END QUESTIONS ---
+${contextBlock}
+
+Please parse and verify every question above. Strictly keep the student's questions, verify and correct all mistakes in the answers with clear explanatory corrections, and return a valid JSON array.`;
+
+  const reply = await chat({
+    messages: [
+      { role: "system", content: AI_MOCK_VERIFIER_SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
+    ],
+    model: "gemini-2.5-flash",
+  });
+
+  const parsed = parseJsonArray(reply);
+  return normalizeAiQuestions(parsed, topicFocus || materialTitle || "Custom Mock Exam", "medium");
+}
+
 /* ───── Main Generator Entry Point ───── */
 
 export async function generatePracticeQuestions(options: GenerateOptions): Promise<PracticeQuestion[]> {
@@ -826,6 +885,22 @@ export async function generatePracticeQuestions(options: GenerateOptions): Promi
 
   /* Path A: student's own imported mock exam questions */
   if (mockQuestionsText && mockQuestionsText.trim().length > 5) {
+    // 1. Try AI-powered verification & error correction first
+    try {
+      const verified = await generateAiMockQuestions(
+        mockQuestionsText,
+        materialText,
+        materialTitle,
+        topicFocus
+      );
+      if (verified.length > 0) {
+        return verified;
+      }
+    } catch (err) {
+      console.warn("AI mock question verification encountered an issue, using offline parser:", err);
+    }
+
+    // 2. Fallback to local parser if offline
     const parsed = parseMockQuestions(mockQuestionsText);
     if (parsed.length === 0) {
       throw new Error(

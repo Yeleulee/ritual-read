@@ -161,7 +161,11 @@ export function PracticeCreateDialog({
         }
       }
 
-      setLoadingStep("Analyzing material & formulating exam-grade questions...");
+      setLoadingStep(
+        activeTab === "mock"
+          ? "Analyzing questions & verifying answer accuracy with AI..."
+          : "Analyzing material & formulating exam-grade questions..."
+      );
 
       const questions = await generatePracticeQuestions({
         materialText,
@@ -384,7 +388,7 @@ export function PracticeCreateDialog({
                 <div className="flex items-center gap-2 min-w-0">
                   <HelpCircle className="h-4 w-4 shrink-0 text-streak" />
                   <p className="truncate">
-                    Converts <strong>your exact questions</strong> without generating new ones.
+                    Converts <strong>your exact questions</strong> — AI verifies answer accuracy &amp; corrects any mistakes.
                   </p>
                 </div>
                 <input
@@ -407,7 +411,7 @@ export function PracticeCreateDialog({
                 </Button>
               </div>
               <Textarea
-                placeholder="Paste mock questions here:&#10;1. What is the powerhouse of the cell?&#10;A) Ribosome&#10;B) Mitochondria&#10;C) Nucleus&#10;D) Endoplasmic Reticulum&#10;Answer: B"
+                placeholder="Paste mock questions or study guide problems:&#10;1. Which organelle produces ATP in eukaryotic cells?&#10;A) Nucleus&#10;B) Mitochondria&#10;C) Ribosome&#10;D) Lysosome&#10;Answer: B (AI verifies correctness & will explain/correct if mistaken)"
                 value={mockText}
                 onChange={(e) => setMockText(e.target.value)}
                 rows={5}

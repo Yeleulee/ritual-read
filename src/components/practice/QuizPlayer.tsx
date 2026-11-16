@@ -345,9 +345,36 @@ export function QuizPlayer({ practiceSet, onFinish, onBack }: QuizPlayerProps) {
                     <span>Correct!</span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1.5 text-destructive font-medium text-sm">
-                    <XCircle className="h-4 w-4" />
-                    <span>Incorrect. The correct answer is {currentQ.correctAnswer}.</span>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-destructive font-medium text-sm">
+                      <XCircle className="h-4 w-4 shrink-0" />
+                      <span>
+                        Incorrect. Correct answer:{" "}
+                        <strong className="font-semibold text-foreground underline underline-offset-2">
+                          {currentQ.correctAnswer}
+                        </strong>
+                        {(() => {
+                          const correctOpt = currentQ.options?.find(
+                            (o) =>
+                              o.id.toLowerCase().trim() === currentQ.correctAnswer.toLowerCase().trim() ||
+                              o.id.toLowerCase().trim() === currentQ.correctAnswer.toLowerCase().slice(0, 1).trim()
+                          );
+                          return correctOpt ? ` (${correctOpt.text})` : "";
+                        })()}
+                      </span>
+                    </div>
+                    {currentSelection && (
+                      <p className="text-xs text-muted-foreground pl-5.5">
+                        Your choice:{" "}
+                        <span className="text-destructive font-medium">
+                          {currentSelection}
+                          {(() => {
+                            const selectedOpt = currentQ.options?.find((o) => o.id === currentSelection);
+                            return selectedOpt ? ` — ${selectedOpt.text}` : "";
+                          })()}
+                        </span>
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
