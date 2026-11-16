@@ -232,7 +232,7 @@ export function PracticeDashboard({ books }: PracticeDashboardProps) {
       <SectionHeader
         eyebrow="Practice"
         title="Student Exam & Study Prep"
-        meta="Generate practice tests from your lecture notes, PDFs, and books — or import your mock questions. Zero AI credits used."
+        meta="Generate rigorous practice tests grounded in your lecture notes, PDFs, and books — with conceptual exam-grade AI and mock question imports."
         action={
           <Button
             onClick={() => setIsCreateOpen(true)}

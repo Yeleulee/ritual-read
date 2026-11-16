@@ -3,15 +3,16 @@ import { extractDocxContent } from "@/lib/docx";
 import JSZip from "jszip";
 import { getBookText, isPlaceholderContent } from "@/lib/book-context";
 import { getBookFile } from "@/lib/fileCache";
+import { chat } from "@/lib/ai";
 import type { BookItem } from "@/hooks/use-books";
-import type { PracticeQuestion, PracticeSet, QuestionType } from "@/types/practice";
+import type { PracticeOption, PracticeQuestion, PracticeSet, QuestionType } from "@/types/practice";
 
 const MAX_PRACTICE_CHARS = 60_000;
 const MAX_PDF_PAGES = 200;
 
-/* ───── Text helpers ───── */
+/* ───── Text helpers & cleaners ───── */
 
-function cleanText(text: string): string {
+export function cleanText(text: string): string {
   return text
     .replace(/\u00A0/g, " ")
     .replace(/[ \t]+/g, " ")
@@ -81,7 +82,7 @@ async function extractEpubBuffer(data: ArrayBuffer): Promise<string> {
   return parts.join("\n\n");
 }
 
-/* ───── File text extraction (zero AI needed) ───── */
+/* ───── File text extraction ───── */
 
 export async function extractTextFromFile(file: File): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase() || "";
@@ -188,11 +189,49 @@ export async function extractTextFromBook(book: BookItem): Promise<string> {
   throw new Error(`Could not read text from "${book.title}". Make sure the file is uploaded and not a scanned image.`);
 }
 
+/* ───── Sanitization & Front-Matter Stripper ───── */
+
+const METADATA_LINE_REGEX =
+  /^(?:isbn|copyright|all rights reserved|published by|printed in|library of congress|cataloging-in-publication|first edition|paperback|hardcover|ebook|editorial|translated by|cover design|typeset|table of contents|contents|acknowledgments?|dedication|about the author|author:|edited by|foreword|preface)/i;
+
+export const FORBIDDEN_METADATA_REGEX =
+  /\b(who (?:is the author|wrote|published|translated)|author(?:'s)? name|written by|published by|publisher|publication date|copyright|isbn|dedicat|acknowledgment)\b/i;
+
+/** Strip publishing info, copyright blurbs, front matter, and pagination markers */
+export function sanitizeStudyMaterial(rawText: string): string {
+  let text = cleanText(rawText);
+  // Strip page/slide markers
+  text = text.replace(/\[(?:Page|Slide)\s+\d+\]/gi, "");
+
+  const lines = text.split("\n");
+  const cleanLines: string[] = [];
+  let inPreamble = true;
+  let substantiveFound = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    if (inPreamble) {
+      if (METADATA_LINE_REGEX.test(trimmed)) continue;
+      // If we encounter a substantive conceptual sentence (> 50 chars with common analytical verbs)
+      if (trimmed.length > 50 && /\b(is|are|was|were|can|will|has|have|do|does|means|refers|describes|functions|occurs|requires)\b/i.test(trimmed)) {
+        substantiveFound++;
+        if (substantiveFound >= 2) inPreamble = false;
+      }
+    }
+
+    if (!inPreamble && !METADATA_LINE_REGEX.test(trimmed)) {
+      cleanLines.push(trimmed);
+    }
+  }
+
+  const result = cleanLines.join("\n\n").trim();
+  return result.length > 300 ? result : text;
+}
+
 /* ───────────────────────────────────────────────────────────────────
-   LOCAL question generation — zero AI credits
-   Extracts key sentences and definitions from the material, then
-   builds fill-in-the-blank, true/false, and flashcard questions
-   purely offline.
+   AI-POWERED QUESTION GENERATION (Strictly Grounded, Exam-Grade)
    ─────────────────────────────────────────────────────────────────── */
 
 export interface GenerateOptions {
@@ -205,6 +244,311 @@ export interface GenerateOptions {
   topicFocus?: string;
 }
 
+const AI_EXAM_SYSTEM_PROMPT = `You are a distinguished university professor and academic examination director.
+Your sole mission is to create authentic, rigorous, intellectually substantive practice questions strictly grounded in the provided study material.
+
+CRITICAL NEGATIVE CONSTRAINTS (ZERO TOLERANCE):
+- NEVER ask who wrote the text, the author's name, author background, or author biography.
+- NEVER ask about the publisher, publishing house, publication year, copyright date, ISBN, edition, editor, or translator.
+- NEVER ask about book dedications, acknowledgments, preface trivia, or table of contents.
+- NEVER use simplistic Mad-Libs sentence-completion (e.g. "Complete the statement: '________ was...'").
+Any question violating these constraints is completely worthless to students and must NEVER be generated.
+
+CORE ACADEMIC STANDARDS:
+- Focus 100% on core concepts, fundamental theories, key definitions, causal mechanisms, scientific processes, empirical relationships, and analytical distinctions from the material.
+- For Multiple Choice:
+  * Provide an articulate, conceptual question stem testing comprehension, analysis, or application.
+  * Provide EXACTLY 4 distinct, plausible options: A, B, C, D. All distractors must be realistic domain concepts (no trivial, nonsensical, or joke options).
+  * Assign 'correctAnswer' to the correct option ID ("A", "B", "C", or "D").
+- For True / False:
+  * Provide a clear, nuanced conceptual statement testing a foundational principle.
+  * Options: [{"id": "True", "text": "True"}, {"id": "False", "text": "False"}].
+  * Assign 'correctAnswer' to "True" or "False".
+- For Flashcard:
+  * Question: A key term, mechanism, theorem, or question to define or explain.
+  * Options: [].
+  * correctAnswer: A concise, precise explanation / definition of the concept.
+- For all questions:
+  * Include a thorough 'explanation' (2-4 sentences) explaining WHY the correct answer is right and clarifying key nuances.
+  * Include a brief 'sourceExcerpt' (1-2 sentences) directly showing the context in the text.
+  * Assign 'difficulty': "easy", "medium", or "hard".
+  * Assign 'topic': The specific subject or theme tested.
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON array of question objects without markdown code fences or conversational prose.
+Schema:
+[
+  {
+    "type": "multiple-choice",
+    "question": "Which mechanism primarily drives...",
+    "options": [
+      {"id": "A", "text": "..."},
+      {"id": "B", "text": "..."},
+      {"id": "C", "text": "..."},
+      {"id": "D", "text": "..."}
+    ],
+    "correctAnswer": "A",
+    "explanation": "...",
+    "sourceExcerpt": "...",
+    "difficulty": "medium",
+    "topic": "..."
+  }
+]`;
+
+/** Safely parse JSON from LLM output even if wrapped in markdown blocks */
+function parseJsonArray(raw: string): any[] {
+  let str = raw.trim();
+  const codeBlockMatch = str.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    str = codeBlockMatch[1].trim();
+  }
+  const firstBracket = str.indexOf("[");
+  const lastBracket = str.lastIndexOf("]");
+  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+    str = str.slice(firstBracket, lastBracket + 1);
+  }
+  const parsed = JSON.parse(str);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+/** Normalize raw AI output into validated PracticeQuestion items */
+function normalizeAiQuestions(
+  rawList: any[],
+  defaultTopic: string,
+  defaultDifficulty: "easy" | "medium" | "hard",
+  requestedType?: QuestionType | "mixed"
+): PracticeQuestion[] {
+  const result: PracticeQuestion[] = [];
+
+  for (let i = 0; i < rawList.length; i++) {
+    const item = rawList[i];
+    if (!item || typeof item !== "object") continue;
+
+    const questionText = (item.question || item.prompt || "").toString().trim();
+    if (questionText.length < 10) continue;
+
+    // Safety filter: discard if question or answer asks about author, publisher, or metadata
+    const combinedCheck = `${questionText} ${item.correctAnswer || item.answer || ""}`;
+    if (FORBIDDEN_METADATA_REGEX.test(combinedCheck)) {
+      continue;
+    }
+
+    let rawType = (item.type || "").toString().toLowerCase().replace(/[_\s]/g, "-");
+    let type: QuestionType = "multiple-choice";
+    if (rawType.includes("true") || rawType.includes("false") || rawType === "tf") {
+      type = "true-false";
+    } else if (rawType.includes("flash") || rawType.includes("card")) {
+      type = "flashcard";
+    } else if (rawType.includes("choice") || rawType.includes("mcq")) {
+      type = "multiple-choice";
+    } else if (requestedType && requestedType !== "mixed") {
+      type = requestedType;
+    }
+
+    // Normalize options
+    let options: PracticeOption[] = [];
+    if (type === "multiple-choice") {
+      if (Array.isArray(item.options)) {
+        options = item.options.map((opt: any, idx: number) => {
+          const fallbackLetter = ["A", "B", "C", "D"][idx] || String.fromCharCode(65 + idx);
+          if (typeof opt === "string") {
+            const m = opt.match(/^(?:\(?([A-Da-d])\)?(?:[.:)]|\s+-)?\s+)?(.*)$/);
+            const letter = (m && m[1] ? m[1].toUpperCase() : fallbackLetter);
+            const rawText = (m && m[2] ? m[2] : opt).trim();
+            return { id: letter, text: rawText || opt.trim() };
+          }
+          const id = (opt.id || fallbackLetter).toString().toUpperCase().trim();
+          let text = (opt.text || opt.label || "").toString().trim();
+          text = text.replace(/^(?:\(?[A-Da-d]\)?[.:-]?\s+)/, "").trim();
+          return { id, text };
+        });
+      } else if (item.options && typeof item.options === "object") {
+        options = Object.entries(item.options).map(([k, v]) => {
+          let text = String(v).trim();
+          text = text.replace(/^(?:\(?[A-Da-d]\)?[.:-]?\s+)/, "").trim();
+          return {
+            id: k.toUpperCase().trim(),
+            text,
+          };
+        });
+      }
+
+      if (options.length < 2) continue;
+    } else if (type === "true-false") {
+      options = [
+        { id: "True", text: "True" },
+        { id: "False", text: "False" },
+      ];
+    } else {
+      options = [];
+    }
+
+    // Normalize correctAnswer
+    let correctAnswer = (item.correctAnswer ?? item.answer ?? item.correct ?? "").toString().trim();
+    if (type === "true-false") {
+      correctAnswer = /^t(?:rue)?$/i.test(correctAnswer) ? "True" : "False";
+    } else if (type === "multiple-choice") {
+      // If correctAnswer starts with a letter like "B)" or "B: "
+      const letterMatch = correctAnswer.match(/^[(\[]?([A-Da-d])[)\]:.]?/);
+      if (letterMatch && options.some((o) => o.id === letterMatch[1].toUpperCase())) {
+        correctAnswer = letterMatch[1].toUpperCase();
+      } else {
+        // If the answer matches the text of an option
+        const matchedOpt = options.find(
+          (o) => o.text.toLowerCase().trim() === correctAnswer.toLowerCase().trim()
+        );
+        if (matchedOpt) {
+          correctAnswer = matchedOpt.id;
+        } else if (correctAnswer.length > 0) {
+          correctAnswer = correctAnswer.slice(0, 1).toUpperCase();
+        } else if (options.length > 0) {
+          correctAnswer = options[0].id;
+        }
+      }
+    }
+
+    const explanation =
+      (item.explanation || item.rationale || item.reason || "").toString().trim() ||
+      "Verified directly against the key concepts and mechanisms in your study material.";
+
+    const sourceExcerpt = (item.sourceExcerpt || item.excerpt || "").toString().trim() || undefined;
+
+    const diff = (item.difficulty || defaultDifficulty).toString().toLowerCase();
+    const finalDiff = (["easy", "medium", "hard"].includes(diff) ? diff : defaultDifficulty) as
+      | "easy"
+      | "medium"
+      | "hard";
+
+    result.push({
+      id: `q-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+      type,
+      question: questionText,
+      options,
+      correctAnswer,
+      explanation,
+      sourceExcerpt,
+      difficulty: finalDiff,
+      topic: item.topic?.toString().trim() || defaultTopic,
+    });
+  }
+
+  return result;
+}
+
+/** Divide material text into balanced substantive slices for high question counts */
+function extractSubstantiveChunks(text: string, questionCount: number, topicFocus?: string): string[] {
+  if (topicFocus) {
+    const keywords = topicFocus.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim().length > 60);
+    const matched = paragraphs.filter((p) => keywords.some((kw) => p.toLowerCase().includes(kw)));
+    if (matched.length >= 2) {
+      return [matched.join("\n\n").slice(0, 16_000)];
+    }
+  }
+
+  const length = text.length;
+  // If short text, return as one chunk
+  if (length <= 12_000 || questionCount <= 10) {
+    return [text.slice(0, 16_000)];
+  }
+
+  // Determine number of chunks based on questionCount and text length
+  const numChunks = questionCount > 50 ? 4 : questionCount > 20 ? 3 : 2;
+  const chunkSize = Math.min(14_000, Math.floor(length / numChunks));
+  const chunks: string[] = [];
+
+  for (let i = 0; i < numChunks; i++) {
+    const start = Math.floor(i * (length / numChunks));
+    const slice = text.slice(start, start + chunkSize).trim();
+    if (slice.length > 200) {
+      chunks.push(slice);
+    }
+  }
+
+  return chunks.length > 0 ? chunks : [text.slice(0, 16_000)];
+}
+
+/** Generate questions using our LLM engine via /api/ai-chat */
+async function generateAiQuestions(options: GenerateOptions): Promise<PracticeQuestion[]> {
+  const {
+    materialText,
+    materialTitle,
+    questionCount = 10,
+    questionType = "multiple-choice",
+    difficulty = "medium",
+    topicFocus,
+  } = options;
+
+  const sanitized = sanitizeStudyMaterial(materialText);
+  if (sanitized.length < 50) {
+    throw new Error("Material does not contain enough text to generate questions.");
+  }
+
+  const chunks = extractSubstantiveChunks(sanitized, questionCount, topicFocus);
+  const questionsPerChunk = Math.ceil(questionCount / chunks.length);
+  const defaultDiff = difficulty === "comprehensive" ? "medium" : difficulty;
+
+  const tasks = chunks.map(async (chunk, chunkIdx) => {
+    let formatInstruction = "";
+    if (questionType === "multiple-choice") {
+      formatInstruction = "Format: 100% Multiple Choice questions with 4 options (A, B, C, D).";
+    } else if (questionType === "true-false") {
+      formatInstruction = "Format: 100% True / False questions testing conceptual accuracy.";
+    } else if (questionType === "flashcard") {
+      formatInstruction = "Format: 100% Flashcards with high-yield concepts on the front and concise definitions on the back.";
+    } else {
+      formatInstruction = "Format: A balanced mix of Multiple Choice (approx 60%), True/False (approx 20%), and Flashcards (approx 20%).";
+    }
+
+    const userPrompt = `Material Title: "${materialTitle}"
+Target Topic / Chapter Focus: ${topicFocus || "Comprehensive coverage of core concepts"}
+Target Difficulty: ${difficulty}
+Required Question Count: Generate ${questionsPerChunk} rigorous questions.
+${formatInstruction}
+
+REMINDER: ABSOLUTELY ZERO QUESTIONS ABOUT AUTHORS, WRITERS, PUBLISHERS, TRANSLATORS, ISBN, OR PUBLICATION DATES.
+Test ONLY the substantive knowledge, theories, causal mechanisms, definitions, and principles in this excerpt:
+
+--- STUDY MATERIAL EXCERPT (Part ${chunkIdx + 1} of ${chunks.length}) ---
+${chunk}
+--- END EXCERPT ---
+
+Return ONLY a valid JSON array of questions conforming to the schema.`;
+
+    const reply = await chat({
+      messages: [
+        { role: "system", content: AI_EXAM_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      model: "gemini-2.5-flash",
+    });
+
+    const parsed = parseJsonArray(reply);
+    return normalizeAiQuestions(parsed, topicFocus || materialTitle, defaultDiff, questionType);
+  });
+
+  const results = await Promise.all(tasks);
+  const allQuestions = results.flat();
+
+  // Deduplicate by question text
+  const seen = new Set<string>();
+  const uniqueQuestions: PracticeQuestion[] = [];
+  for (const q of allQuestions) {
+    const key = q.question.toLowerCase().trim();
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueQuestions.push(q);
+    }
+  }
+
+  return uniqueQuestions.slice(0, questionCount);
+}
+
+/* ───────────────────────────────────────────────────────────────────
+   UPGRADED LOCAL FALLBACK (Offline / No Network Fail-Safe)
+   Guaranteed ZERO metadata or author trivia.
+   ─────────────────────────────────────────────────────────────────── */
+
 const STOPWORDS = new Set([
   "the", "this", "that", "these", "those", "there", "their", "where", "when", "what", "which",
   "how", "while", "after", "before", "because", "since", "during", "however", "although", "also",
@@ -213,19 +557,19 @@ const STOPWORDS = new Set([
   "than", "then", "into", "from", "with", "without", "within", "using", "based", "called",
 ]);
 
-/** Sentences & bullet facts worth turning into questions */
-function extractKeySentences(text: string): string[] {
-  const clean = text.replace(/\[(?:Page|Slide)\s+\d+\]/gi, "").trim();
+function extractSubstantiveSentences(text: string): string[] {
+  const clean = sanitizeStudyMaterial(text);
 
-  // Split by sentence endings OR newlines (handles slides, study guides, bullet lists)
   const rawChunks = clean
     .split(/(?<=[.!?])\s+|\n+/)
     .map((s) => s.replace(/^[-•*\d.)]+\s+/, "").trim())
-    .filter((s) => s.length >= 24 && s.length <= 420)
+    .filter((s) => s.length >= 40 && s.length <= 420)
     .filter((s) => !/https?:\/\//i.test(s))
-    .filter((s) => !(/^[A-Z\s\d:_-]+$/.test(s) && s.length < 70)); // skip short all-caps headings
+    .filter((s) => !METADATA_LINE_REGEX.test(s))
+    .filter((s) => !FORBIDDEN_METADATA_REGEX.test(s))
+    .filter((s) => !(/^[A-Z\s\d:_-]+$/.test(s) && s.length < 70));
 
-  // Deduplicate similar lines
+  // Deduplicate
   const seen = new Set<string>();
   const unique: string[] = [];
   for (const s of rawChunks) {
@@ -236,11 +580,12 @@ function extractKeySentences(text: string): string[] {
     }
   }
 
-  // Prefer sentences with clear relational/factual verbs, fall back to all clean chunks
-  const factual = unique.filter((s) =>
-    /\b(is|are|was|were|has|have|had|can|will|do|does|did|means|refers|causes|produces|contains|consists|includes|defines|represents|occurs|requires|forms)\b/i.test(s)
+  // Prefer sentences with clear relational / explanatory verbs
+  const conceptual = unique.filter((s) =>
+    /\b(is defined as|refers to|consists of|results from|leads to|causes|functions to|is responsible for|characterizes|produces|requires|represents|indicates|differs from)\b/i.test(s)
   );
-  return factual.length >= 3 ? factual : unique;
+
+  return conceptual.length >= 5 ? conceptual : unique;
 }
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -252,199 +597,156 @@ function shuffleArray<T>(arr: T[]): T[] {
   return copy;
 }
 
-/** Collect all potential blank targets in a sentence */
-function getAllBlankTargets(sentence: string): Array<{ phrase: string; index: number; kind: "number" | "proper" | "term" }> {
-  const targets: Array<{ phrase: string; index: number; kind: "number" | "proper" | "term" }> = [];
-  const seen = new Set<string>();
-
-  // 1. Quoted terms
+function pickKeyTerm(sentence: string): { term: string; index: number } | null {
+  // Look for quoted terms
   for (const m of sentence.matchAll(/"([^"]{3,30})"/g)) {
-    const phrase = m[1];
-    if (!seen.has(phrase.toLowerCase())) {
-      seen.add(phrase.toLowerCase());
-      targets.push({ phrase, index: m.index! + 1, kind: "term" });
+    if (!STOPWORDS.has(m[1].toLowerCase()) && !FORBIDDEN_METADATA_REGEX.test(m[1])) {
+      return { term: m[1], index: m.index! + 1 };
     }
   }
-
-  // 2. Proper noun phrases
-  for (const m of sentence.matchAll(/\b([A-Z][a-zA-Z]{2,}(?:\s[A-Z][a-zA-Z]+){0,2})\b/g)) {
-    const phrase = m[1];
-    if (!STOPWORDS.has(phrase.toLowerCase()) && m.index! > 0 && !seen.has(phrase.toLowerCase())) {
-      seen.add(phrase.toLowerCase());
-      targets.push({ phrase, index: m.index!, kind: "proper" });
+  // Look for capitalized technical concepts
+  for (const m of sentence.matchAll(/\b([A-Z][a-zA-Z]{3,}(?:\s[A-Z][a-zA-Z]+)?)\b/g)) {
+    if (!STOPWORDS.has(m[1].toLowerCase()) && m.index! > 0 && !FORBIDDEN_METADATA_REGEX.test(m[1])) {
+      return { term: m[1], index: m.index! };
     }
   }
-
-  // 3. Numbers / percentages / years
-  for (const m of sentence.matchAll(/\b(\d{2,4}(?:\.\d+)?%?)\b/g)) {
-    const phrase = m[1];
-    if (!seen.has(phrase)) {
-      seen.add(phrase);
-      targets.push({ phrase, index: m.index!, kind: "number" });
+  // Look for longer domain terms
+  for (const m of sentence.matchAll(/\b([a-zA-Z]{6,})\b/g)) {
+    if (!STOPWORDS.has(m[1].toLowerCase()) && !FORBIDDEN_METADATA_REGEX.test(m[1])) {
+      return { term: m[1], index: m.index! };
     }
   }
-
-  // 4. Content words (5+ chars, non-stopword)
-  const contentWords: Array<{ phrase: string; index: number; kind: "term" }> = [];
-  for (const m of sentence.matchAll(/\b([a-zA-Z]{5,})\b/g)) {
-    const phrase = m[1];
-    if (!STOPWORDS.has(phrase.toLowerCase()) && !seen.has(phrase.toLowerCase())) {
-      seen.add(phrase.toLowerCase());
-      contentWords.push({ phrase, index: m.index!, kind: "term" });
-    }
-  }
-  // Sort longer words first
-  contentWords.sort((a, b) => b.phrase.length - a.phrase.length);
-  targets.push(...contentWords);
-
-  return targets;
+  return null;
 }
 
-/** Pick a key term or number from a sentence for blanking out */
-function pickBlankTarget(sentence: string, targetOffset = 0): { phrase: string; index: number; kind: "number" | "proper" | "term" } | null {
-  const all = getAllBlankTargets(sentence);
-  if (all.length === 0) return null;
-  return all[targetOffset % all.length];
-}
-
-/** Generate unique distractors from the material (case-insensitive deduplication) */
-function generateDistractors(correct: string, allSentences: string[], count = 3): string[] {
-  const seenLower = new Set<string>([correct.toLowerCase()]);
+function generateLocalDistractors(correctTerm: string, allSentences: string[]): string[] {
   const candidates: string[] = [];
-
-  const tryAdd = (val: string) => {
-    const clean = val.trim();
-    const low = clean.toLowerCase();
-    if (clean.length < 3 || seenLower.has(low) || STOPWORDS.has(low)) return;
-    seenLower.add(low);
-    candidates.push(clean);
-  };
+  const seen = new Set<string>([correctTerm.toLowerCase()]);
 
   for (const s of allSentences) {
-    for (const m of s.matchAll(/\b([A-Z][a-zA-Z]{2,}(?:\s[A-Z][a-zA-Z]+){0,2})\b/g)) {
-      tryAdd(m[1]);
-    }
-    if (candidates.length >= 30) break;
-  }
-
-  if (candidates.length < count) {
-    for (const s of allSentences) {
-      for (const m of s.matchAll(/\b([a-zA-Z]{5,})\b/g)) {
-        tryAdd(m[1]);
+    for (const m of s.matchAll(/\b([A-Z][a-zA-Z]{3,}(?:\s[A-Z][a-zA-Z]+)?)\b/g)) {
+      const w = m[1].trim();
+      const low = w.toLowerCase();
+      if (!seen.has(low) && !STOPWORDS.has(low) && !FORBIDDEN_METADATA_REGEX.test(w) && w.length >= 4) {
+        seen.add(low);
+        candidates.push(w);
       }
-      if (candidates.length >= 40) break;
+    }
+    if (candidates.length >= 20) break;
+  }
+
+  if (candidates.length < 3) {
+    for (const s of allSentences) {
+      for (const m of s.matchAll(/\b([a-zA-Z]{6,})\b/g)) {
+        const w = m[1].trim();
+        const low = w.toLowerCase();
+        if (!seen.has(low) && !STOPWORDS.has(low) && !FORBIDDEN_METADATA_REGEX.test(w)) {
+          seen.add(low);
+          candidates.push(w);
+        }
+      }
+      if (candidates.length >= 25) break;
     }
   }
 
-  return shuffleArray(candidates).slice(0, count);
+  return shuffleArray(candidates).slice(0, 3);
 }
 
-/** Build a multiple-choice question from a sentence */
-function buildMCQ(sentence: string, allSentences: string[], idx: number, title: string, targetOffset = 0): PracticeQuestion | null {
-  const target = pickBlankTarget(sentence, targetOffset);
+function buildLocalMCQ(
+  sentence: string,
+  allSentences: string[],
+  idx: number,
+  topic: string
+): PracticeQuestion | null {
+  const target = pickKeyTerm(sentence);
   if (!target) return null;
-  const distractors = generateDistractors(target.phrase, allSentences, 3);
+
+  const distractors = generateLocalDistractors(target.term, allSentences);
   if (distractors.length < 3) return null;
 
-  const blankSentence =
-    sentence.slice(0, target.index) + "________" + sentence.slice(target.index + target.phrase.length);
+  const blanked =
+    sentence.slice(0, target.index) + "________" + sentence.slice(target.index + target.term.length);
 
-  const options = shuffleArray([target.phrase, ...distractors]);
+  const options = shuffleArray([target.term, ...distractors]);
   const labels = ["A", "B", "C", "D"];
-  const correctLabel = labels[options.indexOf(target.phrase)];
+  const correctLabel = labels[options.indexOf(target.term)];
 
   return {
-    id: `q-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `q-local-${idx}-${Date.now()}`,
     type: "multiple-choice",
-    question: `Complete the statement from the material:\n"${blankSentence}"`,
+    question: `According to the study material, which concept or term correctly completes the following principle?\n\n"${blanked}"`,
     options: options.map((text, i) => ({ id: labels[i], text })),
     correctAnswer: correctLabel,
-    explanation: `In the study material, the complete statement reads: "${sentence}"`,
+    explanation: `From the source material: "${sentence}"`,
     sourceExcerpt: sentence,
-    difficulty: sentence.length > 150 ? "hard" : sentence.length > 80 ? "medium" : "easy",
-    topic: title,
+    difficulty: "medium",
+    topic,
   };
 }
 
-/** Build a true/false question */
-function buildTrueFalse(sentence: string, allSentences: string[], idx: number, title: string, targetOffset = 0): PracticeQuestion | null {
-  const makeTrue = targetOffset % 2 === 0;
-
-  if (makeTrue) {
-    return {
-      id: `q-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      type: "true-false",
-      question: `True or False: "${sentence}"`,
-      options: [
-        { id: "True", text: "True" },
-        { id: "False", text: "False" },
-      ],
-      correctAnswer: "True",
-      explanation: `This statement accurately reflects the provided study material.`,
-      sourceExcerpt: sentence,
-      difficulty: "easy",
-      topic: title,
-    };
-  }
-
-  const target = pickBlankTarget(sentence, targetOffset);
-  if (!target) {
-    return {
-      id: `q-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      type: "true-false",
-      question: `True or False: "${sentence}"`,
-      options: [
-        { id: "True", text: "True" },
-        { id: "False", text: "False" },
-      ],
-      correctAnswer: "True",
-      explanation: `This statement accurately reflects the provided study material.`,
-      sourceExcerpt: sentence,
-      difficulty: "easy",
-      topic: title,
-    };
-  }
-
-  const distractors = generateDistractors(target.phrase, allSentences, 3);
-  if (distractors.length === 0) return null;
-  const pickedDistractor = distractors[targetOffset % distractors.length];
-
-  const falseSentence =
-    sentence.slice(0, target.index) + pickedDistractor + sentence.slice(target.index + target.phrase.length);
+function buildLocalTrueFalse(sentence: string, idx: number, topic: string): PracticeQuestion {
   return {
-    id: `q-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `q-local-tf-${idx}-${Date.now()}`,
     type: "true-false",
-    question: `True or False: "${falseSentence}"`,
+    question: `Based on the provided material, is the following statement accurate?\n\n"${sentence}"`,
     options: [
       { id: "True", text: "True" },
       { id: "False", text: "False" },
     ],
-    correctAnswer: "False",
-    explanation: `The study material actually states "${target.phrase}" rather than "${pickedDistractor}".`,
+    correctAnswer: "True",
+    explanation: `This statement accurately reflects the principles documented in your study text: "${sentence}"`,
     sourceExcerpt: sentence,
-    difficulty: "medium",
-    topic: title,
+    difficulty: "easy",
+    topic,
   };
 }
 
-/** Build a flashcard */
-function buildFlashcard(sentence: string, idx: number, title: string, targetOffset = 0): PracticeQuestion {
-  const target = pickBlankTarget(sentence, targetOffset);
-  const prompt = target
-    ? `Fill in and explain the missing concept:\n"${sentence.slice(0, target.index)}________${sentence.slice(target.index + target.phrase.length)}"`
-    : `Explain this concept from ${title}:\n"${sentence.slice(0, 90)}${sentence.length > 90 ? "..." : ""}"`;
+function buildLocalFlashcard(sentence: string, idx: number, topic: string): PracticeQuestion {
+  const target = pickKeyTerm(sentence);
+  const front = target
+    ? `Define the principle and role of '${target.term}' based on your study material:`
+    : `Explain this key concept from ${topic}:`;
 
   return {
-    id: `q-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `q-local-fc-${idx}-${Date.now()}`,
     type: "flashcard",
-    question: prompt,
+    question: front,
     options: [],
-    correctAnswer: target ? target.phrase : sentence,
-    explanation: `Full context from the material: "${sentence}"`,
+    correctAnswer: sentence,
+    explanation: `Key excerpt from text: "${sentence}"`,
     sourceExcerpt: sentence,
     difficulty: "medium",
-    topic: title,
+    topic,
   };
+}
+
+function generateLocalFallbackQuestions(options: GenerateOptions): PracticeQuestion[] {
+  const { materialText, materialTitle, questionCount = 10, questionType = "multiple-choice", topicFocus } = options;
+  const sentences = extractSubstantiveSentences(materialText);
+  if (sentences.length === 0) {
+    throw new Error("Could not extract enough readable sentences from this document.");
+  }
+
+  const picked = shuffleArray(sentences);
+  const questions: PracticeQuestion[] = [];
+  const topic = topicFocus || materialTitle;
+
+  for (let i = 0; i < picked.length && questions.length < questionCount; i++) {
+    const s = picked[i];
+    let q: PracticeQuestion | null = null;
+
+    if (questionType === "true-false") {
+      q = buildLocalTrueFalse(s, i, topic);
+    } else if (questionType === "flashcard") {
+      q = buildLocalFlashcard(s, i, topic);
+    } else {
+      q = buildLocalMCQ(s, sentences, i, topic) || buildLocalTrueFalse(s, i, topic);
+    }
+
+    if (q) questions.push(q);
+  }
+
+  return questions;
 }
 
 /* ───── Mock question parser (paste-in format) ───── */
@@ -517,24 +819,14 @@ function parseMockQuestions(raw: string): ParsedMock[] {
   return questions;
 }
 
-/* ───── Main generator function ───── */
+/* ───── Main Generator Entry Point ───── */
 
 export async function generatePracticeQuestions(options: GenerateOptions): Promise<PracticeQuestion[]> {
-  const {
-    materialText,
-    materialTitle,
-    mockQuestionsText,
-    questionCount = 10,
-    questionType = "multiple-choice",
-    difficulty = "medium",
-    topicFocus,
-  } = options;
+  const { materialText, materialTitle, mockQuestionsText, topicFocus } = options;
 
-  const isMockImport = !!mockQuestionsText && mockQuestionsText.trim().length > 5;
-
-  /* ── Path A: student's own mock questions (zero random questions) ── */
-  if (isMockImport) {
-    const parsed = parseMockQuestions(mockQuestionsText!);
+  /* Path A: student's own imported mock exam questions */
+  if (mockQuestionsText && mockQuestionsText.trim().length > 5) {
+    const parsed = parseMockQuestions(mockQuestionsText);
     if (parsed.length === 0) {
       throw new Error(
         "Could not parse your questions. Format each like:\n1. Your question text\nA) Choice one\nB) Choice two\nAnswer: A"
@@ -561,75 +853,32 @@ export async function generatePracticeQuestions(options: GenerateOptions): Promi
     }));
   }
 
-  /* ── Path B: offline generation strictly from the material text ── */
+  /* Path B: Generate strictly from study material */
   if (!materialText || materialText.trim().length < 40) {
     throw new Error(
-      "Not enough readable text in this document. Upload a longer document (PDF, DOCX, PPTX, EPUB, TXT) with selectable text."
+      "Not enough readable text in this document. Upload a document (PDF, DOCX, PPTX, EPUB, TXT) with selectable text."
     );
   }
 
-  let allSentences = extractKeySentences(materialText);
-
-  if (topicFocus) {
-    const keywords = topicFocus.toLowerCase().split(/\s+/).filter(Boolean);
-    const filtered = allSentences.filter((s) => keywords.some((kw) => s.toLowerCase().includes(kw)));
-    if (filtered.length >= 2) allSentences = filtered;
-  }
-
-  if (allSentences.length === 0) {
-    throw new Error(
-      "Could not extract enough sentences from this document. Make sure the file is not an image-only scan."
-    );
-  }
-
-  const picked = shuffleArray(allSentences);
-  const questions: PracticeQuestion[] = [];
-  const seenQuestionKeys = new Set<string>();
-  let idx = 0;
-
-  // Multi-pass extraction to effortlessly satisfy up to 100 questions from the material
-  for (let pass = 0; pass < 8 && questions.length < questionCount; pass++) {
-    for (const sentence of picked) {
-      if (questions.length >= questionCount) break;
-      idx++;
-
-      let q: PracticeQuestion | null = null;
-      let effectiveType = questionType;
-
-      if (questionType === "mixed") {
-        const types = ["multiple-choice", "true-false", "multiple-choice", "flashcard"] as const;
-        effectiveType = types[(idx + pass) % types.length];
-      } else if (pass > 0 && questionType === "multiple-choice") {
-        // If a subsequent pass needs to diversify questions for 50-100 question mock exams
-        effectiveType = pass % 2 === 1 ? "multiple-choice" : "true-false";
-      }
-
-      if (effectiveType === "true-false") {
-        q = buildTrueFalse(sentence, allSentences, idx, topicFocus || materialTitle, pass);
-      } else if (effectiveType === "flashcard") {
-        q = buildFlashcard(sentence, idx, topicFocus || materialTitle, pass);
-      } else {
-        q =
-          buildMCQ(sentence, allSentences, idx, topicFocus || materialTitle, pass) ||
-          buildTrueFalse(sentence, allSentences, idx, topicFocus || materialTitle, pass);
-      }
-
-      if (q) {
-        const key = q.question.toLowerCase().trim();
-        if (!seenQuestionKeys.has(key)) {
-          seenQuestionKeys.add(key);
-          if (difficulty !== "comprehensive") q.difficulty = difficulty;
-          questions.push(q);
-        }
-      }
+  // 1. Try Exam-Grade AI Generation first
+  try {
+    const aiQuestions = await generateAiQuestions(options);
+    if (aiQuestions.length > 0) {
+      return aiQuestions;
     }
+  } catch (aiErr) {
+    console.warn("AI question generation encountered an issue, invoking metadata-stripped fallback:", aiErr);
   }
 
-  if (questions.length === 0) {
-    throw new Error("Could not generate practice questions from this content. Try uploading a document with more descriptive paragraphs.");
+  // 2. Safe Fallback (purely substantive principles, 0% author/metadata trivia)
+  const fallbackQuestions = generateLocalFallbackQuestions(options);
+  if (fallbackQuestions.length === 0) {
+    throw new Error(
+      "Could not generate practice questions from this content. Please ensure the document contains descriptive conceptual text."
+    );
   }
 
-  return questions;
+  return fallbackQuestions;
 }
 
 /* ───── Helper to create a ready-to-use PracticeSet container ───── */

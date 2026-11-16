@@ -161,7 +161,7 @@ export function PracticeCreateDialog({
         }
       }
 
-      setLoadingStep("Generating strictly grounded questions...");
+      setLoadingStep("Analyzing material & formulating exam-grade questions...");
 
       const questions = await generatePracticeQuestions({
         materialText,
@@ -225,14 +225,14 @@ export function PracticeCreateDialog({
             </span>
             <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground font-sans">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-              Grounded in Material · Zero AI Credits
+              Grounded in Material · Exam-Grade AI
             </span>
           </div>
           <DialogTitle className="text-2xl sm:text-[26px] font-serif font-normal tracking-tight text-foreground">
             Create Practice Set
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
-            Generate quiz questions strictly grounded in your lecture notes, PDFs, or books — or convert custom mock tests.
+            Generate rigorous exam-grade questions strictly grounded in your lecture notes, PDFs, or books — 100% substantive concepts, zero author trivia.
           </DialogDescription>
         </DialogHeader>
 
