@@ -111,45 +111,62 @@ const PICKER_ID = "ai-chat-book-picker";
 
 // High-polish publication-grade Markdown components
 const MARKDOWN_COMPONENTS: Components = {
+  h1: ({ children }) => (
+    <h1 className="text-xl font-serif font-bold mt-6 mb-3 text-foreground tracking-tight">
+      {children}
+    </h1>
+  ),
   h2: ({ children }) => {
     const text = Array.isArray(children) ? children.join("") : String(children ?? "");
     const isTakeaways = /^(takeaways|in short|key points)/i.test(text.trim());
     return (
-      <h2 className={cn("text-lg font-serif font-semibold mt-6 mb-3 text-foreground", isTakeaways && "border-t border-border/70 pt-5")}>
+      <h2 className={cn("text-lg font-serif font-semibold mt-5 mb-2.5 text-foreground", isTakeaways && "border-t border-border/70 pt-4 mt-6")}>
         {children}
       </h2>
     );
   },
-  h3: ({ children }) => <h3 className="text-base font-serif font-medium mt-4 mb-2 text-foreground/90">{children}</h3>,
+  h3: ({ children }) => <h3 className="text-base font-serif font-medium mt-4 mb-2 text-foreground/95">{children}</h3>,
+  h4: ({ children }) => <h4 className="text-sm font-serif font-medium mt-3 mb-1.5 text-foreground/90">{children}</h4>,
   table: ({ children }) => (
-    <div className="-mx-1 my-4 overflow-x-auto rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
-      <table className="my-0 w-full text-sm">{children}</table>
+    <div className="my-4 w-full overflow-x-auto rounded-xl border border-border/60 bg-muted/20">
+      <table className="w-full border-collapse text-left text-sm">{children}</table>
     </div>
   ),
+  thead: ({ children }) => <thead className="bg-muted/40 border-b border-border/60">{children}</thead>,
+  th: ({ children }) => <th className="px-3.5 py-2.5 font-semibold text-foreground/90 text-xs uppercase tracking-wider">{children}</th>,
+  td: ({ children }) => <td className="border-b border-border/30 px-3.5 py-2 text-foreground/80 last:border-b-0 text-sm">{children}</td>,
   pre: ({ children }) => (
-    <div className="relative my-4 overflow-x-auto rounded-xl border border-border/60 bg-muted/40 p-4 font-mono text-xs">
-      <pre className="my-0">{children}</pre>
+    <div className="relative my-4 overflow-x-auto rounded-xl border border-border/60 bg-muted/40 p-4 font-mono text-xs max-w-full">
+      <pre className="my-0 overflow-x-auto whitespace-pre">{children}</pre>
     </div>
   ),
-  code: ({ children, className }) => (
-    <code className={cn("rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-xs text-foreground/90", className)}>
-      {children}
-    </code>
-  ),
+  code: ({ children, className }) => {
+    const isInline = !className;
+    return isInline ? (
+      <code className="rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-xs text-foreground/90 break-words">
+        {children}
+      </code>
+    ) : (
+      <code className={cn("font-mono text-xs text-foreground/90", className)}>
+        {children}
+      </code>
+    );
+  },
   blockquote: ({ children }) => (
-    <blockquote className="my-4 border-l-2 border-primary/60 pl-4 italic text-foreground/80 font-serif">
+    <blockquote className="my-4 border-l-2 border-primary/60 pl-4 italic text-foreground/85 font-serif">
       {children}
     </blockquote>
   ),
   ul: ({ children }) => <ul className="my-3 space-y-1.5 pl-5 list-disc text-foreground/90">{children}</ul>,
   ol: ({ children }) => <ol className="my-3 space-y-1.5 pl-5 list-decimal text-foreground/90">{children}</ol>,
-  p: ({ children }) => <p className="mb-3 leading-relaxed text-foreground/90 last:mb-0">{children}</p>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  p: ({ children }) => <p className="mb-3 leading-relaxed text-foreground/90 last:mb-0 break-words">{children}</p>,
   a: ({ href, children }) => (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="underline underline-offset-4 font-medium text-primary hover:text-primary/80 transition-colors"
+      className="underline underline-offset-4 font-medium text-primary hover:text-primary/80 transition-colors break-all"
     >
       {children}
     </a>
@@ -250,6 +267,8 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const latestMessageRef = useRef<HTMLDivElement | null>(null);
+  const prevMessagesLength = useRef(0);
   const dismissedAt = useRef<number | null>(null);
   const pendingCaret = useRef<number | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
@@ -334,7 +353,17 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
   };
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    if (isSending) {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    } else if (messages.length > prevMessagesLength.current) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg?.role === "assistant" && latestMessageRef.current) {
+        latestMessageRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+      }
+    }
+    prevMessagesLength.current = messages.length;
   }, [messages, isSending]);
 
   useEffect(() => {
@@ -807,7 +836,7 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
   return (
     <div
       ref={panelRef}
-      className="relative flex h-[calc(var(--vvh,100dvh)-150px)] min-h-[580px] w-full flex-row bg-transparent overflow-hidden rounded-2xl border border-border/40"
+      className="relative flex h-[calc(var(--vvh,100dvh)-220px)] min-h-[520px] max-h-[850px] w-full flex-row bg-transparent overflow-hidden rounded-2xl border border-border/40"
     >
       {/* Mobile backdrop when history drawer is open */}
       {isHistoryOpen && (
@@ -976,7 +1005,14 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
 
       {/* Main Conversation Transcript */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-6">
-        <div className="mx-auto w-full max-w-3xl h-full flex flex-col justify-center">
+        <div
+          className={cn(
+            "mx-auto w-full max-w-3xl",
+            messages.length === 0
+              ? "h-full flex flex-col justify-center"
+              : "min-h-full flex flex-col justify-start"
+          )}
+        >
           {messages.length === 0 ? (
             /* ChatGPT Exact Centered State matching screenshot */
             <div className="flex flex-col items-center justify-center text-center my-auto py-8">
@@ -1009,18 +1045,23 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
             </div>
           ) : (
             /* Active Message Thread */
-            <div className="space-y-6 py-6 pb-28">
+            <div className="space-y-6 py-6 pb-6">
               {messages.map((m, i) => {
                 const isUser = m.role === "user";
+                const isLatestAssistant = !isUser && i === messages.length - 1;
                 return (
-                  <div key={i} className={cn("flex gap-3", isUser ? "justify-end" : "justify-start")}>
+                  <div
+                    key={i}
+                    ref={isLatestAssistant ? latestMessageRef : undefined}
+                    className={cn("flex gap-3", isUser ? "justify-end" : "justify-start")}
+                  >
                     {!isUser && (
                       <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full bg-primary/10 text-primary mt-1 border border-primary/10">
                         <Bot className="h-4 w-4" />
                       </div>
                     )}
 
-                    <div className={cn("flex flex-col", isUser ? "items-end max-w-[85%]" : "items-start max-w-[90%] flex-1")}>
+                    <div className={cn("flex flex-col min-w-0", isUser ? "items-end max-w-[85%]" : "items-start flex-1")}>
                       {isUser && m.books?.length ? (
                         <ul aria-label="Tagged books" className="flex flex-wrap justify-end gap-1.5 mb-2">
                           {m.books.map((b) => (
@@ -1035,12 +1076,12 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
                       ) : null}
 
                       {isUser ? (
-                        <div className="rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-sm text-primary-foreground shadow-sm leading-relaxed whitespace-pre-wrap">
+                        <div className="rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-sm text-primary-foreground shadow-sm leading-relaxed whitespace-pre-wrap break-words">
                           {m.display ?? m.content}
                         </div>
                       ) : (
-                        <div className="w-full">
-                          <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 text-sm leading-relaxed font-sans [&>:first-child]:mt-0 [&>:last-child]:mb-0">
+                        <div className="w-full min-w-0">
+                          <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 text-sm leading-relaxed font-sans break-words [overflow-wrap:anywhere] [&>:first-child]:mt-0 [&>:last-child]:mb-0">
                             <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
                               {m.content}
                             </ReactMarkdown>
@@ -1099,9 +1140,9 @@ export const AiChat = ({ context = "", books = [], currentBookId }: AiChatProps)
         </div>
       </div>
 
-      {/* Docked Floating Composer when conversation is active */}
+      {/* Docked Composer when conversation is active */}
       {messages.length > 0 && (
-        <div className="sticky bottom-0 z-20 w-full pt-3 pb-3 bg-gradient-to-t from-background via-background/95 to-transparent px-3 sm:px-6">
+        <div className="shrink-0 z-20 w-full pt-2.5 pb-3 bg-background/95 backdrop-blur-md border-t border-border/40 px-3 sm:px-6">
           <div className="mx-auto max-w-3xl">
             <form
               onSubmit={(e) => {
